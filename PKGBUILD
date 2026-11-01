@@ -7,7 +7,7 @@ arch=('any')
 url="https://github.com/aboodmohd/-AppInstall"
 license=('MIT')
 depends=('bash' 'coreutils' 'xdg-utils' 'python')
-optdepends=('flatpak: Flatpak installation' 'kdialog: KDE dialogs' 'zenity: GNOME and Xfce dialogs' 'pyside6: graphical app preview' 'libnotify: notifications' 'fuse2: AppImage mounting' 'podman: rootless DEB/RPM containers' 'distrobox: DEB/RPM integration' 'libarchive: package inspection')
+optdepends=('flatpak: Flatpak installation' 'kdialog: KDE dialogs' 'zenity: GNOME and Xfce dialogs' 'pyside6: graphical app preview' 'libnotify: notifications' 'fuse2: AppImage mounting' 'podman: rootless DEB/RPM containers' 'distrobox: DEB/RPM integration' 'libarchive: package inspection' 'binutils: optional static ELF dependency checks')
 backup=()
 
 source=('appinstall'
@@ -16,17 +16,25 @@ source=('appinstall'
         'appimage_backend.py'
         'native_backend.py'
         'container_backend.py'
-        'container_ui.py')
-b2sums=('d1bb0f9d62cedcce18d9d33288829e529365ef5789a57258d7607d01662a058e1bf3731acf07714ad2030f0c326649b4ae580c28e6cd395ceaee9c19969607f5'
-'6088aedd79867e4a9df2a471177a33ff7070aab45fea8ede44dbade3e391de45d253b9f49e8c7336e757f9448ed4c4b1d7a2029637069a2c2c1f695a918d5229'
-'90acaad6d0d6e653d1ef1b2efce6faedcd9e2aeb0618f5db7d39945a8e9b17c2bee12fdcd2275f8814039694e82d257afb203a03f05fcd3e56893de5f8423f36'
-'38059b90ea7b7568a98cc95f3e4476a9570d80e86f6cb51be360751894f7e38343f1b04a5a0b9763402c4dda020482f38d1714aa774ffe2eb62e060ccdcbd9a1'
+        'container_ui.py'
+        'launch_monitor.py'
+        'runtime_probe.py'
+        'diagnostics_core.py'
+        'diagnostics_ui.py')
+b2sums=('32a61ce28c73e07483d50baaf6be243dc271e1ef9fe603f396de0ae2ee4162dbb517a922053976dbb2b5437ed3de528c3d6434be69169a2730f47207815721d5'
+'b6359aa735dacaf21528fe450bd9fbd11ec07e8e2230e60c56e67336d79b0dc3b530c7dbf0b057279b51a7cab6c872229efe6e052ab250b333e262da697c2c18'
+'11182e6fbbaafd30e59dc1d4b7b0d2fab229f5f17bf2bfb21267051832c2655595cdd3e8625e66237df38ee16f43f98b6a6ef465dbcadd73cab21858edc7623c'
+'5724b273b622e53188801d8db1b3acfac3a5d90c53b9d2f49625e9e05d6c4c3e5cd6aaf062ed6dd54bca09e4977e147e65419085fff93b460804fae2b581c4db'
 '8e9b705959fc0b9d21b76a8d7b4aaf2294d13cf7bb84afbc8af114ef072ed4f1d592936d64afc824da3c9ff7786ef2601c8130d375ec342942adcde59e5fc85f'
-'17f98f2bc81c4aa6ac20b040290df836914a4673cc2612453f620cbb9e0774c7735ffba86b442cbe5147658b647e3c1d953ae85416b09c2bbbed7097c1b3be97'
-'87ef05bf6c9b8e85461b3571a1f32b9bff4ba17c57ea018e11f88009f2d87fa7853694998caa62685ed38e61541cfbf65a6149feafff89f2be04651842d8e694')
+'a70357db526a6c879c8e9edeaa2385df81ade78783c48a4f802b4d7322953b82472c3781b7a42ad266f3b81dcfff45cd412282a05d352fdf5d8a476f6ee627ce'
+'31e05d750115073d1d397f3a834ba93c15232ba95bed6bf7cbdfd35d0f0730b95d01f8ab56b2ead560b68bfa7eed4fbf42f81a0a3077604c4cc96fabb4135071'
+'9ef31bb9bbe7241f9126ac337262d4394ebd493eab515bc87ee292be0eda060050aa2584dadcf95f7efa29e24bc99e20d69df442bfccca74b3139644bd2e9e23'
+'f4b39e8d3c36c643ecac3286b3f1208ea6761cad29a3fa53940881dbab212b0627162ca76731b06c1a97935e0276be3e1bd9cc4c3b5dd01b7c550d6e45c4233c'
+'2e40e316cf3f2f4f37ddba5e4cfa56f19cff6dd4ce453331a7e8285a2253cdd9a0f46f0c70be029c85e043a11a1d5b68f4b41ff90c1dd7c39938811337e0ca9c'
+'39acbda3e5b450123b365bd0d8a356da7d22f7156ca5a3ffa7597cb5a58fb5f2048ed2c6fce5ed7688dcfe0b0bd85b0f0d49c5feed0eb8300215d40a8c6c7565')
 
 package() {
-    for helper in container_backend.py container_ui.py; do
+    for helper in container_backend.py container_ui.py launch_monitor.py runtime_probe.py diagnostics_core.py diagnostics_ui.py; do
         install -Dm0644 "$srcdir/$helper" "$pkgdir/usr/bin/$helper"
     done
     install -Dm0644 "$srcdir/native_backend.py" "$pkgdir/usr/bin/native_backend.py"

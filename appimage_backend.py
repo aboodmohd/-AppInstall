@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+sys.path.insert(0,str(Path(__file__).resolve().parent))
 
 
 def desktop(path):
@@ -146,7 +147,7 @@ def install(source, destination, fallback=False):
                 shutil.move(str(root), extracted)
                 if not (Path(extracted)/'AppRun').exists():
                     raise RuntimeError('Extracted AppImage has no AppRun launcher.')
-            info = dict(target=str(target), args=arguments(meta.get('Exec','AppRun')), fallback=extracted, generation=str(generation))
+            info = dict(target=str(target), desktop_exec=meta.get('Exec','AppRun'), working_directory=meta.get('Path',''), desktop_args=shlex.split(meta.get('Exec','AppRun'))[1:], args=arguments(meta.get('Exec','AppRun')), fallback=extracted, generation=str(generation))
             helper = Path(__file__).resolve()
             lines = ['[Desktop Entry]', 'Type=Application', 'Name='+name,
                      'Comment='+meta.get('Comment','AppImage application').replace('\n',' '),
@@ -172,6 +173,8 @@ def install(source, destination, fallback=False):
         except Exception:
             shutil.rmtree(generation, ignore_errors=True)
             raise
+        import launch_monitor
+        launch_monitor.wrap_appimage(entry,manifest)
         # Remove obsolete AppInstall shortcuts for the same application, not third-party entries.
         for old in apps.glob('appinstall-*.desktop'):
             if old != entry:
@@ -205,7 +208,11 @@ def install(source, destination, fallback=False):
 if __name__ == '__main__':
     try:
         if sys.argv[1] == '--run':
-            run(sys.argv[2], sys.argv[3:])
+            import launch_monitor
+            key='appimage:'+Path(sys.argv[2]).stem
+            spec=launch_monitor.registry().get(key)
+            if spec:launch_monitor.monitor(spec,sys.argv[3:])
+            else:run(sys.argv[2], sys.argv[3:])
         else:
             install(sys.argv[1], sys.argv[2], '--extract' in sys.argv[3:])
     except Exception as error:

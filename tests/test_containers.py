@@ -39,7 +39,7 @@ def rpm():
 class ContainerTests(unittest.TestCase):
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory(); self.root=Path(self.tmp.name)
-        self.env=patch.dict(os.environ,{'XDG_DATA_HOME':str(self.root/'data')}); self.env.start()
+        self.env=patch.dict(os.environ,{'XDG_DATA_HOME':str(self.root/'data'),'XDG_STATE_HOME':str(self.root/'state')}); self.env.start()
         self.arch=patch.object(c.platform,'machine',return_value='x86_64'); self.arch.start()
     def tearDown(self):
         self.arch.stop(); self.env.stop(); self.tmp.cleanup()
@@ -49,8 +49,8 @@ class ContainerTests(unittest.TestCase):
         with patch.object(c.os,'geteuid',return_value=1000):
             engine=c.Engine(); self.addCleanup(engine.close); return engine
     def test_deb_metadata_and_spaces(self):
-        info=self.inspect(deb()); self.assertEqual(info['name'],'example'); self.assertEqual(info['dependencies'],'libc6')
-        self.assertEqual(Path(info['file']).read_bytes(),deb()); self.assertIn('spaces',info['source'])
+        payload=deb(); info=self.inspect(payload); self.assertEqual(info['name'],'example'); self.assertEqual(info['dependencies'],'libc6')
+        self.assertEqual(Path(info['file']).read_bytes(),payload); self.assertIn('spaces',info['source'])
     def test_deb_icon(self):
         info=self.inspect(deb(files={'./usr/share/pixmaps/example.png':b'icon'})); self.assertEqual(Path(info['icon']).read_bytes(),b'icon')
     def test_rpm_metadata(self):
@@ -98,6 +98,9 @@ class ContainerTests(unittest.TestCase):
         with patch.object(engine,'_export',side_effect=RuntimeError('collision')),self.assertRaises(RuntimeError):
             engine.export(info,'/usr/share/applications/example.desktop')
         self.assertEqual(engine.registry['deb:example']['status'],'needs-repair')
+    def test_non_http_repositories_are_not_silently_trusted(self):
+        for source in ('deb file:/tmp/repo stable main','URIs: /tmp/local-repo','URIs: http://deb.debian.org/debian\n file:/tmp/repo'):
+            with self.assertRaises(RuntimeError):c.validate_apt_sources(source)
     def test_selection(self):
         self.assertEqual(c.SPECS['deb'][0],'debian-apps'); self.assertEqual(c.SPECS['rpm'][0],'fedora-apps')
     def test_root_rejected(self):

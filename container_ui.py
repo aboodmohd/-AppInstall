@@ -30,6 +30,9 @@ class Workflow(QDialog):
         self.description=QLabel(); self.description.setWordWrap(True); self.description.setTextFormat(Qt.PlainText); layout.addWidget(self.description)
         self.logs=QPlainTextEdit(); self.logs.setReadOnly(True); self.logs.setMaximumBlockCount(5000); layout.addWidget(self.logs)
         self.action=QPushButton('Continue'); self.action.setEnabled(False); self.action.clicked.connect(self.proceed); layout.addWidget(self.action)
+        diagnostics=QPushButton('Application Diagnostics')
+        diagnostics.clicked.connect(lambda:__import__('subprocess').Popen([sys.executable,str(Path(__file__).with_name('diagnostics_ui.py'))]))
+        layout.addWidget(diagnostics)
         self.close_button=QPushButton('Close'); self.close_button.clicked.connect(self.reject); layout.addWidget(self.close_button)
         self.stage='preview'
         self.work(self.read,self.preview)

@@ -32,6 +32,7 @@ Usage: appinstall [options] FILE [FILE...]
        appinstall --list | --remove APP [APP...] | --detect FILE
 
 Options:
+  --diagnostics         open Application Diagnostics
   --container-info ID    view a container package (e.g. deb:example)
   --container-remove ID  confirm removal of a container package
   --container-launch ID  open a container package
@@ -143,8 +144,8 @@ detect_type() { # file — echo: flatpak|flatpakref|flatpakrepo|appimage|unknown
   local f=$1 ext magic
   ext=$(printf '%s' "${f##*.}" | tr 'A-Z' 'a-z')
   # AppImage magic bytes at offset 8: "AI" (type 1 -> \x01, type 2 -> \x02)
-  magic=$(dd if="$f" bs=1 skip=8 count=2 2>/dev/null || true)
-  if [ "$magic" = "AI" ] || [ "$ext" = "appimage" ]; then
+  magic=$(od -An -tx1 -j8 -N2 -- "$f" 2>/dev/null | tr -d ' \n' || true)
+  if [ "$magic" = "4149" ] || [ "$ext" = "appimage" ]; then
     echo appimage
   else
     case "$ext" in
@@ -204,9 +205,20 @@ refresh_flatpak_menu() {
   if have gtk-update-icon-cache; then
     gtk-update-icon-cache -f -t "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor" >/dev/null 2>&1 || true
   fi
+  local monitor
+  monitor="$(dirname -- "$(realpath -- "$0")")/launch_monitor.py"
+  [ -f "$monitor" ] || monitor="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/launch_monitor.py"
+  if [ -f "$monitor" ]; then python3 "$monitor" --adopt-flatpak "$appid" || return 1; fi
   have update-desktop-database && update-desktop-database "$APPS_DIR" >/dev/null 2>&1 || true
   if have kbuildsycoca6; then kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
   elif have kbuildsycoca5; then kbuildsycoca5 --noincremental >/dev/null 2>&1 || true; fi
+}
+
+launch_flatpak_monitored() {
+  local monitor="$(dirname -- "$(realpath -- "$0")")/launch_monitor.py"
+  [ -f "$monitor" ] || monitor="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/launch_monitor.py"
+  if [ -f "$monitor" ]; then nohup python3 "$monitor" --launch "flatpak:$1" >/dev/null 2>&1 &
+  else nohup flatpak run --user "$1" >/dev/null 2>&1 & fi
 }
 
 install_flatpak_pkg() { # file — bundle (.flatpak) or ref (.flatpakref)
@@ -221,7 +233,7 @@ install_flatpak_pkg() { # file — bundle (.flatpak) or ref (.flatpakref)
       refresh_flatpak_menu "$appid"
       notify_ok "$appid is already installed — find it in your application menu."
       if [ "$NO_OPEN" = 0 ] && [ "$ASSUME_YES" = 0 ] && dialog_confirm "$appid is already installed. Open it now?"; then
-        nohup flatpak run --user --branch="$branch" "$appid" >/dev/null 2>&1 &
+        launch_flatpak_monitored "$appid"
       fi
       return 0
     fi
@@ -245,7 +257,7 @@ install_flatpak_pkg() { # file — bundle (.flatpak) or ref (.flatpakref)
   [[ "$appid" = *.* ]] || appid=""
   refresh_flatpak_menu "$appid"
   if [ "$NO_OPEN" = 0 ] && [ "$ASSUME_YES" = 0 ] && [ -n "$appid" ] && dialog_confirm "Installation complete. Open $appid?"; then
-    nohup flatpak run --user "$appid" >/dev/null 2>&1 &
+    launch_flatpak_monitored "$appid"
   fi
   return 0
 }
@@ -372,6 +384,9 @@ if manifest.parent == state and manifest.is_file():
         shutil.rmtree(generation)
         manifest.unlink()
 REMOVE
+          local monitor="$(dirname -- "$(realpath -- "$0")")/launch_monitor.py"
+          [ -f "$monitor" ] || monitor="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/launch_monitor.py"
+          if [ -f "$monitor" ]; then python3 "$monitor" --forget "appimage:$(basename -- "$manifest" .json)"; fi
         fi
         target=$(desktop_key "$f" X-AppInstall-Exec)
         local fallback
@@ -460,6 +475,14 @@ main() {
         [ $# -ge 2 ] || { usage >&2; exit 2; }
         case "$action" in --container-info) action=--info ;; --container-remove) action=--remove ;; *) action=--launch ;; esac
         container_workflow "$action" "$2"; exit $? ;;
+      --diagnostics)
+        if ! python3 -c 'import PySide6' >/dev/null 2>&1; then
+          error_dialog 'PySide6 is required for Application Diagnostics. Launch logs are saved under the user state directory.'
+          exit 1
+        fi
+        local diagnostics="$(dirname -- "$(realpath -- "$0")")/diagnostics_ui.py"
+        [ -f "$diagnostics" ] || diagnostics="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/diagnostics_ui.py"
+        python3 "$diagnostics"; exit $? ;;
       --list)       do_list; exit 0 ;;
       --yes) ASSUME_YES=1 ;;
       --nolaunch)   NO_OPEN=1 ;;
@@ -475,6 +498,11 @@ main() {
 
   # no file given: open a picker via the file manager's file dialog
   if [ $# -eq 0 ]; then
+    local diagnostics="$(dirname -- "$(realpath -- "$0")")/diagnostics_ui.py"
+    [ -f "$diagnostics" ] || diagnostics="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/diagnostics_ui.py"
+    if [ -f "$diagnostics" ] && python3 -c 'import PySide6' >/dev/null 2>&1; then
+      python3 "$diagnostics"; exit $?
+    fi
     if have kdialog; then
       picked=$(kdialog --title "AppInstall" --getopenfilename "$HOME/Downloads" \
         "*.deb *.rpm *.flatpak *.flatpakref *.flatpakrepo *.AppImage|Installable packages")

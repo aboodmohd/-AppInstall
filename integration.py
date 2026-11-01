@@ -50,12 +50,24 @@ else:
     shutil.copy2(root / 'confirm.py', state / 'confirm.py')
     shutil.copy2(root / 'appimage_backend.py', state / 'appimage_backend.py')
     shutil.copy2(root / 'native_backend.py', state / 'native_backend.py')
-    for helper in ('container_backend.py', 'container_ui.py'):
+    for helper in ('container_backend.py', 'container_ui.py','launch_monitor.py','runtime_probe.py','diagnostics_core.py','diagnostics_ui.py'):
         shutil.copy2(root / helper, state / helper)
     def quoted(p):
         return '"' + str(p).replace('\\', '\\\\\\\\').replace('"', '\\\\\\"').replace('`', '\\\\\\`').replace('$', '\\\\\\$').replace('%', '%%') + '"'
     desktop = (root / 'appinstall.desktop').read_text().replace('Exec=appinstall %F', 'Exec=' + quoted(bindir / 'appinstall') + ' %F')
     (apps / 'appinstall.desktop').write_text(desktop)
+    sys.path.insert(0,str(state))
+    import launch_monitor
+    for message in launch_monitor.synchronize():
+        print('Launcher migration:',message, file=sys.stderr)
+    # Prior versions tracked user Flatpaks through a local export override.
+    for entry in apps.glob('*.desktop'):
+        try:
+            meta=launch_monitor.desktop_values(entry.read_text())
+            if meta.get('X-Flatpak') and not meta.get('X-AppInstall-LaunchID'):
+                launch_monitor.adopt_flatpak(meta['X-Flatpak'])
+        except (OSError,ValueError,RuntimeError,configparser.Error):
+            pass
     import shlex
     uninstall = bindir / 'appinstall-uninstall'
     uninstall.write_text('#!/bin/sh\nexec python3 ' + shlex.quote(str(state / 'integration.py')) + ' --uninstall\n')

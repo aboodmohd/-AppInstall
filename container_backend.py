@@ -13,8 +13,10 @@ import re
 import shutil
 import struct
 import subprocess
+import sys
 import tarfile
 import tempfile
+sys.path.insert(0,str(Path(__file__).resolve().parent))
 
 SPECS = {'deb': ('debian-apps', 'docker.io/library/debian:13'),
          'rpm': ('fedora-apps', 'registry.fedoraproject.org/fedora:44')}
@@ -169,9 +171,22 @@ def inspect_package(file):
 
 def validate_apt_sources(sources):
     from urllib.parse import urlparse
-    active = '\n'.join(line.split('#',1)[0] for line in sources.splitlines())
-    urls = re.findall(r'https?://[^\s]+',active)
-    if any(urlparse(url).hostname not in ('deb.debian.org','security.debian.org') for url in urls):
+    urls=[];continuation=False
+    for raw in sources.splitlines():
+        line=raw.split('#',1)[0].rstrip()
+        if not line:
+            continuation=False;continue
+        stripped=line.strip()
+        if stripped.lower().startswith('uris:'):
+            urls.extend(stripped.split(':',1)[1].split());continuation=True
+        elif raw[:1].isspace() and continuation:
+            urls.extend(stripped.split())
+        else:
+            continuation=False
+            if re.match(r'^deb(?:-src)?\s',stripped):
+                fields=re.sub(r'\[[^]]*\]','',stripped).split()
+                if len(fields)>1:urls.append(fields[1])
+    if any(urlparse(url).scheme not in ('http','https') or urlparse(url).hostname not in ('deb.debian.org','security.debian.org') for url in urls):
         raise RuntimeError('Container contains an unknown APT repository; review it manually before continuing.')
 
 
@@ -341,6 +356,12 @@ class Engine:
             exports = [dict(path=str(predicted),sha256=hashlib.sha256(predicted.read_bytes()).hexdigest())]
         if not exports:
             raise RuntimeError('Distrobox did not produce an application launcher.')
+        import launch_monitor
+        for entry in exports:
+            path=Path(entry['path'])
+            if launch_monitor.desktop_values(path.read_text()).get('Exec'):
+                spec=launch_monitor.wrap_desktop(self.key(info),path,info['kind'],container=info['container'],source_desktop=desktop,package=info['name'])
+                entry['sha256']=spec['desktop_hash']
         previous_icons = self.registry.get(self.key(info),{}).get('icons',[])
         info['icons'] = list({item['path']:item for item in previous_icons+iconchanges}.values())
         key = self.key(info)
@@ -363,6 +384,8 @@ class Engine:
                 if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == item['sha256']:
                     path.unlink()
             del self.registry[key]; self.save()
+            import launch_monitor
+            launch_monitor.update_registry(key,None)
         except BaseException:
             info['status']='needs-repair'; self.save(); raise
 
@@ -370,4 +393,5 @@ class Engine:
         info = self.registry[key]
         if not info.get('exports'):
             raise RuntimeError('This package has no exported graphical application.')
-        return subprocess.Popen(['gio','launch',info['exports'][0]['path']],env=ENV)
+        import diagnostics_core
+        return diagnostics_core.open_application(key)

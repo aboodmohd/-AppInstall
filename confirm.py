@@ -118,4 +118,10 @@ buttons = QHBoxLayout(); buttons.addStretch()
 cancel = QPushButton('Cancel'); cancel.clicked.connect(window.reject); buttons.addWidget(cancel)
 install = QPushButton('Add repository' if kind == 'flatpakrepo' else 'Install'); install.setDefault(True); install.clicked.connect(window.accept); buttons.addWidget(install)
 layout.addLayout(buttons)
+diagnostics = QPushButton('Application Diagnostics')
+def show_diagnostics():
+    import subprocess
+    subprocess.Popen([sys.executable, str(Path(__file__).with_name('diagnostics_ui.py'))])
+diagnostics.clicked.connect(show_diagnostics)
+layout.addWidget(diagnostics)
 sys.exit(0 if window.exec() == QDialog.Accepted else 1)

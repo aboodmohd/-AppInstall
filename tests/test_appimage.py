@@ -18,7 +18,7 @@ class AppImageTests(unittest.TestCase):
             source = root/'download.AppImage'
             source.write_bytes(b'original-download')
             destination = root/'Applications'
-            env = {'XDG_DATA_HOME':str(root/'data')}
+            env = {'XDG_DATA_HOME':str(root/'data'), 'XDG_STATE_HOME':str(root/'state')}
             def extract(argv, cwd, env, **kwargs):
                 self.assertEqual(env['APPIMAGELAUNCHER_DISABLE'], '1')
                 appdir = Path(cwd)/'squashfs-root'

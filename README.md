@@ -8,6 +8,8 @@ Install PySide6 for the graphical app preview (for example, `pyside6` on Arch). 
 
 Double-click a supported file, review its source and destination, confirm installation, then choose whether to open the application. AppImage downloads are copied into `~/Applications`; the originals remain untouched. Flatpak applications and repositories are installed for the current user.
 
+Managed applications now use monitored launchers. Startup failures show useful errors and logs; open **AppInstall → Application Diagnostics** or run `appinstall --diagnostics` for launch history and safe repair actions. See [Launch Diagnostics](LAUNCH_DIAGNOSTICS.md) for tested behavior and limits.
+
 ## Setup
 
 ```sh
@@ -38,6 +40,7 @@ Local integration is usually quick. Download speed, runtime size, extraction and
 
 ```sh
 appinstall FILE.AppImage
+appinstall --diagnostics
 appinstall --yes --nolaunch FILE.flatpakref
 appinstall --dir ~/Games FILE.AppImage
 appinstall --list
@@ -128,7 +131,7 @@ Host desktop export conflict recovery restores overwritten launcher content.
 Real integration testing on CachyOS KDE now passes for Debian Galculator and
 Fedora Character Map: Dolphin double-click, confirmation, dependency resolution,
 export, visible GUI launch, reinstall without duplicate launchers, and uninstall.
-There are 33 passing automated tests. Existing Seanime AppImage and Stremio
+There are 70 passing automated tests. Existing Seanime AppImage and Stremio
 Flatpak windows were also visually verified. See [INTEGRATION_TESTING.md](INTEGRATION_TESTING.md)
 for exact evidence, tested scope, storage and limitations.
 
