@@ -1,0 +1,501 @@
+#!/usr/bin/env bash
+# appinstall — double-click installer for Linux desktops
+#
+#   .flatpak / .flatpakref  ->  flatpak --user install (silent, fast)
+#   .flatpakrepo            ->  flatpak --user remote-add
+#   .AppImage               ->  moved to ~/Applications/, icon + menu entry
+#
+# CLI: appinstall [opts] FILE... | --list | --remove APP | --detect FILE
+# Needs: flatpak, fuse2, kdialog. Optional: qdbus, libnotify.
+set -u
+IFS=$'\n\t'
+
+VERSION="0.2.0"
+INSTALL_DIR="${APPINSTALL_APPIMAGES:-$HOME/Applications}"
+APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/pixmaps"
+NO_OPEN=0
+ASSUME_YES=0
+
+_progress_pid=""
+_qdbus=""
+_porg=""
+_pobj=""
+
+have() { command -v -- "$1" >/dev/null 2>&1; }
+
+usage() {
+cat <<EOF
+appinstall $VERSION — double-click installer for flatpak/AppImage
+
+Usage: appinstall [options] FILE [FILE...]
+       appinstall --list | --remove APP [APP...] | --detect FILE
+
+Options:
+  --container-info ID    view a container package (e.g. deb:example)
+  --container-remove ID  confirm removal of a container package
+  --container-launch ID  open a container package
+  --dir DIR     AppImage target folder (default: ~/Applications)
+  --yes         bypass installation confirmation (scripts only)
+  --nolaunch    suppress the Open prompt after installation
+  -h, --help    show this help
+  -V, --version print version
+
+Supported: .deb .rpm .flatpak .flatpakref .flatpakrepo .AppImage
+AppImages land in: $INSTALL_DIR (override: --dir or \$APPINSTALL_APPIMAGES)
+EOF
+}
+
+dialog_confirm() {
+  [ "$ASSUME_YES" = 1 ] && return 0
+  if have kdialog; then kdialog --title AppInstall --yesno "$1"
+  elif have zenity; then zenity --question --title=AppInstall --text="$1"
+  elif [ -t 0 ]; then read -r -p "$1 [y/N] " answer; [[ "$answer" = [yY] ]]
+  else printf '%s\n' 'Install kdialog or zenity to review this installation.' >&2; return 1; fi
+}
+
+ensure_flatpak() {
+  have flatpak && return 0
+  local manager="" command=""
+  for manager in apt-get dnf pacman zypper; do
+    have "$manager" || continue
+    case "$manager" in
+      apt-get) command="apt-get install -y flatpak" ;;
+      dnf) command="dnf install -y flatpak" ;;
+      pacman) command="pacman -S --needed --noconfirm flatpak" ;;
+      zypper) command="zypper --non-interactive install flatpak" ;;
+    esac
+    break
+  done
+  [ -n "$command" ] || { error_dialog 'Install Flatpak using your distribution package manager.'; return 1; }
+  dialog_confirm "Flatpak is required. Install the system package using administrator authentication?\n$command" || return 1
+  have pkexec || { error_dialog "Run as administrator: $command"; return 1; }
+  local -a args
+  IFS=' ' read -r -a args <<< "$command"
+  pkexec "${args[@]}" || { error_dialog "Package installation failed. Run as administrator: $command"; return 1; }
+  have flatpak
+}
+
+notify_ok() { # msg
+  if have notify-send; then
+    notify-send -a "AppInstall" -i package-x-generic "AppInstall" "$1" 2>/dev/null || true
+  elif have kdialog; then
+    kdialog --title "AppInstall" --passivepopup "$1" 6 >/dev/null 2>&1 || true
+  else
+    printf 'OK: %s\n' "$1" >&2
+  fi
+}
+
+error_dialog() { # msg
+  if have kdialog; then
+    kdialog --title "AppInstall — error" --error "$1" >/dev/null 2>&1 || true
+  fi
+  if ! have kdialog && have zenity; then zenity --error --title=AppInstall --text="$1" 2>/dev/null || true; fi
+  printf 'ERROR: %b\n' "$1" >&2
+}
+
+progress_start() { # label — shows an indeterminate kdialog progress bar
+  _porg=""; _pobj=""
+  if have zenity && { [[ "${XDG_CURRENT_DESKTOP:-}" != *KDE* ]] || ! have kdialog; }; then
+    zenity --progress --pulsate --no-cancel --auto-close --title=AppInstall --text="$1" < <(while :; do echo 1; sleep 1; done) >/dev/null 2>&1 &
+    _progress_pid=$!
+    return 0
+  fi
+  have kdialog || return 0
+  [ -n "$_qdbus" ] || return 0
+  local ref
+  ref=$(kdialog --title "AppInstall" --progressbar "$1" 0 2>/dev/null) || return 0
+  IFS=' ' read -r _porg _pobj <<<"$ref"
+  [ -n "$_porg" ] && [ -n "$_pobj" ] || { _porg=""; _pobj=""; return 0; }
+  "$_qdbus" "$_porg" "$_pobj" showCancelButton false >/dev/null 2>&1 || true
+}
+
+progress_close() {
+  if [ -n "$_progress_pid" ]; then
+    kill "$_progress_pid" 2>/dev/null || true
+    wait "$_progress_pid" 2>/dev/null || true
+    _progress_pid=""
+  fi
+  if [ -n "$_porg" ] && [ -n "$_pobj" ]; then
+    "$_qdbus" "$_porg" "$_pobj" close >/dev/null 2>&1 || true
+  fi
+  _porg=""; _pobj=""
+}
+
+# first value of KEY= in a desktop-style file, newline-stripped
+desktop_key() { # file key
+  awk -F '=' -v k="$2" '
+    $1==k { v=substr($0, index($0,"=")+1); sub(/\r$/,"",v); print v; exit }
+  ' "$1" 2>/dev/null
+}
+
+sanitize() { printf '%s' "$1" | tr -d '\r\n'; }
+
+slugify() {
+  local s
+  s=$(printf '%s' "$1" | iconv -f utf-8 -t ascii//TRANSLIT 2>/dev/null || printf '%s' "$1")
+  s=$(printf '%s' "$s" | tr -c '[:alnum:]' '-' | sed -e 's/-\{2,\}/-/g' -e 's/^-+//' -e 's/-+$//' | cut -c1-40)
+  printf '%s' "$s"
+}
+
+# ── Type detection ───────────────────────────────────────────────────────────
+detect_type() { # file — echo: flatpak|flatpakref|flatpakrepo|appimage|unknown
+  local f=$1 ext magic
+  ext=$(printf '%s' "${f##*.}" | tr 'A-Z' 'a-z')
+  # AppImage magic bytes at offset 8: "AI" (type 1 -> \x01, type 2 -> \x02)
+  magic=$(dd if="$f" bs=1 skip=8 count=2 2>/dev/null || true)
+  if [ "$magic" = "AI" ] || [ "$ext" = "appimage" ]; then
+    echo appimage
+  else
+    case "$ext" in
+      deb) echo deb ;;
+      rpm) echo rpm ;;
+      flatpak) echo flatpak ;;
+      flatpakref) echo flatpakref ;;
+      flatpakrepo) echo flatpakrepo ;;
+      *) echo unknown ;;
+    esac
+  fi
+}
+
+validate_appimage() {
+  local bytes machine
+  bytes=$(od -An -tx1 -N11 -- "$1" | tr -d ' \n')
+  [[ "$bytes" = 7f454c46????????414902 ]] || { error_dialog 'Invalid or unsupported AppImage. Only ELF type 2 AppImages are supported.'; return 1; }
+  machine=$(od -An -tu2 -j18 -N2 -- "$1" | tr -d ' ')
+  case "$(uname -m):$machine" in
+    x86_64:62|aarch64:183|arm64:183) return 0 ;;
+    *) error_dialog 'This AppImage architecture does not match this computer.'; return 1 ;;
+  esac
+}
+
+# ── Flatpak handlers ─────────────────────────────────────────────────────────
+refresh_flatpak_menu() {
+  local appid=$1 exports="${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share" entry
+  [[ "$appid" =~ ^[A-Za-z0-9_]+(\.[A-Za-z0-9_-]+)+$ ]] || return 0
+  entry="$exports/applications/$appid.desktop"
+  if [ -f "$entry" ]; then
+    mkdir -p -- "$APPS_DIR"
+    # Expose Flatpak's maintained launcher even in sessions missing its export path.
+    if [ ! -e "$APPS_DIR/$appid.desktop" ] && [ ! -L "$APPS_DIR/$appid.desktop" ]; then
+      ln -s -- "$entry" "$APPS_DIR/$appid.desktop"
+    fi
+  fi
+  # Some packages advertise activation without exporting an activation service.
+  if [ -f "$entry" ] && grep -q '^DBusActivatable=true' "$entry" &&
+     [ ! -f "$exports/dbus-1/services/$appid.service" ]; then
+    if [ -L "$APPS_DIR/$appid.desktop" ] && [ "$(readlink -- "$APPS_DIR/$appid.desktop")" = "$entry" ]; then
+      local fixed
+      fixed=$(mktemp "$APPS_DIR/.appinstall-desktop.XXXXXX") || return 1
+      sed 's/^DBusActivatable=true/DBusActivatable=false/' "$entry" > "$fixed"
+      mv -f -- "$fixed" "$APPS_DIR/$appid.desktop"
+    fi
+  fi
+  local icon dest size
+  for icon in "$exports"/icons/hicolor/*/apps/"$appid".*; do
+    [ -f "$icon" ] || continue
+    size=$(basename -- "$(dirname -- "$(dirname -- "$icon")")")
+    dest="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/$size/apps"
+    mkdir -p -- "$dest"
+    if [ ! -e "$dest/${icon##*/}" ] && [ ! -L "$dest/${icon##*/}" ]; then
+      ln -s -- "$icon" "$dest/${icon##*/}"
+    fi
+  done
+  if have gtk-update-icon-cache; then
+    gtk-update-icon-cache -f -t "${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor" >/dev/null 2>&1 || true
+  fi
+  have update-desktop-database && update-desktop-database "$APPS_DIR" >/dev/null 2>&1 || true
+  if have kbuildsycoca6; then kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
+  elif have kbuildsycoca5; then kbuildsycoca5 --noincremental >/dev/null 2>&1 || true; fi
+}
+
+install_flatpak_pkg() { # file — bundle (.flatpak) or ref (.flatpakref)
+  local file=$1 log before after appid basename branch
+  ensure_flatpak || return 1
+  if [[ "$file" = *.flatpakref ]]; then
+    appid=$(desktop_key "$file" Name)
+    branch=$(desktop_key "$file" Branch)
+    branch=${branch:-stable}
+    if [[ "$appid" =~ ^[A-Za-z0-9_]+(\.[A-Za-z0-9_-]+)+$ ]] &&
+       flatpak info --user "app/$appid/$(flatpak --default-arch)/$branch" >/dev/null 2>&1; then
+      refresh_flatpak_menu "$appid"
+      notify_ok "$appid is already installed — find it in your application menu."
+      if [ "$NO_OPEN" = 0 ] && [ "$ASSUME_YES" = 0 ] && dialog_confirm "$appid is already installed. Open it now?"; then
+        nohup flatpak run --user --branch="$branch" "$appid" >/dev/null 2>&1 &
+      fi
+      return 0
+    fi
+  fi
+  basename=$(basename -- "$file")
+  log=$(mktemp) || return 1
+  before=$(flatpak list --user --app --columns=application 2>/dev/null | sort)
+  progress_start "Installing $basename …"
+  if ! flatpak install --user --noninteractive -y "$file" >"$log" 2>&1; then
+    progress_close
+    error_dialog "Could not install $basename:\n\n$(tail -n 8 "$log")"
+    rm -f "$log"
+    return 1
+  fi
+  progress_close
+  rm -f "$log"
+  after=$(flatpak list --user --app --columns=application 2>/dev/null | sort)
+  appid=$(comm -13 <(printf '%s\n' "$before") <(printf '%s\n' "$after") | head -n1)
+  notify_ok "✔ Installed $basename — find it in your menu"
+  [ -n "$appid" ] || appid=$(desktop_key "$file" Name)
+  [[ "$appid" = *.* ]] || appid=""
+  refresh_flatpak_menu "$appid"
+  if [ "$NO_OPEN" = 0 ] && [ "$ASSUME_YES" = 0 ] && [ -n "$appid" ] && dialog_confirm "Installation complete. Open $appid?"; then
+    nohup flatpak run --user "$appid" >/dev/null 2>&1 &
+  fi
+  return 0
+}
+
+add_flatpak_repo_pkg() { # file (.flatpakrepo)
+  local file=$1 title
+  ensure_flatpak || return 1
+  title=$(desktop_key "$file" Title)
+  [ -n "$title" ] || title=$(desktop_key "$file" Name)
+  [ -n "$title" ] || title="remote-$(date +%Y%m%d%H%M%S)"
+  title=$(sanitize "$title")
+  if flatpak remotes --user --columns=name 2>/dev/null | grep -Fxq "$title"; then
+    notify_ok "Software source “$title” is already configured."
+    return 0
+  fi
+  progress_start "Adding software source $title …"
+  if ! flatpak remote-add --user --from "$title" "$file" >/dev/null 2>&1; then
+    progress_close
+    error_dialog "Could not add software source “$title” from:\n$file"
+    return 1
+  fi
+  progress_close
+  notify_ok "✔ Added software source “$title”"
+  return 0
+}
+
+# ── AppImage handler ─────────────────────────────────────────────────────────
+esc_exec() { # path — desktop Exec value, whole path quoted, specials escaped
+  local p=$1
+  p=${p//\\/\\\\}
+  p=${p//\"/\\\"}
+  p=${p//%/%%}
+  printf '"%s"' "$p"
+}
+
+pick_icon() { # sqroot iconname — echo path of best icon or ""
+  local sroot=$1 iname=$2 s cand
+  if [ -n "$iname" ]; then
+    for s in 512x512 256x256 128x128 96x96 64x64 48x48 32x32 scalable; do
+      [ -d "$sroot/usr/share/icons/hicolor/$s" ] || continue
+      cand=$(find "$sroot/usr/share/icons/hicolor/$s" -maxdepth 2 -iname "$iname.*" 2>/dev/null | head -n1)
+      if [ -n "$cand" ]; then printf '%s' "$cand"; return 0; fi
+    done
+    cand=$(find "$sroot/usr/share/pixmaps" -maxdepth 1 -iname "$iname.*" 2>/dev/null | head -n1)
+    if [ -n "$cand" ]; then printf '%s' "$cand"; return 0; fi
+    cand=$(find "$sroot" -maxdepth 3 -iname "$iname.*" 2>/dev/null | head -n1)
+    if [ -n "$cand" ]; then printf '%s' "$cand"; return 0; fi
+  fi
+  cand=$(find "$sroot/usr/share/icons" \( -iname '*.png' -o -iname '*.svg' \) 2>/dev/null | head -n1)
+  [ -n "$cand" ] && { printf '%s' "$cand"; return 0; }
+  find "$sroot" \( -iname '*.png' -o -iname '*.svg' -o -iname '*.xpm' \) 2>/dev/null | head -n1
+}
+
+install_appimage_pkg() {
+  local src=$1 helper entry log
+  local -a options=()
+  validate_appimage "$src" || return 1
+  helper="$(dirname -- "$(realpath -- "$0")")/appimage_backend.py"
+  [ -f "$helper" ] || helper="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/appimage_backend.py"
+  if ! ldconfig -p 2>/dev/null | grep -q 'libfuse.so.2'; then
+    dialog_confirm "FUSE 2 was not detected. Install an extracted launch copy? This needs additional disk space." || return 0
+    options+=(--extract)
+  fi
+  log=$(mktemp) || return 1
+  progress_start "Installing $(basename -- "$src") …"
+  if ! entry=$(python3 "$helper" "$src" "$INSTALL_DIR" "${options[@]}" 2>"$log"); then
+    progress_close
+    error_dialog "Installation failed:
+$(cat -- "$log")"
+    rm -f -- "$log"
+    return 1
+  fi
+  rm -f -- "$log"
+  progress_close
+  have update-desktop-database && update-desktop-database "$APPS_DIR" >/dev/null 2>&1 || true
+  if have kbuildsycoca6; then kbuildsycoca6 --noincremental >/dev/null 2>&1 || true; fi
+  notify_ok "Installed $(desktop_key "$entry" Name) — find it in your application menu"
+  if [ "$NO_OPEN" = 0 ] && [ "$ASSUME_YES" = 0 ] && dialog_confirm "Installation complete. Open the application?"; then
+    local manifest
+    manifest=$(desktop_key "$entry" X-AppInstall-Manifest)
+    nohup python3 "$helper" --run "$manifest" >/dev/null 2>&1 &
+  fi
+}
+
+# ── Listing / removal ────────────────────────────────────────────────────────
+do_list() {
+  local f found=0
+  echo "AppImages in $INSTALL_DIR:"
+  if [ -d "$INSTALL_DIR" ] && ls -1 -- "$INSTALL_DIR" 2>/dev/null | grep -q .; then
+    ls -1 -- "$INSTALL_DIR"
+  else
+    echo "  (none)"
+  fi
+  echo
+  echo "Menu entries managed by AppInstall:"
+  for f in "$APPS_DIR"/*.desktop; do
+    [ -f "$f" ] || continue
+    [ -n "$(desktop_key "$f" X-AppInstall-Exec)" ] || continue
+    found=1
+    printf '  • %s\n' "$(desktop_key "$f" Name)"
+  done
+  [ "$found" = 1 ] || echo "  (none)"
+}
+
+do_remove() { # names...
+  local name slug f b target removed=0
+  for name in "$@"; do
+    slug=$(slugify "$name")
+    for f in "$APPS_DIR"/*.desktop; do
+      [ -f "$f" ] || continue
+      [ -n "$(desktop_key "$f" X-AppInstall-Exec)" ] || continue
+      b=$(basename -- "$f" .desktop); b=${b#appinstall-}
+      if [ "$b" = "$slug" ] || [ "$(desktop_key "$f" Name)" = "$name" ]; then
+        local manifest generation
+        manifest=$(desktop_key "$f" X-AppInstall-Manifest)
+        if [ -n "$manifest" ]; then
+          python3 - "$manifest" "$INSTALL_DIR" <<'REMOVE'
+import json, pathlib, shutil, sys
+manifest = pathlib.Path(sys.argv[1])
+state = pathlib.Path(__import__('os').environ.get('XDG_DATA_HOME', str(pathlib.Path.home()/'.local/share')))/'appinstall'
+if manifest.parent == state and manifest.is_file():
+    generation = pathlib.Path(json.loads(manifest.read_text())['generation'])
+    if generation.parent == pathlib.Path(sys.argv[2]) and generation.name.startswith('.appinstall-'):
+        shutil.rmtree(generation)
+        manifest.unlink()
+REMOVE
+        fi
+        target=$(desktop_key "$f" X-AppInstall-Exec)
+        local fallback
+        fallback=$(desktop_key "$f" X-AppInstall-Fallback)
+        case "$fallback" in
+          "$INSTALL_DIR"/.appinstall-*) [ "$(dirname -- "$fallback")" != "$INSTALL_DIR" ] || rm -rf -- "$fallback" ;;
+        esac
+        rm -f -- "$f"
+        case "$target" in
+          "$INSTALL_DIR"/*) rm -f -- "$target" 2>/dev/null || true ;;
+        esac
+        echo "Removed: $name"
+        removed=1
+        break
+      fi
+    done
+  done
+  [ "$removed" = 1 ] || { echo "No AppInstall-managed app matches: $*" >&2; return 1; }
+  have update-desktop-database && update-desktop-database "$APPS_DIR" >/dev/null 2>&1 || true
+  return 0
+}
+
+# ── Dispatch ─────────────────────────────────────────────────────────────────
+container_workflow() {
+  local ui
+  ui="$(dirname -- "$(realpath -- "$0")")/container_ui.py"
+  [ -f "$ui" ] || ui="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/container_ui.py"
+  if ! python3 -c 'import PySide6' >/dev/null 2>&1; then
+    error_dialog 'Install PySide6 for DEB/RPM package details and transaction confirmation.'
+    return 1
+  fi
+  python3 "$ui" "$@"
+}
+
+install_native() { container_workflow "$1"; }
+
+install_one() { # file
+  local f=$1 t
+  if [ ! -f "$f" ]; then
+    error_dialog "File not found: $f"
+    return 1
+  fi
+  f=$(realpath -- "$f") || return 1
+  t=$(detect_type "$f")
+  case "$t" in deb|rpm) install_native "$f"; return $? ;; esac
+  [ "$t" != unknown ] || { error_dialog "Unsupported file: $f"; return 1; }
+  local details=""
+  case "$t" in
+    flatpakref|flatpakrepo) details="Source: $(desktop_key "$f" Url)
+Name: $(desktop_key "$f" Name)
+Runtime source: $(desktop_key "$f" RuntimeRepo)" ;;
+    appimage) validate_appimage "$f" || return 1; details="Copy to: $INSTALL_DIR (original retained)" ;;
+  esac
+  local ui
+  ui="$(dirname -- "$(realpath -- "$0")")/confirm.py"
+  [ -f "$ui" ] || ui="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/confirm.py"
+  if [ "$ASSUME_YES" = 0 ] && [ -f "$ui" ] && python3 -c 'import PySide6' >/dev/null 2>&1; then
+    python3 "$ui" "$f" "$t" "$details" || return 0
+  else
+  dialog_confirm "Install $(basename -- "$f")?
+Format: $t
+Destination: current user
+$details
+Only install files from sources you trust." || return 0
+  fi
+  case "$t" in
+    appimage) install_appimage_pkg "$f" ;;
+    flatpak|flatpakref) install_flatpak_pkg "$f" ;;
+    flatpakrepo) add_flatpak_repo_pkg "$f" ;;
+    *) error_dialog "Unrecognized file type.\nSupported: .deb .rpm .flatpak .flatpakref .flatpakrepo .AppImage\n\n$(basename -- "$f")"; return 1 ;;
+  esac
+}
+
+main() {
+  local c f picked rc
+  for c in qdbus qdbus6 qdbus-qt5 qdbus-qt6; do
+    if have "$c"; then _qdbus=$(command -v "$c"); break; fi
+  done
+
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -h|--help)    usage; exit 0 ;;
+      --version|-V) echo "appinstall $VERSION"; exit 0 ;;
+      --container-info|--container-remove|--container-launch)
+        local action="$1"
+        [ $# -ge 2 ] || { usage >&2; exit 2; }
+        case "$action" in --container-info) action=--info ;; --container-remove) action=--remove ;; *) action=--launch ;; esac
+        container_workflow "$action" "$2"; exit $? ;;
+      --list)       do_list; exit 0 ;;
+      --yes) ASSUME_YES=1 ;;
+      --nolaunch)   NO_OPEN=1 ;;
+      --dir)        [ $# -ge 2 ] || { usage >&2; exit 2; }; INSTALL_DIR=$2; shift ;;
+      --detect)     [ $# -ge 2 ] || { usage >&2; exit 2; }; detect_type "$2"; exit 0 ;;
+      --remove)     shift; [ $# -gt 0 ] || { usage >&2; exit 2; }; do_remove "$@"; exit $? ;;
+      --)           shift; break ;;
+      -*)           error_dialog "Unknown option: $1"; exit 2 ;;
+      *)            break ;;
+    esac
+    shift
+  done
+
+  # no file given: open a picker via the file manager's file dialog
+  if [ $# -eq 0 ]; then
+    if have kdialog; then
+      picked=$(kdialog --title "AppInstall" --getopenfilename "$HOME/Downloads" \
+        "*.deb *.rpm *.flatpak *.flatpakref *.flatpakrepo *.AppImage|Installable packages")
+      [ -n "$picked" ] || exit 0
+      set -- "$picked"
+    elif have zenity; then
+      picked=$(zenity --file-selection --title=AppInstall) || exit 0
+      [ -n "$picked" ] || exit 0
+      set -- "$picked"
+    else
+      usage >&2
+      exit 2
+    fi
+  fi
+
+  rc=0
+  for f in "$@"; do
+    install_one "$f" || rc=1
+  done
+  exit $rc
+}
+
+trap progress_close EXIT
+main "$@"

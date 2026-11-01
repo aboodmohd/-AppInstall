@@ -1,0 +1,213 @@
+#!/usr/bin/env python3
+"""Transactional AppImage integration and menu launch support."""
+import configparser
+import hashlib
+import json
+import os
+import re
+from pathlib import Path
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+
+
+def desktop(path):
+    parser = configparser.ConfigParser(interpolation=None, strict=False)
+    parser.optionxform = str
+    parser.read(path)
+    return dict(parser['Desktop Entry'])
+
+
+def quote(value):
+    value = str(value).replace('\\', '\\\\\\\\')
+    for char in ('"', '`', '$'):
+        value = value.replace(char, '\\\\' + char)
+    return '"' + value.replace('%', '%%') + '"'
+
+
+def arguments(value):
+    # Desktop Exec is never passed to a shell. Keep app options and file/URL fields.
+    tokens = shlex.split(value)[1:]
+    return [token for token in tokens if token not in ('%f', '%F', '%u', '%U', '%i', '%c', '%k')]
+
+
+def app_name(value):
+    return re.sub(r'\s*\(v?\d+(?:\.\d+)+(?:[^)]*)\)\s*$', '', value).strip()
+
+
+def categories(value):
+    main = {'AudioVideo', 'Audio', 'Video', 'Development', 'Education', 'Game',
+            'Graphics', 'Network', 'Office', 'Science', 'Settings', 'System', 'Utility'}
+    items = [item for item in value.split(';') if re.fullmatch(r'[A-Za-z][A-Za-z0-9-]*', item)]
+    # Entertainment is not a freedesktop menu category; use the media category.
+    items = ['AudioVideo' if item == 'Entertainment' else item for item in items]
+    if not any(item in main for item in items):
+        items.insert(0, 'Utility')
+    return ';'.join(dict.fromkeys(items)) + ';'
+
+
+def run(manifest, files):
+    info = json.loads(Path(manifest).read_text())
+    env = dict(os.environ, APPIMAGELAUNCHER_DISABLE='1')
+    target = info['target']
+    argv = [target] + info['args'] + files
+    if info.get('fallback'):
+        root = info['fallback']
+        env.update(APPDIR=root, APPIMAGE=target)
+        argv[0] = str(Path(root)/'AppRun')
+        os.chdir(root)
+    os.execvpe(argv[0], argv, env)
+
+
+def install(source, destination, fallback=False):
+    source, destination = Path(source), Path(destination)
+    data = Path(os.environ.get('XDG_DATA_HOME', Path.home()/'.local/share'))
+    apps = data/'applications'
+    state = data/'appinstall'
+    destination.mkdir(parents=True, exist_ok=True)
+    apps.mkdir(parents=True, exist_ok=True)
+    state.mkdir(parents=True, exist_ok=True)
+    # Extraction runs only after the caller's trust confirmation.
+    with tempfile.TemporaryDirectory(prefix='appinstall-') as scratch:
+        scratch = Path(scratch)
+        executable = scratch/'application.AppImage'
+        shutil.copyfile(source, executable)
+        executable.chmod(0o755)
+        result = subprocess.run([str(executable), '--appimage-extract'], cwd=scratch,
+                                env=dict(os.environ, APPIMAGELAUNCHER_DISABLE='1'),
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=180)
+        root = scratch/'squashfs-root'
+        if result.returncode or not root.is_dir():
+            raise RuntimeError('Cannot extract AppImage: ' + result.stdout.decode(errors='replace')[-1500:])
+        entries = sorted(root.glob('*.desktop'))
+        if not entries:
+            entries = sorted(root.rglob('*.desktop'))
+        original = next((p for p in entries if desktop(p).get('Type') == 'Application'), None)
+        meta = desktop(original) if original else {}
+        name = app_name(meta.get('Name', source.stem).replace('\n', ' '))
+        ident = hashlib.sha256(name.encode()).hexdigest()[:16]
+        entry = apps/f'appinstall-{ident}.desktop'
+        # Reuse the application's desktop ID: self-registration then updates the
+        # same menu item instead of creating a second launcher.
+        if original:
+            candidate = apps/original.name
+            use_candidate = not candidate.exists()
+            if candidate.exists():
+                try:
+                    existing = desktop(candidate)
+                    target_hint = existing.get('TryExec', existing.get('X-AppInstall-Exec', ''))
+                    if not target_hint:
+                        command = shlex.split(existing.get('Exec', ''))
+                        target_hint = command[0] if command else ''
+                    hint = Path(target_hint)
+                    use_candidate = (app_name(existing.get('Name', '')) == name and
+                                     (existing.get('X-AppInstall-Manifest') or
+                                      hint.is_relative_to(destination)))
+                except (OSError, KeyError, ValueError, configparser.Error):
+                    pass
+            if use_candidate:
+                entry = candidate
+        manifest = state/f'{ident}.json'
+        previous = json.loads(manifest.read_text()) if manifest.exists() else None
+        # Each generation has its own directory. The old version stays usable until commit.
+        generation = Path(tempfile.mkdtemp(prefix='.appinstall-', dir=destination))
+        try:
+            target = generation/source.name
+            shutil.copyfile(source, target)
+            target.chmod(0o755)
+            icon = 'package-x-generic'
+            iconname = meta.get('Icon', '')
+            candidates = [root/'.DirIcon'] + list(root.rglob(Path(iconname).name + '.*')) if iconname else [root/'.DirIcon']
+            for candidate in candidates:
+                try:
+                    resolved = candidate.resolve(strict=True)
+                    if not resolved.is_relative_to(root.resolve()) or not resolved.is_file():
+                        continue
+                    suffix = resolved.suffix.lower()
+                    if suffix not in ('.png', '.svg', '.xpm'):
+                        continue
+                    installed_icon = generation/('icon' + suffix)
+                    shutil.copyfile(resolved, installed_icon)
+                    icon = str(installed_icon)
+                    # Self-registering apps often restore Icon=<themed name>.
+                    # Publish the icon there as well as keeping our absolute path.
+                    if re.fullmatch(r'[A-Za-z0-9_.-]+', iconname):
+                        themed = data/'icons/hicolor'/('scalable' if suffix == '.svg' else '256x256')/'apps'
+                        themed.mkdir(parents=True, exist_ok=True)
+                        shutil.copyfile(installed_icon, themed/(iconname+suffix))
+                    break
+                except OSError:
+                    continue
+            extracted = ''
+            if fallback:
+                extracted = str(generation/'appdir')
+                shutil.move(str(root), extracted)
+                if not (Path(extracted)/'AppRun').exists():
+                    raise RuntimeError('Extracted AppImage has no AppRun launcher.')
+            info = dict(target=str(target), args=arguments(meta.get('Exec','AppRun')), fallback=extracted, generation=str(generation))
+            helper = Path(__file__).resolve()
+            lines = ['[Desktop Entry]', 'Type=Application', 'Name='+name,
+                     'Comment='+meta.get('Comment','AppImage application').replace('\n',' '),
+                     'Icon='+icon, 'Terminal=false', 'Categories='+categories(meta.get('Categories', '')),
+                     'Exec='+quote(sys.executable)+' '+quote(helper)+' --run '+quote(manifest)+' %U',
+                     'X-AppInstall-Exec='+str(target), 'X-AppInstall-Manifest='+str(manifest)]
+            text = '\n'.join(lines)+'\n'
+            # Only validated, fully staged artifacts are made visible.
+            staged_manifest = manifest.with_suffix('.new')
+            staged_manifest.write_text(json.dumps(info))
+            staged_entry = entry.with_suffix('.new')
+            staged_entry.write_text(text)
+            old_manifest = manifest.read_bytes() if manifest.exists() else None
+            staged_manifest.replace(manifest)
+            try:
+                staged_entry.replace(entry)
+            except Exception:
+                if old_manifest is None:
+                    manifest.unlink(missing_ok=True)
+                else:
+                    manifest.write_bytes(old_manifest)
+                raise
+        except Exception:
+            shutil.rmtree(generation, ignore_errors=True)
+            raise
+        # Remove obsolete AppInstall shortcuts for the same application, not third-party entries.
+        for old in apps.glob('appinstall-*.desktop'):
+            if old != entry:
+                try:
+                    if app_name(desktop(old).get('Name', '')) == name:
+                        old.unlink()
+                except (OSError, KeyError, configparser.Error):
+                    pass
+        # Retire a matching AppImageLauncher entry after our replacement is committed.
+        # Keep both its launcher backup and its payload for recovery.
+        for old in apps.glob('appimagekit_*.desktop'):
+            try:
+                oldmeta = desktop(old)
+                oldname = oldmeta.get('Name', '')
+                oldtarget = Path(oldmeta.get('TryExec', ''))
+                if app_name(oldname) == name and oldtarget.parent == destination:
+                    backup = state/'launcher-backups'
+                    backup.mkdir(exist_ok=True)
+                    shutil.copy2(old, backup/old.name)
+                    old.unlink()
+                    if oldtarget.is_file() and oldtarget != target:
+                        oldtarget.unlink()
+            except (OSError, KeyError, configparser.Error):
+                pass
+        if previous:
+            old = Path(previous.get('generation',''))
+            if old.parent == destination and old.name.startswith('.appinstall-'):
+                shutil.rmtree(old, ignore_errors=True)
+        print(str(entry))
+
+if __name__ == '__main__':
+    try:
+        if sys.argv[1] == '--run':
+            run(sys.argv[2], sys.argv[3:])
+        else:
+            install(sys.argv[1], sys.argv[2], '--extract' in sys.argv[3:])
+    except Exception as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)
