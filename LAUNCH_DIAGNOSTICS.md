@@ -165,4 +165,5 @@ To roll back:
 Do not replace the whole application-launcher directory or container registry over
 later user changes. New monitor modules and logs can be kept; they are unused once
 original commands are restored. No container, package or personal data is removed
-by launcher rollback. No changes have been pushed to GitHub during this phase.
+by launcher rollback. This phase is published as commit `e7b68ec` on GitHub
+(`main`); rollback procedures above remain valid.
