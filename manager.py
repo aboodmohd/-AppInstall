@@ -82,6 +82,38 @@ def icon_pixmap(app):
     return qicon.pixmap(QSize(64, 64))
 
 
+def _launcher_exists(record):
+    """A managed launcher is real if the recorded desktop entry OR any
+    AppInstall-owned export path exists on disk."""
+    desktop = record.get('desktop') or ''
+    if desktop and Path(desktop).is_file():
+        return True
+    for entry in record.get('exports', []):
+        path = entry.get('path') if isinstance(entry, dict) else None
+        if path and Path(path).is_file():
+            return True
+    return False
+
+
+def _appimage_target(raw):
+    """Resolve the AppImage generation path from the manifest when the
+    launch registry record does not store it directly."""
+    target = raw.get('target') or raw.get('file')
+    if target and Path(target).is_file():
+        return target
+    manifest = raw.get('manifest')
+    if manifest and Path(manifest).is_file():
+        try:
+            data = json.loads(Path(manifest).read_text())
+            for key in ('target', 'generation'):
+                cand = data.get(key)
+                if cand and Path(cand).exists():
+                    return cand
+        except (OSError, ValueError):
+            pass
+    return target or ''
+
+
 def build_app_record(key, raw, source):
     """Normalize one raw registry record into a unified app record.
 
@@ -99,7 +131,7 @@ def build_app_record(key, raw, source):
     icon_name = raw.get('icon_name') or ''
     container = raw.get('container')
     manifest = raw.get('manifest')
-    target = raw.get('target') or raw.get('file')
+    target = _appimage_target(raw) if fmt == 'appimage' else (raw.get('target') or raw.get('file'))
     description = raw.get('description') or ''
     status = raw.get('status') or STATUS_UNKNOWN
 
@@ -110,15 +142,15 @@ def build_app_record(key, raw, source):
             problems.append('manifest missing')
         if target and not Path(target).is_file():
             problems.append('application file missing')
-        if not desktop or not Path(desktop).is_file():
+        if not _launcher_exists(raw):
             problems.append('launcher missing')
     elif fmt == 'flatpak':
-        if not desktop or not Path(desktop).is_file():
+        if not _launcher_exists(raw):
             problems.append('launcher missing')
     elif fmt in ('deb', 'rpm'):
         if status not in (STATUS_INSTALLED, 'installing', 'removing'):
             problems.append('container record not installed')
-        if not desktop or not Path(desktop).is_file():
+        if not _launcher_exists(raw):
             problems.append('launcher missing')
         if not container:
             problems.append('container not recorded')
@@ -134,6 +166,8 @@ def build_app_record(key, raw, source):
             status = STATUS_NEEDS_REPAIR
         else:
             status = STATUS_STALE
+    elif status == STATUS_UNKNOWN:
+        status = STATUS_INSTALLED
 
     last = _last_launch(key)
     return {

@@ -114,6 +114,47 @@ class InventoryTests(unittest.TestCase):
         apps = manager.load_inventory()
         self.assertEqual(apps[0]['status'], manager.STATUS_CORRUPTED)
 
+    def test_container_launcher_found_via_exports(self):
+        """Container record whose desktop path is missing but whose export
+        launcher exists on disk is still 'installed'."""
+        key, raw = make_app('deb:example', 'deb', container='debian-apps',
+                            target='/tmp/staged/example.deb',
+                            desktop='/nonexistent/system/freebuff.desktop')
+        # The real managed launcher lives in exports, not the system path.
+        raw['exports'] = [{'path': str(self.root / 'debian-apps-example.desktop'), 'sha256': 'deadbeef'}]
+        (self.root / 'debian-apps-example.desktop').write_text('[Desktop Entry]\nType=Application\nName=Example\n')
+        write_registry(manager.container_registry_path(), {key: raw})
+        apps = manager.load_inventory()
+        self.assertEqual(len(apps), 1)
+        self.assertEqual(apps[0]['status'], manager.STATUS_INSTALLED)
+        self.assertNotIn('launcher missing', apps[0]['problems'])
+
+    def test_appimage_target_resolved_from_manifest(self):
+        """AppImage target missing from the launch record is read from the manifest."""
+        target = self.root / 'Example.AppImage'
+        target.write_bytes(b'elf')
+        manifest = self.root / 'example.json'
+        manifest.write_text(json.dumps(dict(target=str(target), args=[], fallback='',
+                                            generation=str(self.root))))
+        desktop = self.root / 'example.desktop'
+        desktop.write_text('[Desktop Entry]\nType=Application\nName=Example\n')
+        key, raw = make_app('appimage:example', 'appimage', manifest=str(manifest),
+                            target='', desktop=str(desktop))
+        write_registry(manager.launch_registry_path(), {key: raw})
+        apps = manager.load_inventory()
+        self.assertEqual(len(apps), 1)
+        self.assertEqual(apps[0]['target'], str(target))
+        self.assertEqual(apps[0]['status'], manager.STATUS_INSTALLED)
+
+    def test_unknown_status_no_problems_becomes_installed(self):
+        desktop = self.root / 'example.desktop'
+        desktop.write_text('[Desktop Entry]\nType=Application\nName=Example\n')
+        key, raw = make_app(fmt='flatpak', desktop=str(desktop), target='')
+        raw.pop('status', None)
+        write_registry(manager.launch_registry_path(), {key: raw})
+        apps = manager.load_inventory()
+        self.assertEqual(apps[0]['status'], manager.STATUS_INSTALLED)
+
     def test_inventory_sorted_by_name(self):
         write_registry(manager.launch_registry_path(), {
             'appimage:alpha': make_app('appimage:alpha', 'appimage', name='Zeta App')[1],
