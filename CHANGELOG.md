@@ -1,6 +1,6 @@
 # AppInstall Changelog
 
-## 1.0.0-beta.1 (unreleased)
+## 1.0.0-beta.1 (released 2026-11-02)
 
 ### Added
 - Installed Applications Manager (`manager.py`, `appinstall --manage`)
@@ -10,7 +10,7 @@
   - Application actions: Open, Details, Reinstall, Uninstall, Repair Launcher,
     Check for Updates (Flatpak only)
   - AppDetailsDialog with launch history, error details, compatibility notes
-  - Light and dark theme support via `ui_style.maybe_dart()`
+  - Light and dark theme support via `ui_style.maybe_dark()`
   - `--screenshot PATH` evidence-capture hook for offscreen rendering
 - `result_ui.py`: shared SuccessDialog and FailureDialog windows
 - Passive AppImage preview (`PreviewUnavailable`, `unsquashfs` offset scan)

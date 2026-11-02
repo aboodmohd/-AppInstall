@@ -34,7 +34,7 @@ Distrobox containers. This is the first public beta release candidate.
 sudo pacman -U appinstall-1.0.0beta1-1-any.pkg.tar.zst
 ```
 
-The package installs `appinstall` to `/usr/bin/appinstall`, registers the `.desktop` entry at `/usr/share/applications/appinstall.desktop`, and configures MIME associations for all supported package formats. No additional setup is required — double-clicking any supported file will open AppInstall.
+The package installs `appinstall` to `/usr/bin/appinstall` and registers `/usr/share/applications/appinstall.desktop` as an available handler for supported formats. It does **not** override the user's default file associations. If double-click opens another application, choose **Open With → AppInstall** in your file manager and set the default if desired. Executable AppImage handling may vary by file manager.
 
 To open the Installed Applications Manager:
 
@@ -47,7 +47,6 @@ appinstall --manage
 ```sh
 git clone https://github.com/aboodmohd/-AppInstall.git appinstall
 cd appinstall
-git checkout 1.0-beta
 ./install-user.sh
 ```
 
@@ -60,6 +59,10 @@ git checkout 1.0-beta
 - flatpak (for Flatpak installation)
 - podman + distrobox (for DEB/RPM containers)
 - squashfs-tools (for passive AppImage preview — recommended)
+
+## Installation method conflicts
+
+If AppInstall was previously installed from source, `~/.local/bin/appinstall` may shadow a newer pacman-managed `/usr/bin/appinstall`. Run `type -a appinstall` to identify duplicates and consult [UPGRADE.md](UPGRADE.md) before removing the old user-level installation. Do not remove managed applications or data folders to fix a PATH conflict.
 
 ## Known limitations
 

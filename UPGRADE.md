@@ -12,10 +12,12 @@ sudo pacman -U appinstall-1.0.0beta1-1-any.pkg.tar.zst
 
 ```sh
 cd appinstall
-git checkout 1.0-beta
-git pull
-# or: git fetch && git merge origin/1.0-beta
+git checkout main
+git pull --ff-only
+./install-user.sh
 ```
+
+Source installs require running the user-level registration script again to copy the updated modules into your user installation. If the system package is also installed, the script warns and requires confirmation before creating a second user-level executable.
 
 ### What is preserved
 
@@ -25,9 +27,11 @@ git pull
 - Installed applications (Freebuff, OpenCode, Seanime, Stremio, etc.)
 - Shared Distrobox containers (debian-apps, fedora-apps)
 
-### What is not preserved
+### Upgrade caveats
 
-- Nothing — this is an in-place upgrade. All managed data is preserved.
+AppInstall is designed to preserve managed records and data, but backups are recommended before upgrades. Existing registry corruption, user changes or an interrupted operation can still require manual recovery.
+
+**Important: mixed installation paths.** A user installation at `~/.local/bin/appinstall` may shadow the pacman package at `/usr/bin/appinstall`. Check `type -a appinstall` and `command -v appinstall` before assuming that the newly installed package is the one being launched. Use `~/.local/bin/appinstall-uninstall` only if you specifically choose to remove a previous source installation. Do not delete `~/.local/share/appinstall` or `~/Applications` to resolve this conflict.
 
 ## Rollback
 
