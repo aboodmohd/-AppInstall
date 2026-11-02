@@ -62,6 +62,52 @@ def run(manifest, files):
     os.execvpe(argv[0], argv, env)
 
 
+def squashfs_offset(path, limit=1<<20):
+    """Byte offset of the squashfs superblock in a copied AppImage, or None.
+
+    The magic appears as 'hsqs' (little endian) or 'sqsh' (big endian)."""
+    def occurrence(data):
+        for magic in (b'hsqs', b'sqsh'):
+            index = data.find(magic)
+            if index >= 0:
+                return index
+        return -1
+    window = b''
+    with open(path, 'rb') as file:
+        while file.tell() < limit:
+            chunk = file.read(65536)
+            if not chunk:
+                return None
+            window = window[-4:] + chunk
+            index = occurrence(window)
+            if index >= 0:
+                return max(0, file.tell() - len(window) + index)
+    return None
+
+
+def preview_contents(executable, scratch):
+    """Unpack the image's contents for review, executing its own runtime only as a fallback."""
+    env = dict(os.environ, APPIMAGELAUNCHER_DISABLE='1')
+    root = scratch/'squashfs-root'
+    offset = squashfs_offset(executable)
+    if offset is not None and shutil.which('unsquashfs'):
+        # Passive preview: squashfs members are unpacked by unsquashfs without
+        # running any code from the application image itself.
+        result = subprocess.run(
+            ['unsquashfs', '-no-progress', '-no-xattrs', '-d', str(root), '-o', str(offset), str(executable)],
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=180)
+        if result.returncode or not root.is_dir():
+            raise RuntimeError('Passive AppImage preview failed: '+result.stdout.decode(errors='replace')[-1500:])
+        return root
+    # Without unsquashfs the image's own extractor runs instead; callers have
+    # already confirmed they trust this file before staging begins.
+    result = subprocess.run([str(executable), '--appimage-extract'], cwd=scratch, env=env,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=180)
+    if result.returncode or not root.is_dir():
+        raise RuntimeError('Cannot extract AppImage: '+result.stdout.decode(errors='replace')[-1500:])
+    return root
+
+
 def install(source, destination, fallback=False):
     source, destination = Path(source), Path(destination)
     data = Path(os.environ.get('XDG_DATA_HOME', Path.home()/'.local/share'))
@@ -76,12 +122,7 @@ def install(source, destination, fallback=False):
         executable = scratch/'application.AppImage'
         shutil.copyfile(source, executable)
         executable.chmod(0o755)
-        result = subprocess.run([str(executable), '--appimage-extract'], cwd=scratch,
-                                env=dict(os.environ, APPIMAGELAUNCHER_DISABLE='1'),
-                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=180)
-        root = scratch/'squashfs-root'
-        if result.returncode or not root.is_dir():
-            raise RuntimeError('Cannot extract AppImage: ' + result.stdout.decode(errors='replace')[-1500:])
+        root = preview_contents(executable, scratch)
         entries = sorted(root.glob('*.desktop'))
         if not entries:
             entries = sorted(root.rglob('*.desktop'))

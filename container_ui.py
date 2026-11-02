@@ -3,9 +3,13 @@
 import json
 from pathlib import Path
 import sys
-from PySide6.QtCore import QThread, Signal, Qt, QTimer
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import (QApplication,QDialog,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QPlainTextEdit,QMessageBox,QInputDialog)
+try:
+    from PySide6.QtCore import QThread, Signal, Qt, QTimer
+    from PySide6.QtGui import QIcon
+    from PySide6.QtWidgets import (QApplication,QDialog,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QPlainTextEdit,QMessageBox,QInputDialog)
+except ImportError as error:
+    print('PySide6 is required for the package workflow window: '+str(error), file=sys.stderr)
+    sys.exit(3)
 from container_backend import Engine, inspect_package, PROGRESS
 
 class Job(QThread):

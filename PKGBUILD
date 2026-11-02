@@ -13,6 +13,8 @@ backup=()
 source=('appinstall'
         'appinstall.desktop'
         'confirm.py'
+        'package_meta.py'
+        'ui_style.py'
         'appimage_backend.py'
         'native_backend.py'
         'container_backend.py'
@@ -40,6 +42,8 @@ package() {
     install -Dm0644 "$srcdir/native_backend.py" "$pkgdir/usr/bin/native_backend.py"
     install -Dm0644 "$srcdir/appimage_backend.py" "$pkgdir/usr/bin/appimage_backend.py"
     install -Dm0644 "$srcdir/confirm.py" "$pkgdir/usr/bin/confirm.py"
+    install -Dm0644 "$srcdir/package_meta.py" "$pkgdir/usr/bin/package_meta.py"
+    install -Dm0644 "$srcdir/ui_style.py" "$pkgdir/usr/bin/ui_style.py"
     install -Dm0755 "$srcdir/appinstall" \
         "$pkgdir/usr/bin/$pkgname"
     install -Dm0644 "$srcdir/appinstall.desktop" \
