@@ -864,7 +864,7 @@ class ManagerWindow(QMainWindow):
         # Empty state (hidden by default).
         self.empty = QLabel('No AppInstall-managed applications found. Install a file to begin.')
         self.empty.setAlignment(Qt.AlignCenter)
-        self.empty.setStyleSheet('color: palette(mid); font-size: 14px;')
+        self.empty.setStyleSheet('color: palette(text); font-size: 14px;')
         self.empty.hide()
         root.addWidget(self.empty)
 

@@ -52,7 +52,7 @@ else:
     shutil.copy2(root / 'ui_style.py', state / 'ui_style.py')
     shutil.copy2(root / 'appimage_backend.py', state / 'appimage_backend.py')
     shutil.copy2(root / 'native_backend.py', state / 'native_backend.py')
-    for helper in ('container_backend.py', 'container_ui.py','launch_monitor.py','manager.py','runtime_probe.py','diagnostics_core.py','diagnostics_ui.py'):
+    for helper in ('container_backend.py', 'container_ui.py','launch_monitor.py','manager.py','result_ui.py','runtime_probe.py','diagnostics_core.py','diagnostics_ui.py'):
         shutil.copy2(root / helper, state / helper)
     def quoted(p):
         return '"' + str(p).replace('\\', '\\\\\\\\').replace('"', '\\\\\\"').replace('`', '\\\\\\`').replace('$', '\\\\\\$').replace('%', '%%') + '"'
