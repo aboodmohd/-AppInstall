@@ -11,5 +11,5 @@ No screenshots were claimed without being actually rendered.
 - **container_ui.py preview (forced dark)**: captured 19847 bytes
 - **manager list (light)**: captured 51536 bytes
 - **manager list (dark)**: captured 52440 bytes
-- **manager list (live KDE Wayland)**: captured 55176 bytes
+- **manager list (live KDE Wayland)**: captured 55176 bytes — actual desktop session, all 5 apps "Managed — installed"
 - **manager details dialog**: captured 33788 bytes
