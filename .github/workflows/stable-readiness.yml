@@ -1,0 +1,68 @@
+name: Stable readiness compatibility
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  distro-tests:
+    name: ${{ matrix.distro }} compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: Arch Linux
+            image: archlinux:base-devel
+            kind: arch
+          - distro: Fedora 44
+            image: fedora:44
+            kind: fedora
+    container:
+      image: ${{ matrix.image }}
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Arch dependencies
+        if: matrix.kind == 'arch'
+        run: |
+          pacman -Syu --noconfirm
+          pacman -S --needed --noconfirm python pyside6 squashfs-tools libarchive xdg-utils
+
+      - name: Install Fedora dependencies
+        if: matrix.kind == 'fedora'
+        run: |
+          dnf -y install python3 python3-pyside6 squashfs-tools bsdtar xdg-utils
+
+      - name: Validate shell and run source tests
+        run: |
+          bash -n appinstall install-user.sh
+          python3 -m unittest discover -s tests -v
+
+      - name: Build Arch package as non-root
+        if: matrix.kind == 'arch'
+        run: |
+          useradd --create-home --shell /bin/bash appbuild
+          chown -R appbuild:appbuild "$GITHUB_WORKSPACE"
+          runuser -u appbuild -- env GITHUB_WORKSPACE="$GITHUB_WORKSPACE" bash -c 'cd "$GITHUB_WORKSPACE" && makepkg --noconfirm --clean'
+          test -f appinstall-1.0.0beta1-1-any.pkg.tar.zst
+
+      - name: Install, upgrade, and remove Arch package in disposable container
+        if: matrix.kind == 'arch'
+        run: |
+          package=appinstall-1.0.0beta1-1-any.pkg.tar.zst
+          pacman -U --noconfirm --needed "$package"
+          test "$(appinstall --version)" = "appinstall 1.0.0-beta.1"
+          pacman -Q appinstall
+          pacman -U --noconfirm "$package"
+          test "$(appinstall --version)" = "appinstall 1.0.0-beta.1"
+          pacman -R --noconfirm appinstall
+          ! pacman -Q appinstall
