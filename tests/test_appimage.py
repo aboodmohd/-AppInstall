@@ -64,6 +64,59 @@ class AppImageTests(unittest.TestCase):
         self.assertEqual(backend.categories(''), 'Utility;')
         self.assertEqual(backend.app_name('Example (3.10.4)'), 'Example')
 
+    def test_desktop_entry_includes_startup_wm_class(self):
+        """Generated desktop entry includes StartupWMClass from embedded metadata."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root/'download.AppImage'
+            source.write_bytes(bytes.fromhex('7f454c460201010000')+b'\x00\x41\x49\x02'+b'\x00'*1000+b'hsqs'+b'\x00'*256)
+            destination = root/'Applications'
+            env = {'XDG_DATA_HOME':str(root/'data'), 'XDG_STATE_HOME':str(root/'state')}
+            def extract(argv, **kwargs):
+                self.assertNotIn('--appimage-extract', argv)
+                appdir = Path(argv[argv.index('-d')+1])
+                appdir.mkdir()
+                (appdir/'AppRun').write_text('#!/bin/sh\n')
+                (appdir/'AppRun').chmod(0o755)
+                (appdir/'app.desktop').write_text(
+                    '[Desktop Entry]\nType=Application\nName=Example App\n'
+                    'Exec=AppRun --example %U\nCategories=Entertainment;\nIcon=icon\n'
+                    'StartupWMClass=example-app\n')
+                return subprocess.CompletedProcess(argv,0,b'')
+            passive = {'unsquashfs':'/usr/bin/unsquashfs'}
+            with patch.dict(os.environ, env), patch.object(backend.shutil,'which',lambda name:passive.get(name) if name in passive else backend.shutil.which(name)), patch.object(backend.subprocess,'run',side_effect=extract):
+                backend.install(source,destination)
+                entry = next((root/'data/applications').glob('*.desktop'))
+                meta = backend.desktop(entry)
+                self.assertEqual(meta.get('StartupWMClass'),'example-app')
+
+    def test_desktop_entry_includes_try_exec(self):
+        """Generated desktop entry's TryExec is preserved through wrap_desktop."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root/'download.AppImage'
+            source.write_bytes(bytes.fromhex('7f454c460201010000')+b'\x00\x41\x49\x02'+b'\x00'*1000+b'hsqs'+b'\x00'*256)
+            destination = root/'Applications'
+            env = {'XDG_DATA_HOME':str(root/'data'), 'XDG_STATE_HOME':str(root/'state')}
+            def extract(argv, **kwargs):
+                self.assertNotIn('--appimage-extract', argv)
+                appdir = Path(argv[argv.index('-d')+1])
+                appdir.mkdir()
+                (appdir/'AppRun').write_text('#!/bin/sh\n')
+                (appdir/'AppRun').chmod(0o755)
+                (appdir/'app.desktop').write_text(
+                    '[Desktop Entry]\nType=Application\nName=Example App\n'
+                    'Exec=AppRun --example %U\nCategories=Entertainment;\nIcon=icon\n')
+                return subprocess.CompletedProcess(argv,0,b'')
+            passive = {'unsquashfs':'/usr/bin/unsquashfs'}
+            with patch.dict(os.environ, env), patch.object(backend.shutil,'which',lambda name:passive.get(name) if name in passive else backend.shutil.which(name)), patch.object(backend.subprocess,'run',side_effect=extract):
+                backend.install(source,destination)
+                entry = next((root/'data/applications').glob('*.desktop'))
+                text = entry.read_text()
+                # TryExec points to the staged image in the generation directory
+                self.assertIn('TryExec=', text)
+                self.assertIn('download.AppImage', text)
+
     def test_launch_without_interception(self):
         with tempfile.TemporaryDirectory() as temp:
             manifest = Path(temp)/'app.json'

@@ -150,7 +150,7 @@ def rewrite_launcher(spec):
     lines, section = [], ''
     for line in spec['original_text'].splitlines():
         if line.startswith('['): section = line[1:-1]
-        if section == 'Desktop Entry' and line.startswith(('Path=','TryExec=','DBusActivatable=','X-AppInstall-LaunchID=')):
+        if section == 'Desktop Entry' and line.startswith(('Path=','DBusActivatable=','X-AppInstall-LaunchID=')):
             continue
         if line.startswith('Exec=') and (section=='Desktop Entry' or section.startswith('Desktop Action ')):
             action = ' --action '+desktop_quote(section[15:]) if section.startswith('Desktop Action ') else ''

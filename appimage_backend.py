@@ -216,6 +216,10 @@ def install(source, destination, fallback=False):
                      'Icon='+icon, 'Terminal=false', 'Categories='+categories(meta.get('Categories', '')),
                      'Exec='+quote(sys.executable)+' '+quote(helper)+' --run '+quote(manifest)+' %U',
                      'X-AppInstall-Exec='+str(target), 'X-AppInstall-Manifest='+str(manifest)]
+            startup_wm_class = meta.get('StartupWMClass', '')
+            if startup_wm_class:
+                lines.append('StartupWMClass='+startup_wm_class)
+            lines.append('TryExec='+str(target))
             text = '\n'.join(lines)+'\n'
             # Only validated, fully staged artifacts are made visible.
             staged_manifest = manifest.with_suffix('.new')

@@ -85,7 +85,7 @@ class MonitorTests(unittest.TestCase):
         path=self.root/'a.desktop';path.write_text('[Desktop Entry]\nType=Application\nName=Example\nIcon=example\nCategories=Development;\nExec=true %U\nPath=/missing\nTryExec=/missing\nActions=New;\n[Desktop Action New]\nName=New\nExec=true --new %u\n')
         spec=m.wrap_desktop('test:actions',path,'test')
         text=path.read_text();self.assertIn('Categories=Development;',text);self.assertIn('--action',text)
-        self.assertEqual(spec['cwd'],'/missing');self.assertNotIn('TryExec=',text);self.assertEqual(spec['actions']['New'],'true --new %u')
+        self.assertEqual(spec['cwd'],'/missing');self.assertIn('TryExec=/missing',text);self.assertEqual(spec['actions']['New'],'true --new %u')
     def test_reinstall_one_record(self):
         spec=self.spec();m.wrap_desktop(spec['key'],spec['desktop'],'test')
         self.assertEqual(len(m.registry()),1);self.assertEqual(len(list(self.root.glob('*.desktop'))),1)
