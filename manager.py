@@ -657,6 +657,7 @@ class AppDetailsDialog(QDialog):
             value_label.setTextFormat(Qt.PlainText)
             value_label.setWordWrap(True)
             value_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            value_label.setToolTip(str(value))
             grid.addWidget(value_label, row, 1)
         grid.setColumnStretch(1, 1)
         layout.addLayout(grid)
