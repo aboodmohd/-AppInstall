@@ -1,0 +1,35 @@
+name: AppInstall tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Install Linux test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y squashfs-tools libarchive-tools libegl1 libgl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0
+          python -m pip install --upgrade pip
+          python -m pip install PySide6
+      - name: Validate Bash syntax
+        run: bash -n appinstall install-user.sh
+      - name: Run unit tests
+        run: python -m unittest discover -s tests -v

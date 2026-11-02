@@ -18,7 +18,7 @@
 sudo pacman -U appinstall-1.0.0beta1-1-any.pkg.tar.zst
 ```
 
-The package installs `appinstall` to `/usr/bin/appinstall`, registers the `.desktop` entry at `/usr/share/applications/appinstall.desktop`, and configures MIME associations for all supported package formats. No additional setup is required — double-clicking any supported file will open AppInstall.
+The package installs `appinstall` to `/usr/bin/appinstall` and registers `/usr/share/applications/appinstall.desktop` as an *available* file handler. It does **not** change your existing default file associations. For a file that opens in another application, right-click it in Dolphin and select **Open With → AppInstall**, then choose AppInstall as the default only if you want to. Some file managers may prefer executable AppImage handling over a MIME default.
 
 To open the Installed Applications Manager:
 
@@ -31,7 +31,6 @@ appinstall --manage
 ```sh
 git clone https://github.com/aboodmohd/-AppInstall.git appinstall
 cd appinstall
-git checkout 1.0-beta
 ./install-user.sh
 ```
 
@@ -45,16 +44,28 @@ git checkout 1.0-beta
 
 ## Uninstall
 
+For a source/user installation:
+
 ```sh
 ~/.local/bin/appinstall-uninstall
 ```
 
-This restores previous MIME associations and removes AppInstall registration.
-Installed applications are kept.
+This restores previous MIME associations that AppInstall still owns and removes the user-level registration. For a pacman-managed system package, run `sudo pacman -R appinstall` instead. Do not run the source uninstaller as a substitute for removing the system package. Managed applications and their data are kept.
+
+## Avoid mixed installations
+
+A previous source installation in `~/.local/bin/appinstall` can take precedence over the packaged `/usr/bin/appinstall` depending on your `PATH`. After installing or upgrading, check:
+
+```sh
+type -a appinstall
+command -v appinstall
+```
+
+If both are listed, decide which installation to keep. Use the source uninstaller only when you intend to remove that user copy; it restores only associations that it still owns. `install-user.sh` warns and asks permission before creating a user copy when a pacman-managed package exists. Nothing is removed automatically.
 
 ## Double-click usage
 
-After registration, double-click any supported file:
+After explicitly selecting AppInstall as the default handler, double-click a supported file (file-manager behavior can vary):
 - `.AppImage` — AppImage installation
 - `.flatpak` / `.flatpakref` — Flatpak installation
 - `.flatpakrepo` — Flatpak repository addition

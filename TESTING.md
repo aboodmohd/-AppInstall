@@ -2,13 +2,16 @@
 
 ## Automated tests
 
+From the repository root:
+
 ```sh
-cd /home/abood/appinstall
-python3 -m unittest discover -s tests
+QT_QPA_PLATFORM=offscreen python3 -m unittest discover -s tests -v
+bash -n appinstall install-user.sh
 ```
 
-Expected result: 110 tests, 0 failures, 0 skipped (with `squashfs-tools`
-installed). Without `squashfs-tools`, 2 tests skip (`PassiveExtractionWithTools`).
+The GitHub Actions workflow runs these checks on each push to `main` and on pull requests. On Linux, install Python 3, PySide6 and `squashfs-tools` before running the full suite.
+
+The published `v1.0.0-beta.1` release was qualified with **121 passing tests, 0 failures, 0 skipped** on its tested CachyOS setup with `squashfs-tools` and PySide6 installed. This is a historical result, not a guarantee for every platform. A current checkout can have additional tests. Without `squashfs-tools`, some passive-extraction tests skip; without PySide6, graphical tests may skip.
 
 ## Test files
 
@@ -22,6 +25,7 @@ installed). Without `squashfs-tools`, 2 tests skip (`PassiveExtractionWithTools`
 | `tests/test_installer.py` | Bash installer |
 | `tests/test_native.py` | Native package backend |
 | `tests/test_manager.py` | Installed Applications Manager inventory and actions |
+| `tests/test_install_user.py` | Source-install conflict guard, cancellation and shell syntax |
 
 ## Live GUI testing
 

@@ -25,11 +25,11 @@ Install Python 3 and either **KDialog** (KDE) or **Zenity** (GNOME/Xfce), then r
 
 The installer registers file associations for the current user and saves their previous values. It does not require root. If Flatpak is missing when installing an application, AppInstall offers setup through apt-get, dnf, pacman or zypper with a PolicyKit administrator prompt. Other systems receive manual instructions. Immutable systems need their distribution's own Flatpak setup procedure.
 
-The Arch package can be built with `makepkg`. Package installation does not override system-wide file associations: run `./install-user.sh` to opt in for your user.
+The Arch package can be built with `makepkg`. Package installation registers AppInstall as an available file handler, **but does not automatically make it the default**. In Dolphin, use **Open With → AppInstall** and select it as the default for each desired format. `./install-user.sh` is for **source installs from a checked-out repository**; do not run it from an extracted pacman package. To inspect possible conflicts between source and package installs, run `type -a appinstall` and see [UPGRADE.md](UPGRADE.md).
 
 ## Supported files
 
-- `.AppImage`: ELF type 2 images matching x86-64 or ARM64. Creates an application menu entry and attempts icon extraction after approval. If FUSE 2 is not detected, offers an extracted launch copy when extraction succeeds. Downloaded AppImage code runs during extraction, so only approve trusted sources.
+- `.AppImage`: ELF type 2 images matching x86-64 or ARM64. Creates an application menu entry and attempts icon extraction after approval. If FUSE 2 is not detected, offers an extracted launch copy when extraction succeeds. Passive preview uses `unsquashfs` without running the AppImage; extracted AppImage application code is run only when you choose to launch it. Only install and launch packages from trusted sources.
 - `.flatpak`: local bundle. Required runtimes may still need downloading.
 - `.flatpakref`: application reference; downloads the application and runtime as needed. Confirmation displays its repository and runtime source.
 - `.flatpakrepo`: adds a repository, rather than installing an application.
@@ -131,7 +131,7 @@ Host desktop export conflict recovery restores overwritten launcher content.
 Real integration testing on CachyOS KDE now passes for Debian Galculator and
 Fedora Character Map: Dolphin double-click, confirmation, dependency resolution,
 export, visible GUI launch, reinstall without duplicate launchers, and uninstall.
-There are 70 passing automated tests. Existing Seanime AppImage and Stremio
+The published beta release was qualified with 121 passing automated tests and 10 live acceptance tests on CachyOS KDE. Existing Seanime AppImage and Stremio
 Flatpak windows were also visually verified. See [INTEGRATION_TESTING.md](INTEGRATION_TESTING.md)
 for exact evidence, tested scope, storage and limitations.
 
