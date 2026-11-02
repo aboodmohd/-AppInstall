@@ -401,7 +401,7 @@ class AppCard(QWidget):
         meta = QLabel(self._meta_text())
         meta.setTextFormat(Qt.PlainText)
         meta.setWordWrap(True)
-        meta.setStyleSheet('color: palette(mid); font-size: 12px;')
+        meta.setStyleSheet('color: palette(text); font-size: 12px;')
         summary.addWidget(meta)
 
         self.status = QLabel(self._status_text())
@@ -425,20 +425,20 @@ class AppCard(QWidget):
         actions.setSpacing(8)
         open_btn = QPushButton('Open')
         open_btn.setObjectName('primary')
-        open_btn.setFixedWidth(72)
+        open_btn.setMinimumWidth(80)
         open_btn.setEnabled(self._can_launch())
         open_btn.clicked.connect(self._emit_open)
         actions.addWidget(open_btn)
 
         details = QPushButton('Details')
         details.setObjectName('ghost')
-        details.setFixedWidth(72)
+        details.setMinimumWidth(80)
         details.clicked.connect(self._emit_details)
         actions.addWidget(details)
 
         more = QPushButton('⋮')
         more.setObjectName('ghost')
-        more.setFixedWidth(34)
+        more.setMinimumWidth(40)
         more.setMenu(self._build_menu())
         actions.addWidget(more)
 
@@ -581,7 +581,7 @@ class AppDetailsDialog(QDialog):
         text.addWidget(title)
         kind = QLabel(FORMAT_LABELS.get(app['format'], app['format'])+' · '+app['status'])
         kind.setTextFormat(Qt.PlainText)
-        kind.setStyleSheet('color: palette(mid); font-size: 13px;')
+        kind.setStyleSheet('color: palette(text); font-size: 13px;')
         text.addWidget(kind)
         header.addLayout(text, 1)
         layout.addLayout(header)
@@ -812,7 +812,7 @@ class ManagerWindow(QMainWindow):
 
         # Status bar.
         self.status = QLabel('Loading…')
-        self.status.setStyleSheet('color: palette(mid); font-size: 12px;')
+        self.status.setStyleSheet('color: palette(text); font-size: 12px;')
         root.addWidget(self.status)
 
         # Empty state (hidden by default).

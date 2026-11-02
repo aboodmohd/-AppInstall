@@ -1,8 +1,8 @@
 # AppInstall 1.0.0-beta.1 Package Checksum Manifest
 
 Package: `appinstall-1.0.0beta1-1-any.pkg.tar.zst`
-SHA-256: `a6955e47e47165ca5d1a708021f9bc4583b68ee5e516b5793d3fb09633ddd2cb`
-Source commit: `d24ce59` (Phase 5 acceptance fixes) on branch `1.0-beta`
+SHA-256: `4dc1459e04996cfc1ee641b5ce1777bc1b884c458d14c77839a3379e1bc9bbb0`
+Source commit: `5d1157e` + UI defect fixes on branch `1.0-beta`
 Build date: 02 Nov 2026
 
 ## Package contents (21 files)
