@@ -330,11 +330,16 @@ $(cat -- "$log")"
     rm -f -- "$log"
     return 1
   fi
+  limited_notice=$(head -n1 -- "$log" 2>/dev/null || true)
   rm -f -- "$log"
   progress_close
   have update-desktop-database && update-desktop-database "$APPS_DIR" >/dev/null 2>&1 || true
   if have kbuildsycoca6; then kbuildsycoca6 --noincremental >/dev/null 2>&1 || true; fi
-  notify_ok "Installed $(desktop_key "$entry" Name) — find it in your application menu"
+  if [ -n "$limited_notice" ]; then
+    notify_ok "Installed $(desktop_key "$entry" Name) — limited preview; detailed metadata was not read from the image"
+  else
+    notify_ok "Installed $(desktop_key "$entry" Name) — find it in your application menu"
+  fi
   if [ "$NO_OPEN" = 0 ] && [ "$ASSUME_YES" = 0 ] && dialog_confirm "Installation complete. Open the application?"; then
     local manifest
     manifest=$(desktop_key "$entry" X-AppInstall-Manifest)

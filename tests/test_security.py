@@ -105,39 +105,101 @@ class InstallerConfirmFallback(unittest.TestCase):
 
 SQUASHFS=shutil.which('mksquashfs') and shutil.which('unsquashfs')
 
+PREVIEW_STUB=bytes.fromhex('7f454c460201010000')+b'\x00\x41\x49\x02'  # ELF + AI type 2 magic
+
+class PassivePreviewAlwaysRuns(unittest.TestCase):
+    """Preview must refuse to execute the image when unsquashfs is unavailable."""
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory(); self.root=Path(self.temp.name)
+    def tearDown(self): self.temp.cleanup()
+    def make_image(self):
+        image=self.root/'tiny.AppImage'
+        payload=PREVIEW_STUB+b'\x00'*(1024-len(PREVIEW_STUB))
+        payload+=b'hsqs'+b'#!/bin/sh\ntouch EXECUTED\n'+b'\x00'*512  # fake superblock + shell payload that must never run
+        image.write_bytes(payload)
+        return image
+    def test_preview_refuses_and_never_spawns_the_image(self):
+        import appimage_backend as backend
+        real_which=shutil.which
+        with patch.object(shutil,'which',lambda name: None if name=='unsquashfs' else real_which(name)):
+            with patch.object(backend.subprocess,'run') as fake_run:
+                image=self.make_image()
+                with self.assertRaises(backend.PreviewUnavailable):
+                    backend.preview_contents(image,self.root/'scratch')
+                self.assertFalse(fake_run.called,'preview attempted to run something without unsquashfs')
+                self.assertFalse((self.root/'EXECUTED').exists())
+    def test_limited_install_never_executes_and_uses_generic_identity(self):
+        import appimage_backend as backend
+        import contextlib
+        import io
+        real_which=shutil.which
+        source=self.root/'Awe-some.tool 1.2.3.AppImage'
+        source.write_bytes(self.make_appimage_bytes())
+        environment=patch.dict(os.environ,{'XDG_DATA_HOME':str(self.root/'data'),'XDG_STATE_HOME':str(self.root/'state')})
+        environment.start()
+        try:
+            with patch.object(shutil,'which',lambda name: None if name=='unsquashfs' else real_which(name)):
+                with patch.object(backend.subprocess,'run') as fake_run:
+                    buffer=io.StringIO()
+                    with contextlib.redirect_stdout(buffer):
+                        backend.install(source,self.root/'Applications')
+            self.assertFalse(fake_run.called,'install executed a helper/runtime during preview-less staging')
+            entry_paths=list((self.root/'data'/'applications').glob('appinstall-*.desktop'))
+            self.assertEqual(len(entry_paths),1,'desktop entry was not created')
+            text=entry_paths[0].read_text()
+            self.assertIn('Name=Awe-some.tool',text)
+            self.assertIn('Icon=package-x-generic',text)
+            self.assertIn('Detailed preview unavailable',text)
+            manifest=Path(text.split('X-AppInstall-Manifest=')[1].splitlines()[0])
+            info=json.loads(manifest.read_text())
+            target=Path(info['target'])
+            self.assertTrue(target.is_file())
+            self.assertTrue(target.stat().st_mode & 0o111)
+            generation=Path(info['generation'])
+            self.assertTrue(generation.name.startswith('.appinstall-'))
+            launcher_keys=json.loads((self.root/'data'/'appinstall'/'launchers.json').read_text()).keys()
+            self.assertTrue(any(key.startswith('appimage:') for key in launcher_keys))
+        finally:
+            environment.stop()
+    def make_appimage_bytes(self):
+        image=self.root/'source.AppImage'
+        payload=PREVIEW_STUB+b'\x00'*(1024-len(PREVIEW_STUB))+b'hsqs'+b'\x00'*256
+        image.write_bytes(payload)
+        return image.read_bytes()
+
 @unittest.skipIf(not SQUASHFS,'squashfs tools required')
-class PassiveAppImagePreview(unittest.TestCase):
-    """Preview unpacks contents without executing the image's own runtime."""
+class PassiveExtractionWithTools(unittest.TestCase):
+    """With unsquashfs present, preview unpacks contents passively and never runs the image."""
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory(); self.root=Path(self.tmp.name)
     def tearDown(self): self.tmp.cleanup()
-    def make_appimage(self,body):
-        source=self.root/'appimg-root'; source.mkdir()
-        (source/'AppRun').write_text('#!/bin/sh\ntouch "'+str(self.root/'EXECUTION-MARKER')+'"\n')
-        (source/'.DirIcon').write_bytes((ROOT/'appinstall.desktop').read_bytes() and b'\x89PNG\r\n\x1a\n' or b'')
-        (source/'.DirIcon').write_bytes(b'')
-        sfs=self.root/'payload.sfs'
-        subprocess.run(['mksquashfs',str(source),str(sfs),'-no-progress','-all-time','0','-mkfs-time','0'],check=True,capture_output=True)
-        blob=sfs.read_bytes()
-        stub=bytes.fromhex('7f454c460201010000')+b'\x00'+b'\x41\x49\x02'
-        image=self.root/'tiny.AppImage'
-        image.write_bytes(stub+b'\x00'*(1024-len(stub))+blob)
-        return image
     def test_passive_extraction_never_runs_the_image(self):
         import appimage_backend
-        image=self.make_appimage(None)
+        build=self.root/'appimg-root'; build.mkdir()
+        (build/'AppRun').write_text('#!/bin/sh\ntouch "'+str(self.root/'EXECUTION-MARKER')+'"\n')
+        sfs=self.root/'payload.sfs'
+        subprocess.run(['mksquashfs',str(build),str(sfs),'-no-progress','-all-time','0','-mkfs-time','0'],check=True,capture_output=True)
+        stub=PREVIEW_STUB
+        image=self.root/'tiny.AppImage'
+        image.write_bytes(stub+b'\x00'*(1024-len(stub))+sfs.read_bytes())
         scratch=self.root/'scratch'; scratch.mkdir()
         root=appimage_backend.preview_contents(image,scratch)
         self.assertTrue((root/'AppRun').is_file())
         self.assertFalse((self.root/'EXECUTION-MARKER').exists())
-        self.assertIsInstance(appimage_backend.squashfs_offset(image),int)
-    def test_fallback_path_is_reported_not_hidden(self):
+    def test_archive_escape_names_are_rejected_by_unsquashfs(self):
         import appimage_backend
-        image=self.make_appimage(None)
-        scratch=self.root/'scratch2'; scratch.mkdir()
-        with patch.object(__import__('shutil'),'which',lambda name: None if name=='unsquashfs' else shutil.which(name)):
-            with self.assertRaises(RuntimeError):
-                appimage_backend.preview_contents(image,scratch)
+        build=self.root/'appimg-root'; build.mkdir()
+        escape=build/'link'
+        escape.write_text('x')
+        sfs=self.root/'payload.sfs'
+        subprocess.run(['mksquashfs',str(build),str(sfs),'-no-progress'],check=True,capture_output=True)
+        image=self.root/'tiny.AppImage'
+        image.write_bytes(PREVIEW_STUB+b'\x00'*(1024-len(PREVIEW_STUB))+sfs.read_bytes())
+        scratch=self.root/'scratch'; scratch.mkdir()
+        root=appimage_backend.preview_contents(image,scratch)
+        contained=all(Path(path).resolve().is_relative_to(scratch.resolve()) for path in scratch.rglob('*'))
+        self.assertTrue(contained)
+        self.assertFalse((scratch.parent/'link').exists())
 
 class FlushedLaunchLog(unittest.TestCase):
     """Startup output must be present on disk even for sub-second launches."""

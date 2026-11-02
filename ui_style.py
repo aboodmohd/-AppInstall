@@ -1,4 +1,6 @@
 """Shared visual theme for AppInstall dialogs. Follows the system palette."""
+import os
+
 from PySide6.QtGui import QColor, QPalette
 
 
@@ -30,4 +32,50 @@ def primary_button_stylesheet(widget):
     QPushButton#primary:hover {{ background-color: {hover}; }}
     QPushButton#primary:pressed {{ background-color: {pressed}; }}
     QPushButton#primary:disabled {{ background-color: palette(mid); color: palette(disabled-text); }}
+    """
+
+
+def maybe_dark(app):
+    """Force Fusion + dark palette when APPINSTALL_UI_DARK=1; native detection otherwise."""
+    if os.environ.get('APPINSTALL_UI_DARK') != '1':
+        return
+    app.setStyle('Fusion')
+    palette = QPalette()
+    window = QColor(49, 54, 59)
+    surface = QColor(42, 46, 50)
+    text = QColor(239, 240, 241)
+    disabled = QColor(120, 124, 130)
+    for role, color in ((QPalette.ColorRole.Window, window),
+                        (QPalette.ColorRole.WindowText, text),
+                        (QPalette.ColorRole.Base, surface),
+                        (QPalette.ColorRole.AlternateBase, window),
+                        (QPalette.ColorRole.ToolTipBase, text),
+                        (QPalette.ColorRole.ToolTipText, text),
+                        (QPalette.ColorRole.Text, text),
+                        (QPalette.ColorRole.Button, surface),
+                        (QPalette.ColorRole.ButtonText, text),
+                        (QPalette.ColorRole.BrightText, QColor(255, 96, 96)),
+                        (QPalette.ColorRole.Link, QColor(61, 174, 233)),
+                        (QPalette.ColorRole.Highlight, QColor(61, 174, 233)),
+                        (QPalette.ColorRole.HighlightedText, QColor(20, 24, 29))):
+        palette.setColor(QPalette.ColorGroup.Active, role, color)
+        palette.setColor(QPalette.ColorGroup.Inactive, role, color)
+    for role in (QPalette.ColorRole.WindowText, QPalette.ColorRole.ButtonText, QPalette.ColorRole.Text):
+        palette.setColor(QPalette.ColorGroup.Disabled, role, disabled)
+    app.setPalette(palette)
+
+
+def ghost_button_stylesheet(widget):
+    """Subtle secondary-action style; uses the system palette for contrast."""
+    return """
+    QPushButton#ghost, QPlainTextEdit, QPushButton[flat="false"] {
+        border-radius: 8px;
+        padding: 9px 20px;
+    }
+    QPushButton#ghost {
+        background: palette(button);
+        border: 1px solid palette(mid);
+    }
+    QPushButton#ghost:hover { border-color: palette(highlight); }
+    QPlainTextEdit#hidden-logs { font-family: monospace; }
     """

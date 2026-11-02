@@ -74,8 +74,7 @@ def main():
 
     from PySide6.QtCore import Qt
     from PySide6.QtGui import QIcon
-    from PySide6.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-                                   QPushButton, QPlainTextEdit, QFrame, QGridLayout)
+    from PySide6.QtWidgets import QApplication, QDialog
     import ui_style
 
     name = ref['name']
@@ -91,6 +90,32 @@ def main():
 
     app = QApplication(sys.argv[:1])
     QIcon.setThemeSearchPaths(QIcon.themeSearchPaths() + [str(r/'icons') for r in roots])
+    ui_style.maybe_dark(app)
+    window = review_window(file, kind, ref, name, description, icon, details)
+
+    rest = sys.argv[4:]
+    if '--screenshot' in rest and rest.index('--screenshot')+1 < len(rest):
+        # Offscreen/evidence capture hook: render the dialog, save, quit.
+        capture_path = rest[rest.index('--screenshot')+1]
+        from PySide6.QtCore import QTimer
+        def capture():
+            window.grab().save(capture_path)
+            QApplication.quit()
+        QTimer.singleShot(350, capture)
+        window.show()
+        app.exec()
+        return
+
+    sys.exit(0 if window.exec() == QDialog.Accepted else 1)
+
+
+def review_window(file, kind, ref, name, description, icon, details):
+    """Build the package review dialog; returns it without showing it."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QIcon
+    from PySide6.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel,
+                                   QPushButton, QPlainTextEdit, QFrame, QGridLayout)
+    import ui_style
 
     window = QDialog()
     window.setWindowTitle('AppInstall')
@@ -192,6 +217,7 @@ def main():
     buttons.addWidget(diagnostics)
     buttons.addStretch(1)
     cancel = QPushButton('&Cancel')
+    cancel.setObjectName('ghost')
     cancel.clicked.connect(window.reject)
     buttons.addWidget(cancel)
     install = QPushButton('Add repo&sitory' if kind == 'flatpakrepo' else '&Install')
@@ -203,7 +229,10 @@ def main():
     window.setStyleSheet(window.styleSheet() + ui_style.primary_button_stylesheet(install))
 
     window.adjustSize()
-    sys.exit(0 if window.exec() == QDialog.Accepted else 1)
+    window.setStyleSheet(window.styleSheet()
+                         + ui_style.primary_button_stylesheet(window)
+                         + ui_style.ghost_button_stylesheet(window))
+    return window
 
 
 def entry():
