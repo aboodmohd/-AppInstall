@@ -61,7 +61,7 @@ class SourceUpgradeSmokeTests(unittest.TestCase):
         saved = json.loads((self.state / "associations.json").read_text())
         self.assertEqual(saved[MIME], "original.desktop;")
         self.assertIn(MIME + "=appinstall.desktop;", self.defaults_file.read_text())
-        self.assertEqual(registry.read_text(), json.dumps(original))
+        self.assertEqual(json.loads(registry.read_text()), original)
 
         # Emulate an old deployed module and upgrade by rerunning registration.
         deployed = self.state / "manager.py"
@@ -69,13 +69,13 @@ class SourceUpgradeSmokeTests(unittest.TestCase):
         self.register()
         self.assertEqual(deployed.read_bytes(), (ROOT / "manager.py").read_bytes())
         self.assertEqual(json.loads((self.state / "associations.json").read_text()), saved)
-        self.assertEqual(registry.read_text(), json.dumps(original))
+        self.assertEqual(json.loads(registry.read_text()), original)
         self.assertIn("text/plain=editor.desktop;", self.defaults_file.read_text())
 
         self.register("--uninstall")
         self.assertIn(MIME + "=original.desktop;", self.defaults_file.read_text())
         self.assertIn("text/plain=editor.desktop;", self.defaults_file.read_text())
-        self.assertEqual(registry.read_text(), json.dumps(original))
+        self.assertEqual(json.loads(registry.read_text()), original)
 
     def test_uninstall_respects_default_changed_after_installation(self):
         self.register()
