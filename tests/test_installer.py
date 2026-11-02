@@ -76,5 +76,21 @@ class InstallerTests(unittest.TestCase):
         self.assertIn('Comment=Install AppImage, Flatpak, DEB, and RPM applications', text)
         self.assertIn('Exec=appinstall %F', text)
 
+    def test_integration_copies_manager_py(self):
+        """integration.py includes manager.py in its module copy list."""
+        integration = ROOT / 'integration.py'
+        text = integration.read_text()
+        self.assertIn("'manager.py'", text)
+
+    def test_installed_appinstall_supports_manage(self):
+        """The deployed appinstall executable supports --manage."""
+        installed = Path.home() / '.local/bin' / 'appinstall'
+        if installed.exists():
+            text = installed.read_text()
+            self.assertIn('--manage', text)
+            self.assertIn('manager.py', text)
+        else:
+            self.skipTest('Installed appinstall not found')
+
 if __name__ == '__main__':
     unittest.main()
