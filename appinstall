@@ -525,14 +525,17 @@ main() {
     shift
   done
 
-  # no file given: open a picker via the file manager's file dialog
+  # no file given: open the Installed Applications Manager
   if [ $# -eq 0 ]; then
-    local diagnostics="$(dirname -- "$(realpath -- "$0")")/diagnostics_ui.py"
-    [ -f "$diagnostics" ] || diagnostics="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/diagnostics_ui.py"
-    if [ -f "$diagnostics" ]; then
-      python3 "$diagnostics"
-      local picked_rc=$?
-      if [ "$picked_rc" -ne 3 ]; then exit "$picked_rc"; fi
+    local manager="$(dirname -- "$(realpath -- "$0")")/manager.py"
+    [ -f "$manager" ] || manager="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/manager.py"
+    if [ -f "$manager" ]; then
+      python3 "$manager"
+      local mrc=$?
+      if [ "$mrc" -eq 3 ]; then
+        error_dialog 'PySide6 is required for the Installed Applications Manager.'
+      fi
+      exit "$mrc"
     fi
     if have kdialog; then
       picked=$(kdialog --title "AppInstall" --getopenfilename "$HOME/Downloads" \

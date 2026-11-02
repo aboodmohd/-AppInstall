@@ -1,8 +1,8 @@
 # AppInstall 1.0.0-beta.1 Package Checksum Manifest
 
 Package: `appinstall-1.0.0beta1-1-any.pkg.tar.zst`
-SHA-256: `2db69db1c528dfac353b3e23d1b68ec06568208fdf2431ace22b499daa8b4bf0`
-Source commit: `771be71` + Details window UI fixes on branch `1.0-beta`
+SHA-256: `67f2de8f60aed7b45710ee43fba216ac49d26c65a48624898f4d936dd6cbc646`
+Source commit: `948923d` + KDE menu integration fixes on branch `1.0-beta`
 Build date: 02 Nov 2026
 
 ## Package contents (21 files)

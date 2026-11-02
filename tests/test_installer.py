@@ -68,5 +68,13 @@ class InstallerTests(unittest.TestCase):
         self.assertIn('application/vnd.flatpak=previous.desktop;',defaults.read_text())
         self.assertIn('text/plain=editor.desktop;',defaults.read_text())
 
+    def test_desktop_entry_fields(self):
+        """Desktop entry has correct GenericName, Comment, and Exec."""
+        desktop = ROOT / 'appinstall.desktop'
+        text = desktop.read_text()
+        self.assertIn('GenericName=Application Installer', text)
+        self.assertIn('Comment=Install AppImage, Flatpak, DEB, and RPM applications', text)
+        self.assertIn('Exec=appinstall %F', text)
+
 if __name__ == '__main__':
     unittest.main()
