@@ -114,6 +114,47 @@ def _appimage_target(raw):
     return target or ''
 
 
+def _resolve_desktop(raw, fmt):
+    """Return the real managed desktop entry path.
+
+    For container packages, the registry's recorded desktop path may point to
+    a non-existent system path. The actual managed launcher lives in
+    exports[0].path. Prefer the export path when the recorded path is missing.
+    """
+    desktop = raw.get('desktop') or ''
+    if desktop and Path(desktop).is_file():
+        return desktop
+    if fmt in ('deb', 'rpm'):
+        for entry in raw.get('exports', []):
+            path = entry.get('path') if isinstance(entry, dict) else None
+            if path and Path(path).is_file():
+                return path
+    return desktop
+
+
+def _clean_description(text):
+    """Return a meaningful description, or '' if it is empty/whitespace/junk."""
+    if not text:
+        return ''
+    stripped = text.strip()
+    if not stripped or stripped == '.':
+        return ''
+    return stripped
+
+
+def _friendly_launch_status(status):
+    """Map a raw launch status to user-friendly text."""
+    friendly = {
+        'checking': 'Checking',
+        'starting': 'Starting',
+        'running_unverified': 'Running (unverified)',
+        'detached_or_exited_unverified': 'Launch unverified',
+        'exited_after_startup_unverified': 'Exited after startup',
+        'failed': 'Failed',
+    }
+    return friendly.get(status, status)
+
+
 def build_app_record(key, raw, source):
     """Normalize one raw registry record into a unified app record.
 
@@ -126,13 +167,13 @@ def build_app_record(key, raw, source):
     fmt = raw.get('format') or raw.get('kind') or 'unknown'
     name = raw.get('name') or raw.get('application_name') or key.rsplit(':', 1)[-1]
     version = raw.get('version') or ''
-    desktop = raw.get('desktop') or ''
+    desktop = _resolve_desktop(raw, fmt)
     icon = raw.get('icon') or ''
     icon_name = raw.get('icon_name') or ''
     container = raw.get('container')
     manifest = raw.get('manifest')
     target = _appimage_target(raw) if fmt == 'appimage' else (raw.get('target') or raw.get('file'))
-    description = raw.get('description') or ''
+    description = _clean_description(raw.get('description') or '')
     status = raw.get('status') or STATUS_UNKNOWN
 
     problems = []
@@ -599,14 +640,18 @@ class AppDetailsDialog(QDialog):
             ('Package identifier', app['package_id']),
             ('Version', app['version']),
             ('Installation date', app['install_date']),
-            ('Installed path / container', app['target'] or app['container'] or '—'),
+            ('Installed path', app['target'] or '—'),
+        ]
+        if app.get('container'):
+            rows.append(('Container', app['container']))
+        rows += [
             ('Desktop entry', app['desktop'] or '—'),
             ('Manifest', app['manifest'] or '—'),
             ('Source', app['source']),
         ]
         for row, (label, value) in enumerate(rows):
             key_label = QLabel(label)
-            key_label.setStyleSheet('color: palette(mid); font-size: 12px;')
+            key_label.setStyleSheet('color: palette(text); font-size: 12px;')
             grid.addWidget(key_label, row, 0)
             value_label = QLabel(str(value))
             value_label.setTextFormat(Qt.PlainText)
@@ -628,7 +673,7 @@ class AppDetailsDialog(QDialog):
             head.setTextFormat(Qt.PlainText)
             font = head.font(); font.setBold(True); head.setFont(font)
             launch_layout.addWidget(head)
-            status = last.get('status', 'Never launched')
+            status = _friendly_launch_status(last.get('status', 'Never launched'))
             started = last.get('started', '—')
             launch_layout.addWidget(QLabel('Status: '+status))
             launch_layout.addWidget(QLabel('Started: '+started))

@@ -129,6 +129,45 @@ class InventoryTests(unittest.TestCase):
         self.assertEqual(apps[0]['status'], manager.STATUS_INSTALLED)
         self.assertNotIn('launcher missing', apps[0]['problems'])
 
+    def test_desktop_path_resolved_via_exports(self):
+        """Container record's desktop path falls back to exports path when
+        the recorded system path does not exist on disk."""
+        key, raw = make_app('deb:example', 'deb', container='debian-apps',
+                            target='/tmp/staged/example.deb',
+                            desktop='/nonexistent/system/freebuff.desktop')
+        export_path = str(self.root / 'debian-apps-example.desktop')
+        raw['exports'] = [{'path': export_path, 'sha256': 'deadbeef'}]
+        (self.root / 'debian-apps-example.desktop').write_text('[Desktop Entry]\nType=Application\nName=Example\n')
+        write_registry(manager.container_registry_path(), {key: raw})
+        apps = manager.load_inventory()
+        self.assertEqual(len(apps), 1)
+        self.assertEqual(apps[0]['desktop'], export_path)
+
+    def test_description_junk_is_hidden(self):
+        """A description that is only whitespace or a stray '.' is treated
+        as empty and not displayed."""
+        key, raw = make_app(description='\n.')
+        app = manager.build_app_record(key, raw, 'launch-monitor')
+        self.assertEqual(app['description'], '')
+
+        key2, raw2 = make_app(description='  \n  ')
+        app2 = manager.build_app_record(key2, raw2, 'launch-monitor')
+        self.assertEqual(app2['description'], '')
+
+        key3, raw3 = make_app(description='A real description.')
+        app3 = manager.build_app_record(key3, raw3, 'launch-monitor')
+        self.assertEqual(app3['description'], 'A real description.')
+
+    def test_launch_status_mapped_to_friendly_text(self):
+        """Raw launch status strings are shown as user-friendly text."""
+        self.assertEqual(manager._friendly_launch_status('detached_or_exited_unverified'),
+                         'Launch unverified')
+        self.assertEqual(manager._friendly_launch_status('running_unverified'),
+                         'Running (unverified)')
+        self.assertEqual(manager._friendly_launch_status('failed'), 'Failed')
+        self.assertEqual(manager._friendly_launch_status('Never launched'), 'Never launched')
+        self.assertEqual(manager._friendly_launch_status('weird_status'), 'weird_status')
+
     def test_appimage_target_resolved_from_manifest(self):
         """AppImage target missing from the launch record is read from the manifest."""
         target = self.root / 'Example.AppImage'
