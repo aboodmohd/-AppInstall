@@ -68,5 +68,61 @@ class InstallerTests(unittest.TestCase):
         self.assertIn('application/vnd.flatpak=previous.desktop;',defaults.read_text())
         self.assertIn('text/plain=editor.desktop;',defaults.read_text())
 
+    def test_desktop_entry_fields(self):
+        """Desktop entry has correct GenericName, Comment, and Exec."""
+        desktop = ROOT / 'appinstall.desktop'
+        text = desktop.read_text()
+        self.assertIn('GenericName=Application Installer', text)
+        self.assertIn('Comment=Install AppImage, Flatpak, DEB, and RPM applications', text)
+        self.assertIn('Exec=appinstall %F', text)
+
+    def test_integration_copies_manager_py(self):
+        """integration.py includes manager.py in its module copy list."""
+        integration = ROOT / 'integration.py'
+        text = integration.read_text()
+        self.assertIn("'manager.py'", text)
+
+    def test_installed_appinstall_supports_manage(self):
+        """The deployed appinstall executable supports --manage."""
+        installed = Path.home() / '.local/bin' / 'appinstall'
+        if installed.exists():
+            text = installed.read_text()
+            self.assertIn('--manage', text)
+            self.assertIn('manager.py', text)
+        else:
+            self.skipTest('Installed appinstall not found')
+
+    def test_integration_copies_result_ui(self):
+        """integration.py includes result_ui.py in its module copy list."""
+        integration = ROOT / 'integration.py'
+        text = integration.read_text()
+        self.assertIn("'result_ui.py'", text)
+
+    def test_integration_copies_ui_style(self):
+        """integration.py includes ui_style.py in its module copy list."""
+        integration = ROOT / 'integration.py'
+        text = integration.read_text()
+        self.assertIn("'ui_style.py'", text)
+
+    def test_deployed_modules_importable(self):
+        """All deployed AppInstall Python modules can be imported."""
+        state = Path.home() / '.local/share' / 'appinstall'
+        if not state.exists():
+            self.skipTest('Installed appinstall state directory not found')
+        required = ['ui_style', 'result_ui', 'container_ui', 'confirm',
+                    'package_meta', 'appimage_backend', 'native_backend',
+                    'container_backend', 'launch_monitor', 'runtime_probe',
+                    'diagnostics_core', 'diagnostics_ui', 'manager']
+        import importlib.util
+        for modname in required:
+            modfile = state / f'{modname}.py'
+            self.assertTrue(modfile.exists(), f'{modname}.py missing from deployed state')
+            spec = importlib.util.spec_from_file_location(modname, modfile)
+            module = importlib.util.module_from_spec(spec)
+            try:
+                spec.loader.exec_module(module)
+            except Exception as e:
+                self.fail(f'Failed to import {modname}: {e}')
+
 if __name__ == '__main__':
     unittest.main()

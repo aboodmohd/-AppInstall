@@ -1,127 +1,252 @@
 #!/usr/bin/env python3
-"""Optional Qt confirmation, using local metadata without executing packages."""
-import configparser
+"""Optional Qt confirmation, using local metadata without executing packages.
+
+Exit codes: 0 = install requested, 1 = cancelled by the user,
+2 = unexpected failure, 3 = PySide6 unavailable (caller falls back)."""
+import json
 import os
 from pathlib import Path
 import sys
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QTextEdit, QFrame
+import traceback
+from urllib.parse import urlparse, quote
 
-file = Path(sys.argv[1])
-kind, details = sys.argv[2:4]
-def values(path, section):
-    p = configparser.ConfigParser(interpolation=None, strict=False)
-    try:
-        p.read(path)
-        return dict(p[section])
-    except (OSError, KeyError, configparser.Error):
-        return {}
+import package_meta as meta
 
-ref = values(file, 'Flatpak Ref') if kind == 'flatpakref' else {}
-appid = ref.get('name', '')
-name = appid.rsplit('.', 1)[-1] if appid else file.stem
-description = ref.get('comment', ref.get('description', ''))
-if kind in ('deb', 'rpm'):
-    import json
-    native = json.loads(details)
-    name = native['name'] + ' ' + native['version']
-    description = native['description']
-icon = ref.get('icon', '')
-roots = [Path(os.environ.get('XDG_DATA_HOME', Path.home()/'.local/share')), Path.home()/'.local/share/flatpak/exports/share', Path('/var/lib/flatpak/exports/share'), Path('/usr/share')]
-for root in roots:
-    if not appid:
-        break
-    meta = values(root/'applications'/f'{appid}.desktop', 'Desktop Entry')
-    if meta:
-        name = meta.get('name', name)
-        description = meta.get('comment', description)
-        icon = meta.get('icon', icon)
-        break
-# Fetch display metadata only for known Flathub references; offline/local metadata remains usable.
-if kind == 'flatpakref' and appid:
-    from urllib.parse import urlparse, quote
+
+def enriched_metadata(file, ref):
+    """Fetch display metadata only for known Flathub references; local data remains usable."""
+    appid = ref['appid']
     from urllib.request import urlopen
-    import json
-    import re
-    if urlparse(ref.get('url', '')).hostname in ('dl.flathub.org', 'flathub.org') and re.fullmatch(r'[A-Za-z0-9_.-]+', appid):
-        try:
-            cache = Path(os.environ.get('XDG_CACHE_HOME', Path.home()/'.cache'))/'appinstall'
-            cache.mkdir(parents=True, exist_ok=True)
-            record = cache/(appid+'.json')
-            if record.exists():
-                metadata = json.loads(record.read_text())
-            else:
-                with urlopen('https://flathub.org/api/v2/appstream/'+quote(appid), timeout=3) as response:
-                    metadata = json.loads(response.read(1024*1024))
-                record.write_text(json.dumps(metadata))
-            name = metadata.get('name') or name
-            description = metadata.get('summary') or description
-            iconurl = metadata.get('icon', '')
-            if urlparse(iconurl).hostname == 'dl.flathub.org' and iconurl.startswith('https://'):
-                cached_icon = cache/(appid+'.png')
-                if not cached_icon.exists():
-                    with urlopen(iconurl, timeout=3) as response:
-                        imagebytes = response.read(2*1024*1024)
-                    cached_icon.write_bytes(imagebytes)
-                icon = str(cached_icon)
-        except Exception:
-            pass
-if not description:
-    description = {'appimage':'Add this application to your application menu. Your downloaded file will be kept.', 'flatpakref':'Install this application and its required runtime.', 'flatpak':'Install this application from a local Flatpak bundle.', 'flatpakrepo':'Add this software repository for your user account.'}.get(kind, '')
-app = QApplication(sys.argv)
-QIcon.setThemeSearchPaths(QIcon.themeSearchPaths() + [str(r/'icons') for r in roots])
-window = QDialog()
-window.setWindowTitle('AppInstall')
-window.setMinimumWidth(480)
-window.setMaximumWidth(600)
-layout = QVBoxLayout(window)
-layout.setContentsMargins(28,28,28,24)
-layout.setSpacing(18)
-header = QHBoxLayout()
-picture = QLabel()
-image = QIcon(icon) if icon and Path(icon).is_file() else QIcon.fromTheme(icon or appid)
-if image.isNull():
-    image = QIcon.fromTheme('package-x-generic')
-picture.setPixmap(image.pixmap(72,72))
-picture.setFixedSize(80,80)
-header.addWidget(picture)
-text = QVBoxLayout()
-title = QLabel(name)
-title.setTextFormat(Qt.PlainText)
-font = title.font(); font.setPointSize(20); font.setBold(True); title.setFont(font)
-text.addWidget(title)
-subtitle = QLabel({'flatpakref':'Flatpak application', 'flatpak':'Flatpak bundle', 'appimage':'AppImage application', 'flatpakrepo':'Software repository'}.get(kind, kind))
-text.addWidget(subtitle)
-header.addLayout(text, 1)
-layout.addLayout(header)
-body = QLabel(description)
-body.setTextFormat(Qt.PlainText)
-body.setWordWrap(True)
-layout.addWidget(body)
-line = QFrame(); line.setFrameShape(QFrame.HLine); layout.addWidget(line)
-location = QLabel('System-wide — administrator required' if kind in ('deb','rpm') else 'Install for your account')
-layout.addWidget(location)
-trust = QLabel('Only install applications from sources you trust.')
-trust.setWordWrap(True); layout.addWidget(trust)
-toggle = QPushButton('Show details')
-toggle.setFlat(True)
-layout.addWidget(toggle, alignment=Qt.AlignLeft)
-extra = QTextEdit(); extra.setReadOnly(True); extra.setPlainText(str(file)+'\n'+details); extra.setMaximumHeight(130); extra.hide()
-layout.addWidget(extra)
-def expand():
-    extra.setVisible(not extra.isVisible())
-    toggle.setText('Hide details' if extra.isVisible() else 'Show details')
+    cached = None
+    try:
+        cache = Path(os.environ.get('XDG_CACHE_HOME', Path.home()/'.cache'))/'appinstall'
+        cache.mkdir(parents=True, exist_ok=True)
+        record = cache/(appid+'.json')
+        if record.exists():
+            cached = json.loads(record.read_text())
+        else:
+            with urlopen('https://flathub.org/api/v2/appstream/'+quote(appid), timeout=3) as response:
+                cached = json.loads(response.read(1024*1024))
+            record.write_text(json.dumps(cached))
+    except Exception:
+        return ref
+    if not isinstance(cached, dict):
+        return ref
+    ref = dict(ref)
+    if cached.get('name'):
+        ref['name'] = cached['name']
+    if cached.get('summary'):
+        ref['description'] = cached['summary']
+    iconurl = cached.get('icon', '')
+    if isinstance(iconurl, str) and iconurl.startswith('https://') and urlparse(iconurl).hostname == 'dl.flathub.org':
+        cached_icon = Path(os.environ.get('XDG_CACHE_HOME', Path.home()/'.cache'))/'appinstall'/(appid+'.png')
+        if not cached_icon.exists():
+            try:
+                with urlopen(iconurl, timeout=3) as response:
+                    imagebytes = response.read(2*1024*1024)
+                cached_icon.write_bytes(imagebytes)
+            except Exception:
+                return ref
+        ref['icon'] = str(cached_icon)
+    return ref
+
+
+def main():
+    file = Path(sys.argv[1])
+    kind, details = sys.argv[2:4]
+    probe = '--probe' in sys.argv[4:]
+
+    local = meta.display_metadata(file, kind, meta.metadata_roots())
+    ref = local
+    if kind == 'flatpakref' and local['appid']:
+        ref = enriched_metadata(file, local)
+    if kind in ('deb', 'rpm'):
+        native_info = json.loads(details)
+        ref = dict(ref,
+                   name=native_info['name']+' '+native_info.get('version', ''),
+                   description=native_info.get('description', ''))
+    if probe:
+        size = ''
+        try: size = file.stat().st_size
+        except OSError: pass
+        print(json.dumps(dict(ref, file=str(file), kind=kind, size=size)))
+        return
+
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QIcon
+    from PySide6.QtWidgets import QApplication, QDialog
+    import ui_style
+
+    name = ref['name']
+    description = ref['description'] or {
+        'appimage': 'Add this application to your application menu. Your downloaded file will be kept.',
+        'flatpakref': 'Install this application and its required runtime.',
+        'flatpak': 'Install this application from a local Flatpak bundle.',
+        'flatpakrepo': 'Add this software repository for your account.',
+        'deb': 'Install this native Debian package on this distribution.',
+        'rpm': 'Install this native RPM package on this distribution.'}.get(kind, '')
+    icon = ref['icon']
+    roots = meta.metadata_roots()
+
+    app = QApplication(sys.argv[:1])
+    QIcon.setThemeSearchPaths(QIcon.themeSearchPaths() + [str(r/'icons') for r in roots])
+    ui_style.maybe_dark(app)
+    window = review_window(file, kind, ref, name, description, icon, details)
+
+    rest = sys.argv[4:]
+    if '--screenshot' in rest and rest.index('--screenshot')+1 < len(rest):
+        # Offscreen/evidence capture hook: render the dialog, save, quit.
+        capture_path = rest[rest.index('--screenshot')+1]
+        from PySide6.QtCore import QTimer
+        def capture():
+            window.grab().save(capture_path)
+            QApplication.quit()
+        QTimer.singleShot(350, capture)
+        window.show()
+        app.exec()
+        return
+
+    sys.exit(0 if window.exec() == QDialog.Accepted else 1)
+
+
+def review_window(file, kind, ref, name, description, icon, details):
+    """Build the package review dialog; returns it without showing it."""
+    from PySide6.QtCore import Qt
+    from PySide6.QtGui import QIcon
+    from PySide6.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel,
+                                   QPushButton, QPlainTextEdit, QFrame, QGridLayout)
+    import ui_style
+
+    window = QDialog()
+    window.setWindowTitle('AppInstall')
+    window.setMinimumWidth(520)
+    window.setMaximumWidth(720)
+    window.setSizeGripEnabled(True)
+
+    layout = QVBoxLayout(window)
+    layout.setContentsMargins(26, 24, 26, 20)
+    layout.setSpacing(14)
+
+    header = QHBoxLayout()
+    header.setSpacing(16)
+    picture = QLabel()
+    image = QIcon(icon) if icon and Path(icon).is_file() else QIcon.fromTheme(icon or ref['appid'])
+    if image.isNull():
+        image = QIcon.fromTheme('package-x-generic')
+    picture.setPixmap(image.pixmap(88, 88))
+    picture.setFixedSize(92, 92)
+    picture.setAlignment(Qt.AlignCenter)
+    header.addWidget(picture, 0, Qt.AlignTop)
+    text = QVBoxLayout()
+    text.setSpacing(4)
+    title = QLabel(name)
+    title.setTextFormat(Qt.PlainText)
+    title.setWordWrap(True)
+    title.setStyleSheet('font-size: 20px; font-weight: 700;')
+    text.addWidget(title)
+    subtitle = QLabel({'flatpakref': 'Flatpak application', 'flatpak': 'Flatpak bundle',
+                       'appimage': 'AppImage application', 'flatpakrepo': 'Software repository',
+                       'deb': 'Debian package', 'rpm': 'RPM package'}.get(kind, kind))
+    subtitle.setTextFormat(Qt.PlainText)
+    subtitle.setStyleSheet('color: palette(mid);')
+    text.addWidget(subtitle)
+    try: size_text = meta.human_size(file.stat().st_size)
+    except OSError: size_text = ''
+    facts = QGridLayout()
+    facts.setHorizontalSpacing(16)
+    facts.setVerticalSpacing(3)
+    facts.setContentsMargins(0, 4, 0, 0)
+    rows = [('Format', kind), ('Size', size_text or '—'),
+            ('Destination', 'System-wide — administrator required' if kind in ('deb', 'rpm') else 'Install for your account')]
+    for row, (label, value) in enumerate(rows):
+        key = QLabel(label)
+        key.setStyleSheet('color: palette(mid);')
+        facts.addWidget(key, row, 0)
+        entry = QLabel(value)
+        entry.setTextFormat(Qt.PlainText)
+        entry.setWordWrap(True)
+        facts.addWidget(entry, row, 1)
+    facts.setColumnStretch(1, 1)
+    text.addLayout(facts)
+    header.addLayout(text, 1)
+    layout.addLayout(header)
+
+    body = QLabel(description.strip())
+    body.setTextFormat(Qt.PlainText)
+    body.setWordWrap(True)
+    layout.addWidget(body)
+
+    notice = QLabel('Only install applications from sources you trust. DEB/RPM packages run '
+                    'their package scripts inside their matching container; containers are '
+                    'not security sandboxes.' if kind in ('deb', 'rpm') else
+                    'Only install applications from sources you trust.')
+    notice.setWordWrap(True)
+    notice.setStyleSheet('color: palette(mid);')
+    layout.addWidget(notice)
+
+    line = QFrame(); line.setFrameShape(QFrame.HLine)
+    layout.addWidget(line)
+
+    toggle = QPushButton('Show details')
+    toggle.setFlat(True)
+    toggle.setCursor(Qt.PointingHandCursor)
+    layout.addWidget(toggle, 0, Qt.AlignLeft)
+    extra = QPlainTextEdit()
+    extra.setReadOnly(True)
+    extra.setPlainText(str(file)+'\n'+details)
+    extra.setFont(QApplication.font('QPlainTextEdit'))
+    extra.setMaximumHeight(140)
+    extra.hide()
+    layout.addWidget(extra)
+
+    def expand():
+        extra.setVisible(not extra.isVisible())
+        toggle.setText('Hide details' if extra.isVisible() else 'Show details')
+        window.adjustSize()
+    toggle.clicked.connect(expand)
+
+    buttons = QHBoxLayout()
+    buttons.setSpacing(10)
+    diagnostics = QPushButton('Application Diagnostics')
+    def show_diagnostics():
+        import subprocess
+        subprocess.Popen([sys.executable, str(Path(__file__).with_name('diagnostics_ui.py'))],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    diagnostics.clicked.connect(show_diagnostics)
+    buttons.addWidget(diagnostics)
+    buttons.addStretch(1)
+    cancel = QPushButton('&Cancel')
+    cancel.setObjectName('ghost')
+    cancel.clicked.connect(window.reject)
+    buttons.addWidget(cancel)
+    install = QPushButton('Add repo&sitory' if kind == 'flatpakrepo' else '&Install')
+    install.setObjectName('primary')
+    install.setDefault(True)
+    install.clicked.connect(window.accept)
+    buttons.addWidget(install)
+    layout.addLayout(buttons)
+    window.setStyleSheet(window.styleSheet() + ui_style.primary_button_stylesheet(install))
+
     window.adjustSize()
-toggle.clicked.connect(expand)
-buttons = QHBoxLayout(); buttons.addStretch()
-cancel = QPushButton('Cancel'); cancel.clicked.connect(window.reject); buttons.addWidget(cancel)
-install = QPushButton('Add repository' if kind == 'flatpakrepo' else 'Install'); install.setDefault(True); install.clicked.connect(window.accept); buttons.addWidget(install)
-layout.addLayout(buttons)
-diagnostics = QPushButton('Application Diagnostics')
-def show_diagnostics():
-    import subprocess
-    subprocess.Popen([sys.executable, str(Path(__file__).with_name('diagnostics_ui.py'))])
-diagnostics.clicked.connect(show_diagnostics)
-layout.addWidget(diagnostics)
-sys.exit(0 if window.exec() == QDialog.Accepted else 1)
+    window.setStyleSheet(window.styleSheet()
+                         + ui_style.primary_button_stylesheet(window)
+                         + ui_style.ghost_button_stylesheet(window))
+    return window
+
+
+def entry():
+    try:
+        main()
+    except ImportError as error:
+        print('PySide6 is required for the package details window: '+str(error), file=sys.stderr)
+        sys.exit(3)
+    except SystemExit:
+        raise
+    except BaseException:
+        traceback.print_exc()
+        sys.exit(2)
+
+
+if __name__ == '__main__':
+    entry()

@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
-"""Application Diagnostics and launch-error windows within AppInstall."""
+"""Application Diagnostics and launch-error windows within AppInstall. Exit 3 when Qt is unavailable."""
 import json
 from pathlib import Path
 import subprocess
 import sys
-from PySide6.QtCore import Qt, QThread, Signal, QTimer
-from PySide6.QtWidgets import (QApplication,QDialog,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,
-                              QPlainTextEdit,QTableWidget,QTableWidgetItem,QMessageBox,QFileDialog,QInputDialog)
+try:
+    from PySide6.QtCore import Qt, QThread, Signal, QTimer
+    from PySide6.QtWidgets import (QApplication,QDialog,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,
+                                  QPlainTextEdit,QTableWidget,QTableWidgetItem,QMessageBox,QFileDialog,QInputDialog)
+except ImportError as error:
+    print('PySide6 is required for Application Diagnostics: '+str(error), file=sys.stderr)
+    sys.exit(3)
 import launch_monitor as monitor
 import diagnostics_core as core
 

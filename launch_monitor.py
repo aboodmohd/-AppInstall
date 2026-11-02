@@ -150,7 +150,7 @@ def rewrite_launcher(spec):
     lines, section = [], ''
     for line in spec['original_text'].splitlines():
         if line.startswith('['): section = line[1:-1]
-        if section == 'Desktop Entry' and line.startswith(('Path=','TryExec=','DBusActivatable=','X-AppInstall-LaunchID=')):
+        if section == 'Desktop Entry' and line.startswith(('Path=','DBusActivatable=','X-AppInstall-LaunchID=')):
             continue
         if line.startswith('Exec=') and (section=='Desktop Entry' or section.startswith('Desktop Action ')):
             action = ' --action '+desktop_quote(section[15:]) if section.startswith('Desktop Action ') else ''
@@ -192,12 +192,19 @@ class SafeLog:
         self.path=Path(path); self.path.parent.mkdir(parents=True,exist_ok=True,mode=0o700)
         self.secrets=secrets; self.content=''
         fd=os.open(self.path,os.O_CREAT|os.O_TRUNC|os.O_WRONLY,0o600);os.close(fd)
+        self.last=time.monotonic()
+    def _persist(self):
+        self.path.write_text(self.content)
+        self.last=time.monotonic()
     def add(self,text):
         if not self.path.exists(): return
         self.content += redact(text,self.secrets)+'\n'
         content=self.content.encode()[-LOG_BYTES:]
         self.content=content.decode(errors='ignore')
-        self.path.write_text(self.content)
+        if time.monotonic()-self.last>=0.5: self._persist()
+    def flush(self):
+        if not self.path.exists(): return
+        self._persist()
 
 
 def failure(category,detail,**extra):
@@ -343,7 +350,7 @@ def monitor(spec, files=(), action=None, notify=True, startup=STARTUP_SECONDS):
     def fail(error,technical=''):
         cleaned={key:redact(value,log.secrets) if isinstance(value,str) else value for key,value in error.items()}
         attempt.update(status='failed',error=cleaned,technical=redact(technical,log.secrets)[-8192:])
-        log.add(error_text(spec,cleaned));record()
+        log.add(error_text(spec,cleaned));log.flush();record()
         if notify:
             attempt['notification_requested']=deliver_error(spec,attempt);record()
         return attempt
@@ -402,9 +409,9 @@ def monitor(spec, files=(), action=None, notify=True, startup=STARTUP_SECONDS):
                 error=classify(evidence,code if elapsed<=startup else None)
                 if error: return fail(error,'Exit status: '+str(code)+'\n'+evidence)
                 attempt['status']='detached_or_exited_unverified' if code==0 else 'exited_after_startup_unverified'
-                record();return attempt
+                log.flush();record();return attempt
             if elapsed>startup and not reported:
-                attempt['status']='running_unverified';record();reported=True
+                attempt['status']='running_unverified';log.flush();record();reported=True
     except PermissionError as error:
         return fail(failure('permission','A file or executable could not be accessed.'),str(error))
     except (OSError,ValueError,KeyError,TypeError,ImportError,configparser.Error,subprocess.SubprocessError) as error:

@@ -14,6 +14,10 @@ import tempfile
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 
 
+class PreviewUnavailable(RuntimeError):
+    """The image cannot be inspected without executing it; refused passively."""
+
+
 def desktop(path):
     parser = configparser.ConfigParser(interpolation=None, strict=False)
     parser.optionxform = str
@@ -62,6 +66,48 @@ def run(manifest, files):
     os.execvpe(argv[0], argv, env)
 
 
+def squashfs_offset(path, limit=1<<20):
+    """Byte offset of the squashfs superblock in a copied AppImage, or None.
+
+    The magic appears as 'hsqs' (little endian) or 'sqsh' (big endian)."""
+    def occurrence(data):
+        for magic in (b'hsqs', b'sqsh'):
+            index = data.find(magic)
+            if index >= 0:
+                return index
+        return -1
+    window = b''
+    with open(path, 'rb') as file:
+        while file.tell() < limit:
+            chunk = file.read(65536)
+            if not chunk:
+                return None
+            window = window[-4:] + chunk
+            index = occurrence(window)
+            if index >= 0:
+                return max(0, file.tell() - len(window) + index)
+    return None
+
+
+def preview_contents(executable, scratch):
+    """Passive only: unpack via unsquashfs without running any code from the image.
+
+    Raises PreviewUnavailable when the image cannot be inspected without
+    executing its embedded runtime; callers decide how to proceed."""
+    if not shutil.which('unsquashfs'):
+        raise PreviewUnavailable('unsquashfs is not installed; the image can be reviewed passively only with squashfs-tools.')
+    offset = squashfs_offset(executable)
+    if offset is None:
+        raise PreviewUnavailable('No squashfs payload was found in this AppImage.')
+    root = scratch/'squashfs-root'
+    result = subprocess.run(
+        ['unsquashfs', '-no-progress', '-no-xattrs', '-d', str(root), '-o', str(offset), str(executable)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=180)
+    if result.returncode or not root.is_dir():
+        raise RuntimeError('Passive AppImage preview failed: '+result.stdout.decode(errors='replace')[-1500:])
+    return root
+
+
 def install(source, destination, fallback=False):
     source, destination = Path(source), Path(destination)
     data = Path(os.environ.get('XDG_DATA_HOME', Path.home()/'.local/share'))
@@ -76,14 +122,22 @@ def install(source, destination, fallback=False):
         executable = scratch/'application.AppImage'
         shutil.copyfile(source, executable)
         executable.chmod(0o755)
-        result = subprocess.run([str(executable), '--appimage-extract'], cwd=scratch,
-                                env=dict(os.environ, APPIMAGELAUNCHER_DISABLE='1'),
-                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=180)
-        root = scratch/'squashfs-root'
-        if result.returncode or not root.is_dir():
-            raise RuntimeError('Cannot extract AppImage: ' + result.stdout.decode(errors='replace')[-1500:])
-        entries = sorted(root.glob('*.desktop'))
-        if not entries:
+        if fallback and not shutil.which('unsquashfs'):
+            raise RuntimeError('Extracted launches require unsquashfs (squashfs-tools). '
+                               'Install squashfs-tools, or launch the image with FUSE2 (fuse2 package).')
+        try:
+            root = preview_contents(executable, scratch)
+            hint = ''
+        except PreviewUnavailable as limitation:
+            # The image is never executed for preview; stage it with generic
+            # identity so the launcher still works normally at run time.
+            root = None
+            hint = 'Detailed preview unavailable: '+str(limitation)
+            print(hint, file=sys.stderr)
+        entries = sorted(root.glob('*.desktop')) if root else []
+        if entries and not all(p.is_file() for p in entries):
+            entries = [p for p in entries if p.is_file()]
+        if not entries and root:
             entries = sorted(root.rglob('*.desktop'))
         original = next((p for p in entries if desktop(p).get('Type') == 'Application'), None)
         meta = desktop(original) if original else {}
@@ -120,7 +174,12 @@ def install(source, destination, fallback=False):
             target.chmod(0o755)
             icon = 'package-x-generic'
             iconname = meta.get('Icon', '')
-            candidates = [root/'.DirIcon'] + list(root.rglob(Path(iconname).name + '.*')) if iconname else [root/'.DirIcon']
+            if root is None:
+                candidates = []
+            elif iconname:
+                candidates = [root/'.DirIcon'] + list(root.rglob(Path(iconname).name + '.*'))
+            else:
+                candidates = [root/'.DirIcon']
             for candidate in candidates:
                 try:
                     resolved = candidate.resolve(strict=True)
@@ -143,17 +202,24 @@ def install(source, destination, fallback=False):
                     continue
             extracted = ''
             if fallback:
+                if root is None:
+                    raise RuntimeError('Extracted launches require the image contents; unsquashfs could not read this AppImage.')
                 extracted = str(generation/'appdir')
                 shutil.move(str(root), extracted)
                 if not (Path(extracted)/'AppRun').exists():
                     raise RuntimeError('Extracted AppImage has no AppRun launcher.')
             info = dict(target=str(target), desktop_exec=meta.get('Exec','AppRun'), working_directory=meta.get('Path',''), desktop_args=shlex.split(meta.get('Exec','AppRun'))[1:], args=arguments(meta.get('Exec','AppRun')), fallback=extracted, generation=str(generation))
             helper = Path(__file__).resolve()
+            comment = meta.get('Comment', 'AppImage application' if root else 'AppImage application. Detailed preview unavailable; the image was not executed.')
             lines = ['[Desktop Entry]', 'Type=Application', 'Name='+name,
-                     'Comment='+meta.get('Comment','AppImage application').replace('\n',' '),
+                     'Comment='+comment.replace('\n',' '),
                      'Icon='+icon, 'Terminal=false', 'Categories='+categories(meta.get('Categories', '')),
                      'Exec='+quote(sys.executable)+' '+quote(helper)+' --run '+quote(manifest)+' %U',
                      'X-AppInstall-Exec='+str(target), 'X-AppInstall-Manifest='+str(manifest)]
+            startup_wm_class = meta.get('StartupWMClass', '')
+            if startup_wm_class:
+                lines.append('StartupWMClass='+startup_wm_class)
+            lines.append('TryExec='+str(target))
             text = '\n'.join(lines)+'\n'
             # Only validated, fully staged artifacts are made visible.
             staged_manifest = manifest.with_suffix('.new')

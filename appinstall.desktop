@@ -1,8 +1,8 @@
 [Desktop Entry]
 Type=Application
 Name=AppInstall
-GenericName=Quick installer
-Comment=Install AppImage and Flatpak applications
+GenericName=Application Installer
+Comment=Install AppImage, Flatpak, DEB, and RPM applications
 Exec=appinstall %F
 NoDisplay=false
 Terminal=false

@@ -10,7 +10,7 @@
 set -u
 IFS=$'\n\t'
 
-VERSION="0.2.0"
+VERSION="1.0.0-beta.1"
 INSTALL_DIR="${APPINSTALL_APPIMAGES:-$HOME/Applications}"
 APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/pixmaps"
@@ -33,6 +33,7 @@ Usage: appinstall [options] FILE [FILE...]
 
 Options:
   --diagnostics         open Application Diagnostics
+  --manage              open the Installed Applications Manager
   --container-info ID    view a container package (e.g. deb:example)
   --container-remove ID  confirm removal of a container package
   --container-launch ID  open a container package
@@ -330,11 +331,16 @@ $(cat -- "$log")"
     rm -f -- "$log"
     return 1
   fi
+  limited_notice=$(head -n1 -- "$log" 2>/dev/null || true)
   rm -f -- "$log"
   progress_close
   have update-desktop-database && update-desktop-database "$APPS_DIR" >/dev/null 2>&1 || true
   if have kbuildsycoca6; then kbuildsycoca6 --noincremental >/dev/null 2>&1 || true; fi
-  notify_ok "Installed $(desktop_key "$entry" Name) — find it in your application menu"
+  if [ -n "$limited_notice" ]; then
+    notify_ok "Installed $(desktop_key "$entry" Name) — limited preview; detailed metadata was not read from the image"
+  else
+    notify_ok "Installed $(desktop_key "$entry" Name) — find it in your application menu"
+  fi
   if [ "$NO_OPEN" = 0 ] && [ "$ASSUME_YES" = 0 ] && dialog_confirm "Installation complete. Open the application?"; then
     local manifest
     manifest=$(desktop_key "$entry" X-AppInstall-Manifest)
@@ -411,14 +417,16 @@ REMOVE
 
 # ── Dispatch ─────────────────────────────────────────────────────────────────
 container_workflow() {
-  local ui
+  local ui rc
   ui="$(dirname -- "$(realpath -- "$0")")/container_ui.py"
   [ -f "$ui" ] || ui="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/container_ui.py"
-  if ! python3 -c 'import PySide6' >/dev/null 2>&1; then
-    error_dialog 'Install PySide6 for DEB/RPM package details and transaction confirmation.'
-    return 1
-  fi
+  [ -f "$ui" ] || { error_dialog 'The container package workflow module is missing. Reinstall AppInstall to repair it.'; return 1; }
   python3 "$ui" "$@"
+  rc=$?
+  if [ "$rc" -eq 3 ]; then
+    error_dialog 'Install PySide6 for DEB/RPM package details and transaction confirmation.'
+  fi
+  return "$rc"
 }
 
 install_native() { container_workflow "$1"; }
@@ -440,17 +448,27 @@ Name: $(desktop_key "$f" Name)
 Runtime source: $(desktop_key "$f" RuntimeRepo)" ;;
     appimage) validate_appimage "$f" || return 1; details="Copy to: $INSTALL_DIR (original retained)" ;;
   esac
-  local ui
+  local ui rc confirm_text
   ui="$(dirname -- "$(realpath -- "$0")")/confirm.py"
   [ -f "$ui" ] || ui="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/confirm.py"
-  if [ "$ASSUME_YES" = 0 ] && [ -f "$ui" ] && python3 -c 'import PySide6' >/dev/null 2>&1; then
-    python3 "$ui" "$f" "$t" "$details" || return 0
-  else
-  dialog_confirm "Install $(basename -- "$f")?
+  confirm_text="Install $(basename -- "$f")?
 Format: $t
 Destination: current user
 $details
-Only install files from sources you trust." || return 0
+Only install files from sources you trust."
+  if [ "$ASSUME_YES" = 0 ]; then
+    if [ -f "$ui" ]; then
+      python3 "$ui" "$f" "$t" "$details"
+      rc=$?
+      case "$rc" in
+        0) : ;;
+        1) return 0 ;;
+        3) dialog_confirm "$confirm_text" || return 0 ;;
+        *) error_dialog 'The package details window could not open, so installation was cancelled. Install PySide6 for graphical package details.'; return "$rc" ;;
+      esac
+    else
+      dialog_confirm "$confirm_text" || return 0
+    fi
   fi
   case "$t" in
     appimage) install_appimage_pkg "$f" ;;
@@ -476,13 +494,24 @@ main() {
         case "$action" in --container-info) action=--info ;; --container-remove) action=--remove ;; *) action=--launch ;; esac
         container_workflow "$action" "$2"; exit $? ;;
       --diagnostics)
-        if ! python3 -c 'import PySide6' >/dev/null 2>&1; then
-          error_dialog 'PySide6 is required for Application Diagnostics. Launch logs are saved under the user state directory.'
-          exit 1
-        fi
         local diagnostics="$(dirname -- "$(realpath -- "$0")")/diagnostics_ui.py"
         [ -f "$diagnostics" ] || diagnostics="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/diagnostics_ui.py"
-        python3 "$diagnostics"; exit $? ;;
+        python3 "$diagnostics"
+        local drc=$?
+        if [ "$drc" -eq 3 ]; then
+          error_dialog 'PySide6 is required for Application Diagnostics. Launch logs are saved under the user state directory.'
+        fi
+        exit "$drc" ;;
+      --manage)
+        local manager="$(dirname -- "$(realpath -- "$0")")/manager.py"
+        [ -f "$manager" ] || manager="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/manager.py"
+        [ -f "$manager" ] || { error_dialog 'The application manager module is missing. Reinstall AppInstall to repair it.'; return 1; }
+        python3 "$manager"
+        local mrc=$?
+        if [ "$mrc" -eq 3 ]; then
+          error_dialog 'PySide6 is required for the Installed Applications Manager.'
+        fi
+        exit "$mrc" ;;
       --list)       do_list; exit 0 ;;
       --yes) ASSUME_YES=1 ;;
       --nolaunch)   NO_OPEN=1 ;;
@@ -496,12 +525,17 @@ main() {
     shift
   done
 
-  # no file given: open a picker via the file manager's file dialog
+  # no file given: open the Installed Applications Manager
   if [ $# -eq 0 ]; then
-    local diagnostics="$(dirname -- "$(realpath -- "$0")")/diagnostics_ui.py"
-    [ -f "$diagnostics" ] || diagnostics="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/diagnostics_ui.py"
-    if [ -f "$diagnostics" ] && python3 -c 'import PySide6' >/dev/null 2>&1; then
-      python3 "$diagnostics"; exit $?
+    local manager="$(dirname -- "$(realpath -- "$0")")/manager.py"
+    [ -f "$manager" ] || manager="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/manager.py"
+    if [ -f "$manager" ]; then
+      python3 "$manager"
+      local mrc=$?
+      if [ "$mrc" -eq 3 ]; then
+        error_dialog 'PySide6 is required for the Installed Applications Manager.'
+      fi
+      exit "$mrc"
     fi
     if have kdialog; then
       picked=$(kdialog --title "AppInstall" --getopenfilename "$HOME/Downloads" \
