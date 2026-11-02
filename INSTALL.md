@@ -16,7 +16,14 @@
 
 ```sh
 sudo pacman -U appinstall-1.0.0beta1-1-any.pkg.tar.zst
-./install-user.sh
+```
+
+The package installs `appinstall` to `/usr/bin/appinstall`, registers the `.desktop` entry at `/usr/share/applications/appinstall.desktop`, and configures MIME associations for all supported package formats. No additional setup is required — double-clicking any supported file will open AppInstall.
+
+To open the Installed Applications Manager:
+
+```sh
+appinstall --manage
 ```
 
 ## Install from source
