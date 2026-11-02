@@ -46,14 +46,24 @@ All 10 live acceptance tests passed on the physical KDE Plasma 6 Wayland session
 
 | Test | Result |
 |------|--------|
-| Clean package install | Verified in isolated root (extracted package) |
-| AppInstall starts from installed package | Verified (`manager.py` runs) |
-| `appinstall --manage` | Opens My Applications |
-| `appinstall --diagnostics` | Opens Application Diagnostics |
-| `appinstall <file>` | Opens package review dialog |
-| Upgrade from 0.2.0 | Verified in isolated root |
-| Upgrade preserves managed records | Yes (registry-based) |
-| Live installation updated | Yes (via install-user.sh) |
+| Clean package install | Performed in isolated root (package extracted to disposable directory, not live system) |
+| First launch from installed package | Verified (`manager.py` runs from extracted package) |
+| `appinstall --manage` | Opens My Applications (verified live) |
+| `appinstall --diagnostics` | Opens Application Diagnostics (verified live) |
+| `appinstall <file>` | Opens package review dialog (verified live via Dolphin double-click) |
+| Upgrade from 0.2.0 | Performed in isolated root (extracted over existing test installation) |
+| Upgrade preserves managed records | Yes (registry-based, verified in isolated root) |
+| Live installation updated | Yes (via install-user.sh, version now `1.0.0-beta.1`) |
+| Desktop and MIME registration | Verified live |
+| Clean uninstall | Not tested (would remove live installation — requires explicit approval) |
+
+**Untested scenarios:**
+
+- Clean uninstall on live system (would delete installed files — requires explicit user approval)
+- Upgrade from arbitrary older versions other than 0.2.0
+- Installation on non-CachyOS/Arch distributions (PKGBUILD is Arch-specific)
+- Installation without PySide6 (CLI-only mode not tested graphically)
+- Installation without kdialog/zenity (fallback dialog path not tested)
 
 ## 6. Security Findings
 
@@ -111,25 +121,39 @@ Documented in `KNOWN_LIMITATIONS.md`:
 - GUI launch monitoring cannot prove application usability
 - Automatic updates supported for Flatpak only
 
-## 9. Remaining Manual Verification Steps
+## 9. Live Acceptance Test Results (Physical KDE Plasma 6 Wayland)
 
-These require physical interaction on the live KDE Wayland desktop and were **not** performed by this agent:
+All 10 live acceptance tests passed on the user's physical computer:
 
-1. **Test 8 re-verification:** KDE menu integration after desktop entry fix
-2. **Test 9:** Dolphin double-click on DEB/RPM package files
-3. **Test 10:** Cancel review dialog, confirm no installation occurs
+| Test | Description | Result |
+|------|-------------|--------|
+| 1 | Search filtering in My Applications | PASS |
+| 2 | Clear search restores all 5 applications | PASS |
+| 3 | Package-format filters (AppImage/Flatpak/DEB/RPM) | PASS |
+| 4 | Application Details window | PASS |
+| 5 | Diagnostics window | PASS |
+| 6 | Open launches correct application | PASS |
+| 7 | Correct icon and launcher (Seanime Denshi) | PASS |
+| 8 | KDE application menu integration | PASS |
+| 9 | Dolphin double-click opens review dialog | PASS |
+| 10 | Cancel review dialog, no installation occurs | PASS |
 
-All 10 acceptance tests were reported as passed by the user on the live desktop prior to this audit.
+**Remaining untested scenarios:**
+
+- Clean uninstall on live system (would delete installed files — requires explicit user approval)
+- Installation on distributions other than CachyOS/Arch (PKGBUILD is Arch-specific)
+- Installation without PySide6 (CLI-only mode not tested graphically)
+- Installation without kdialog/zenity (fallback dialog path not tested)
 
 ## 10. Final Recommendation
 
 **GO** — Ready for beta approval.
 
 - All 121 automated tests pass (0 failures, 0 skipped)
+- All 10 live acceptance tests passed on physical KDE Plasma 6 Wayland
 - Package builds cleanly with valid b2sums
 - All 32 package files present with correct permissions
 - No security vulnerabilities found
-- Live KDE Wayland testing verified (10 acceptance tests)
 - Deployment workflow fixed (manager.py + result_ui.py included)
 - Working tree clean, committed locally on `1.0-beta`
 
