@@ -33,6 +33,7 @@ Usage: appinstall [options] FILE [FILE...]
 
 Options:
   --diagnostics         open Application Diagnostics
+  --manage              open the Installed Applications Manager
   --container-info ID    view a container package (e.g. deb:example)
   --container-remove ID  confirm removal of a container package
   --container-launch ID  open a container package
@@ -501,6 +502,16 @@ main() {
           error_dialog 'PySide6 is required for Application Diagnostics. Launch logs are saved under the user state directory.'
         fi
         exit "$drc" ;;
+      --manage)
+        local manager="$(dirname -- "$(realpath -- "$0")")/manager.py"
+        [ -f "$manager" ] || manager="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/manager.py"
+        [ -f "$manager" ] || { error_dialog 'The application manager module is missing. Reinstall AppInstall to repair it.'; return 1; }
+        python3 "$manager"
+        local mrc=$?
+        if [ "$mrc" -eq 3 ]; then
+          error_dialog 'PySide6 is required for the Installed Applications Manager.'
+        fi
+        exit "$mrc" ;;
       --list)       do_list; exit 0 ;;
       --yes) ASSUME_YES=1 ;;
       --nolaunch)   NO_OPEN=1 ;;

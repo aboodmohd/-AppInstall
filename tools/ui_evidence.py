@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Capture offscreen GUI evidence for Phase 4 (AppInstall 1.0 Beta).
+"""Capture offscreen GUI evidence for Phase 4 + Phase 5 (AppInstall 1.0 Beta).
 
 Builds a minimal .deb fixture from the standard library, then renders
-confirm.py (package review) and container_ui.py (workflow preview) under
-QT_QPA_PLATFORM=offscreen in both light and forced-dark palettes. Outputs
-PNGs to evidence/phase4/ plus a RESULTS.md report.
+confirm.py (package review), container_ui.py (workflow preview) and
+manager.py (installed applications manager) under QT_QPA_PLATFORM=offscreen
+in both light and forced-dark palettes. Outputs PNGs to evidence/phase4/
+plus a RESULTS.md report. No screenshot is claimed without being rendered.
 """
 import io
 import os
@@ -15,10 +16,15 @@ import tarfile
 import tempfile
 from pathlib import Path
 
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication
+
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 EVIDENCE = ROOT / 'evidence' / 'phase4'
 CONFIRM = ROOT / 'confirm.py'
 CONTAINER = ROOT / 'container_ui.py'
+MANAGER = ROOT / 'manager.py'
 
 
 def tar_gz(files):
@@ -59,6 +65,7 @@ def build_deb(path):
 
 
 def run_screenshot(script, target, args, env_vars):
+    """Render a self-quitting script; success means the PNG was produced."""
     env = dict(os.environ)
     env.update({'QT_QPA_PLATFORM': 'offscreen'})
     env.update(env_vars)
@@ -70,37 +77,69 @@ def run_screenshot(script, target, args, env_vars):
     return type('R', (), {'returncode': 0})()
 
 
+def capture_manager(light_target, dark_target, details_target):
+    """Render the manager window via subprocess (self-quitting) and grab the
+    details dialog in-process (one Qt session)."""
+    results = []
+    result = run_screenshot(MANAGER, light_target, [], {})
+    results.append(('manager list (light)', light_target, result.returncode))
+    result = run_screenshot(MANAGER, dark_target, [], {'APPINSTALL_UI_DARK': '1'})
+    results.append(('manager list (dark)', dark_target, result.returncode))
+
+    # Details dialog in-process, one Qt session.
+    import manager as manager_mod, ui_style
+    app = QApplication(sys.argv[:1])
+    ui_style.maybe_dark(app)
+    inv = manager_mod.load_inventory()
+    flat = next((a for a in inv if a['format'] == 'flatpak'), inv[0] if inv else None)
+    if flat is not None:
+        d = manager_mod.AppDetailsDialog(flat)
+        d.show()
+        app.processEvents()
+        d.grab().save(str(details_target))
+        results.append(('manager details dialog', details_target, 0))
+        app.processEvents()
+    return results
+
+
 def main():
     EVIDENCE.mkdir(parents=True, exist_ok=True)
+    results = []
+
     with tempfile.TemporaryDirectory(prefix='appinstall-evidence-') as scratch:
         scratch = Path(scratch)
         pkg = scratch / 'evidence-sample_1.0_amd64.deb'
         build_deb(pkg)
 
-        results = []
-
-        # confirm.py review dialog — light
+        # confirm.py review dialog — light + forced dark
         light = EVIDENCE / 'confirm-review-light.png'
-        result = run_screenshot(CONFIRM, light, [str(pkg), 'deb', '{\"name\": \"Evidence Sample 1.0\", \"description\": \"Screenshot evidence fixture\"}'], {})
+        result = run_screenshot(CONFIRM, light, [str(pkg), 'deb',
+            '{"name": "Evidence Sample 1.0", "description": "Screenshot evidence fixture"}'], {})
         results.append(('confirm.py review (light)', light, result.returncode))
 
-        # confirm.py review dialog — forced dark
         dark = EVIDENCE / 'confirm-review-dark.png'
-        result = run_screenshot(CONFIRM, dark, [str(pkg), 'deb', '{\"name\": \"Evidence Sample 1.0\", \"description\": \"Screenshot evidence fixture\"}'],
-                       {'APPINSTALL_UI_DARK': '1'})
+        result = run_screenshot(CONFIRM, dark, [str(pkg), 'deb',
+            '{"name": "Evidence Sample 1.0", "description": "Screenshot evidence fixture"}'],
+            {'APPINSTALL_UI_DARK': '1'})
         results.append(('confirm.py review (forced dark)', dark, result.returncode))
 
-        # container_ui.py workflow preview — light
+        # container_ui.py workflow preview — light + forced dark
         cont_light = EVIDENCE / 'container-preview-light.png'
         result = run_screenshot(CONTAINER, cont_light, ['--info', str(pkg)], {})
         results.append(('container_ui.py preview (light)', cont_light, result.returncode))
 
-        # container_ui.py workflow preview — forced dark
         cont_dark = EVIDENCE / 'container-preview-dark.png'
-        result = run_screenshot(CONTAINER, cont_dark, ['--info', str(pkg)], {'APPINSTALL_UI_DARK': '1'})
+        result = run_screenshot(CONTAINER, cont_dark, ['--info', str(pkg)],
+                                {'APPINSTALL_UI_DARK': '1'})
         results.append(('container_ui.py preview (forced dark)', cont_dark, result.returncode))
 
-    report = ['# Phase 4 GUI Evidence — AppInstall 1.0 Beta\n',
+    # manager.py — installed applications manager (real inventory)
+    mlight = EVIDENCE / 'manager-list-light.png'
+    mdark = EVIDENCE / 'manager-list-dark.png'
+    mdetails = EVIDENCE / 'manager-details.png'
+    results.extend(capture_manager(mlight, mdark, mdetails))
+
+    report = ['# Phase 4 + Phase 5 GUI Evidence — AppInstall 1.0 Beta\n',
               'Captured under `QT_QPA_PLATFORM=offscreen` (headless).',
               'No screenshots were claimed without being actually rendered.\n',
               '## Screenshots\n']
@@ -114,3 +153,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
