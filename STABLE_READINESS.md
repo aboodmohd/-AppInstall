@@ -16,6 +16,21 @@ These checks run in disposable CI environments. In particular, they cannot
 verify that GUI windows work under KDE, GNOME or Xfce, or that every
 third-party AppImage/Flatpak/DEB/RPM is compatible.
 
+## Real-device testing reported on CachyOS (2026-11-03)
+
+A tester exercised Dolphin double-click installation and KDE/AppInstall launch
+for a sample of all four formats, plus an uninstall/reinstall cycle without a
+duplicate launcher. On that device, a missing WebKitGTK host dependency was
+needed for an AnymeX AppImage. The Mizuki AppImage's upstream AppRun script
+searched for legacy executable names while packaging a binary called Mizuki;
+a user-local extracted-launch workaround was required. This evidence is
+encouraging but does not establish arbitrary application compatibility.
+
+The live My Applications inventory refresh and the safe handling of missing
+old AppImage manifests have automated regression tests. Repeat these workflows
+in a real KDE session before publishing the stable release. A stale launcher
+must not be deleted automatically when its ownership data is missing.
+
 ## Manual work required before stable release
 
 - Test an actual clean install and rollback on a spare Arch/CachyOS system.

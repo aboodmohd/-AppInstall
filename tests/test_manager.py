@@ -8,6 +8,7 @@ import json
 import os
 import hashlib
 import sys
+import time
 from pathlib import Path
 import tempfile
 import unittest
@@ -239,6 +240,76 @@ class InventoryTests(unittest.TestCase):
         apps = manager.load_inventory()
         self.assertEqual(len(apps), 1)
         self.assertEqual(apps[0]['package_id'], 'appimage:valid')
+
+
+
+class LiveManagerRefreshTests(unittest.TestCase):
+    """Offscreen Qt regression for separate installer processes."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.environment = patch.dict(os.environ, {
+            'XDG_DATA_HOME': str(self.root / 'data'),
+            'XDG_STATE_HOME': str(self.root / 'state'),
+        })
+        self.environment.start()
+        from PySide6.QtWidgets import QApplication
+        self.app = QApplication.instance() or QApplication([])
+        self.window = manager.ManagerWindow()
+        self.wait_for(lambda: self.window.loader is not None and
+                      not self.window.loader.isRunning())
+
+    def tearDown(self):
+        self.wait_for(lambda: not self.window.loader.isRunning())
+        self.window.close()
+        self.app.processEvents()
+        self.environment.stop()
+        self.temp.cleanup()
+
+    def wait_for(self, condition, timeout=6):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            self.app.processEvents()
+            if condition():
+                return
+            time.sleep(.02)
+        self.fail('My Applications did not refresh in time')
+
+    def test_external_install_appears_without_reopening_manager(self):
+        self.assertEqual(self.window.inventory, [])
+        self.assertTrue(self.window._inventory_timer.isActive())
+        write_registry(manager.launch_registry_path(), {
+            'flatpak:org.example.New': make_app('flatpak:org.example.New',
+                'flatpak', name='New Application')[1],
+        })
+        # Do not call refresh: exercise the real Qt timer.
+        self.wait_for(lambda: [a['key'] for a in self.window.inventory] ==
+                      ['flatpak:org.example.New'])
+        self.assertIn('flatpak:org.example.New', self.window.cards)
+
+    def test_atomic_registry_replace_keeps_search_and_filter(self):
+        write_registry(manager.container_registry_path(), {
+            'deb:first': make_app('deb:first', 'deb', name='First Application')[1],
+        })
+        self.window._check_inventory_changes()
+        self.wait_for(lambda: len(self.window.inventory) == 1 and
+                      self.window.inventory[0]['key'] == 'deb:first')
+        self.window.search.setText('Second')
+        self.window._set_filter('deb')
+        target = manager.container_registry_path()
+        temporary = target.with_suffix('.new')
+        write_registry(temporary, {
+            'deb:second': make_app('deb:second', 'deb', name='Second Application')[1],
+        })
+        temporary.replace(target)
+        self.window._check_inventory_changes()
+        self.wait_for(lambda: len(self.window.inventory) == 1 and
+                      self.window.inventory[0]['key'] == 'deb:second')
+        self.assertEqual(self.window.search.text(), 'Second')
+        self.assertEqual(self.window.current_filter, 'deb')
+        self.assertEqual([a['key'] for a in self.window.filtered], ['deb:second'])
+        self.assertEqual(len(self.window.cards), 1)
 
 
 class RecordTests(unittest.TestCase):

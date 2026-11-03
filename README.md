@@ -23,7 +23,7 @@ Install Python 3 and either **KDialog** (KDE) or **Zenity** (GNOME/Xfce), then r
 ./install-user.sh
 ```
 
-The installer registers file associations for the current user and saves their previous values. It does not require root. If Flatpak is missing when installing an application, AppInstall offers setup through apt-get, dnf, pacman or zypper with a PolicyKit administrator prompt. Other systems receive manual instructions. Immutable systems need their distribution's own Flatpak setup procedure.
+The My Applications manager watches for external changes to its managed registries and updates its list automatically, generally within a couple of seconds. The installer registers file associations for the current user and saves their previous values. It does not require root. If Flatpak is missing when installing an application, AppInstall offers setup through apt-get, dnf, pacman or zypper with a PolicyKit administrator prompt. Other systems receive manual instructions. Immutable systems need their distribution's own Flatpak setup procedure.
 
 The Arch package can be built with `makepkg`. Package installation registers AppInstall as an available file handler, **but does not automatically make it the default**. In Dolphin, use **Open With → AppInstall** and select it as the default for each desired format. `./install-user.sh` is for **source installs from a checked-out repository**; do not run it from an extracted pacman package. To inspect possible conflicts between source and package installs, run `type -a appinstall` and see [UPGRADE.md](UPGRADE.md).
 
