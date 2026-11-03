@@ -1,6 +1,7 @@
 import importlib.util
 import json
 import os
+import struct
 from pathlib import Path
 import subprocess
 import tempfile
@@ -11,13 +12,65 @@ spec = importlib.util.spec_from_file_location('backend', Path(__file__).resolve(
 backend = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(backend)
 
+
+def fixture_appimage():
+    """Synthetic SquashFS v4 metadata for mocked-extraction tests."""
+    runtime = bytes.fromhex('7f454c460201010000') + b'\x00\x41\x49\x02' + b'\x00' * 1000
+    superblock = bytearray(128)
+    superblock[:4] = b'hsqs'
+    struct.pack_into('<I', superblock, 4, 1)
+    struct.pack_into('<I', superblock, 12, 131072)
+    struct.pack_into('<H', superblock, 20, 1)
+    struct.pack_into('<H', superblock, 22, 17)
+    struct.pack_into('<HH', superblock, 28, 4, 0)
+    struct.pack_into('<Q', superblock, 40, len(superblock))
+    struct.pack_into('<Q', superblock, 64, 96)
+    struct.pack_into('<Q', superblock, 72, 96)
+    return runtime + bytes(superblock)
+
+
 class AppImageTests(unittest.TestCase):
+
+    def test_squashfs_offset_skips_false_magic_in_runtime(self):
+        """Mizuki/AnymeX runtimes: false magic at 194183; actual header at 944632."""
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'sample.AppImage'
+            data = bytearray(944632)
+            data[:4] = b'\x7fELF'
+            data[8:11] = b'AI\x02'
+            data[194183:194187] = b'hsqs'
+            data.extend(fixture_appimage()[1013:])
+            path.write_bytes(data)
+            self.assertEqual(backend.squashfs_offset(path), 944632)
+
+    def test_squashfs_offset_supports_runtime_over_one_megabyte(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'large-runtime.AppImage'
+            offset = 1500000
+            data = bytearray(offset)
+            data[:4] = b'\x7fELF'
+            data[8:11] = b'AI\x02'
+            data.extend(fixture_appimage()[1013:])
+            path.write_bytes(data)
+            self.assertEqual(backend.squashfs_offset(path), offset)
+
+    def test_squashfs_offset_across_chunk_boundary_and_rejects_magic_only(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'boundary.AppImage'
+            data = bytearray(65534)
+            data.extend(fixture_appimage()[1013:])
+            path.write_bytes(data)
+            self.assertEqual(backend.squashfs_offset(path), 65534)
+            path.write_bytes(b'\x00' * 1000 + b'hsqs' + b'\x00' * 256)
+            self.assertIsNone(backend.squashfs_offset(path))
+
+
     def test_install_replace_and_failure(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             source = root/'download.AppImage'
             # ELF stub + squashfs magic so passive preview locates the payload offset.
-            source.write_bytes(bytes.fromhex('7f454c460201010000')+b'\x00\x41\x49\x02'+b'\x00'*1000+b'hsqs'+b'\x00'*256)
+            source.write_bytes(fixture_appimage())
             destination = root/'Applications'
             env = {'XDG_DATA_HOME':str(root/'data'), 'XDG_STATE_HOME':str(root/'state')}
             def extract(argv, **kwargs):
@@ -69,7 +122,7 @@ class AppImageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             source = root/'download.AppImage'
-            source.write_bytes(bytes.fromhex('7f454c460201010000')+b'\x00\x41\x49\x02'+b'\x00'*1000+b'hsqs'+b'\x00'*256)
+            source.write_bytes(fixture_appimage())
             destination = root/'Applications'
             env = {'XDG_DATA_HOME':str(root/'data'), 'XDG_STATE_HOME':str(root/'state')}
             def extract(argv, **kwargs):
@@ -95,7 +148,7 @@ class AppImageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             source = root/'download.AppImage'
-            source.write_bytes(bytes.fromhex('7f454c460201010000')+b'\x00\x41\x49\x02'+b'\x00'*1000+b'hsqs'+b'\x00'*256)
+            source.write_bytes(fixture_appimage())
             destination = root/'Applications'
             env = {'XDG_DATA_HOME':str(root/'data'), 'XDG_STATE_HOME':str(root/'state')}
             def extract(argv, **kwargs):
