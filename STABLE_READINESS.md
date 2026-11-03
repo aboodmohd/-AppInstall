@@ -11,6 +11,8 @@ future **stable v1.0.0** release. It does not claim general Linux compatibility.
 - Fedora 44 container: full source tests with Fedora-provided PySide6.
 - Source/user registration upgrade tests using a temporary HOME/XDG directory:
   preservation of managed records, original defaults and user-changed defaults.
+- Isolated clean user registration and uninstall, including preservation of
+  managed application records, plus refusal to update from incomplete source trees.
 
 These checks run in disposable CI environments. In particular, they cannot
 verify that GUI windows work under KDE, GNOME or Xfce, or that every
