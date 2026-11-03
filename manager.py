@@ -49,6 +49,20 @@ def launch_registry_path():
     return Path(monitor.data_root()) / 'launchers.json'
 
 
+def inventory_signature():
+    """Lightweight read-only change marker for atomically replaced registries."""
+    marker = []
+    for path in (container_registry_path(), launch_registry_path()):
+        try:
+            info = path.stat()
+            marker.append((info.st_dev, info.st_ino, info.st_mtime_ns, info.st_size))
+        except FileNotFoundError:
+            marker.append(None)
+        except OSError:
+            marker.append(('unreadable',))
+    return tuple(marker)
+
+
 def launches_dir():
     return Path(monitor.state_root()) / 'launches'
 
@@ -808,8 +822,16 @@ class ManagerWindow(QMainWindow):
         self.filtered = []
         self.cards = {}
         self.loader = None
+        self._inventory_revision = inventory_signature()
+        self._refresh_pending = False
         self._build_ui()
         self._apply_style()
+        # External installers atomically replace the registry files. Poll
+        # lightweight metadata to detect changes even across rename/replace.
+        self._inventory_timer = QTimer(self)
+        self._inventory_timer.setInterval(1500)
+        self._inventory_timer.timeout.connect(self._check_inventory_changes)
+        self._inventory_timer.start()
         QTimer.singleShot(0, self.refresh)
 
     def _build_ui(self):
@@ -871,9 +893,18 @@ class ManagerWindow(QMainWindow):
     def _apply_style(self):
         self.setStyleSheet(ui_style.primary_button_stylesheet(self) + ui_style.ghost_button_stylesheet(self))
 
+    def _check_inventory_changes(self):
+        if inventory_signature() != self._inventory_revision:
+            if self.loader and self.loader.isRunning():
+                self._refresh_pending = True
+            else:
+                self.refresh()
+
     def refresh(self):
         if self.loader and self.loader.isRunning():
+            self._refresh_pending = True
             return
+        self._inventory_revision = inventory_signature()
         self.status.setText('Loading applications…')
         self.list.clear()
         self.cards.clear()
@@ -881,7 +912,14 @@ class ManagerWindow(QMainWindow):
         self.loader = InventoryLoader()
         self.loader.done.connect(self._loaded)
         self.loader.failed.connect(self._load_failed)
+        self.loader.finished.connect(self._refresh_if_changed_during_load)
         self.loader.start()
+
+    def _refresh_if_changed_during_load(self):
+        # Never lose a registry write while the inventory thread is loading.
+        if self._refresh_pending or inventory_signature() != self._inventory_revision:
+            self._refresh_pending = False
+            QTimer.singleShot(0, self.refresh)
 
     def _loaded(self, inventory):
         self.inventory = inventory
