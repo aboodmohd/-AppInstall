@@ -484,7 +484,17 @@ def synchronize():
         try:
             meta=desktop_values(path.read_text())
             if meta.get('X-AppInstall-Manifest'):
-                wrap_appimage(path,meta['X-AppInstall-Manifest'])
+                manifest = Path(meta['X-AppInstall-Manifest'])
+                if not manifest.is_file():
+                    # A legacy desktop entry may outlive its manifest.
+                    # Ownership/recovery is uncertain: never delete it here.
+                    errors.append(
+                        'Skipped stale AppInstall launcher '+str(path)+
+                        ': missing manifest '+str(manifest)+
+                        '. No files were removed; review it in My Applications.'
+                    )
+                    continue
+                wrap_appimage(path,manifest)
         except (OSError,ValueError,KeyError,configparser.Error) as error:errors.append(str(error))
     return errors
 
