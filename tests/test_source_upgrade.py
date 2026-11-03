@@ -53,6 +53,65 @@ class SourceUpgradeSmokeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return result
 
+    def test_clean_registration_and_rollback_keep_app_data(self):
+        # Fresh XDG/HOME tree with no prior AppInstall registration.
+        self.assertFalse(self.state.exists())
+        self.register()
+
+        installed = self.home / ".local/bin/appinstall"
+        self.assertTrue(installed.is_file())
+        self.assertEqual(installed.read_bytes(), (ROOT / "appinstall").read_bytes())
+        self.assertTrue((self.data / "applications/appinstall.desktop").exists())
+        self.assertTrue((self.state / "manager.py").exists())
+        self.assertTrue((self.state / "launch_monitor.py").exists())
+        saved = json.loads((self.state / "associations.json").read_text())
+        self.assertEqual(saved[MIME], "original.desktop;")
+        self.assertIn(MIME + "=appinstall.desktop;", self.defaults_file.read_text())
+
+        # Desktop registration removal is not application-data removal.
+        registry = self.state / "containers/registry.json"
+        registry.parent.mkdir(parents=True)
+        data = {"rpm:keep": {"name": "Keep", "status": "installed"}}
+        registry.write_text(json.dumps(data))
+        self.register("--uninstall")
+
+        self.assertFalse(installed.exists())
+        self.assertFalse((self.data / "applications/appinstall.desktop").exists())
+        self.assertIn(MIME + "=original.desktop;", self.defaults_file.read_text())
+        self.assertIn("text/plain=editor.desktop;", self.defaults_file.read_text())
+        self.assertEqual(json.loads(registry.read_text()), data)
+
+    def test_incomplete_checkout_cannot_overwrite_existing_source_install(self):
+        # Incomplete clone must fail before touching the existing deployment.
+        self.register()
+        old_module = self.state / "manager.py"
+        old_module.write_text("# working deployed manager\n")
+        old_associations = (self.state / "associations.json").read_bytes()
+        old_defaults = self.defaults_file.read_bytes()
+        old_launcher = (self.data / "applications/appinstall.desktop").read_bytes()
+        old_executable = (self.home / ".local/bin/appinstall").read_bytes()
+
+        incomplete = Path(self.temp.name) / "incomplete source"
+        incomplete.mkdir()
+        broken = incomplete / "integration.py"
+        broken.write_bytes(REGISTER.read_bytes())
+        result = subprocess.run(
+            [sys.executable, str(broken)],
+            cwd=incomplete,
+            env=self.env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Incomplete AppInstall source directory", result.stderr)
+        self.assertIn("No user files were changed", result.stderr)
+        self.assertEqual(old_module.read_text(), "# working deployed manager\n")
+        self.assertEqual((self.state / "associations.json").read_bytes(), old_associations)
+        self.assertEqual(self.defaults_file.read_bytes(), old_defaults)
+        self.assertEqual((self.data / "applications/appinstall.desktop").read_bytes(), old_launcher)
+        self.assertEqual((self.home / ".local/bin/appinstall").read_bytes(), old_executable)
+
     def test_source_upgrade_keeps_records_original_association_and_modules(self):
         registry = self.state / "containers" / "registry.json"
         registry.parent.mkdir(parents=True)
