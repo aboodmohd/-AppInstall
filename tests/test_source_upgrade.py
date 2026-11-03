@@ -51,6 +51,7 @@ class SourceUpgradeSmokeTests(unittest.TestCase):
             timeout=30,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        return result
 
     def test_source_upgrade_keeps_records_original_association_and_modules(self):
         registry = self.state / "containers" / "registry.json"
@@ -76,6 +77,28 @@ class SourceUpgradeSmokeTests(unittest.TestCase):
         self.assertIn(MIME + "=original.desktop;", self.defaults_file.read_text())
         self.assertIn("text/plain=editor.desktop;", self.defaults_file.read_text())
         self.assertEqual(json.loads(registry.read_text()), original)
+
+
+    def test_stale_appimage_launcher_remains_intact_across_source_upgrade(self):
+        apps = self.data / 'applications'
+        apps.mkdir(parents=True, exist_ok=True)
+        stale = apps / 'legacy.desktop'
+        manifest = self.state / 'old-version-no-longer-here.json'
+        original = (
+            '[Desktop Entry]\nType=Application\nName=Legacy Application\n'
+            'Exec=/old/Application.AppImage\n'
+            'X-AppInstall-Manifest=' + str(manifest) + '\n'
+        )
+        stale.write_text(original)
+        result = self.register()
+        self.assertIn('Skipped stale AppInstall launcher', result.stderr)
+        self.assertNotIn('[Errno 2]', result.stderr)
+        self.assertIn('No files were removed', result.stderr)
+        self.assertEqual(stale.read_text(), original)
+        self.assertFalse(manifest.exists())
+        again = self.register()
+        self.assertIn('Skipped stale AppInstall launcher', again.stderr)
+        self.assertEqual(stale.read_text(), original)
 
     def test_uninstall_respects_default_changed_after_installation(self):
         self.register()
