@@ -86,6 +86,23 @@ class MonitorTests(unittest.TestCase):
         spec=m.wrap_desktop('test:actions',path,'test')
         text=path.read_text();self.assertIn('Categories=Development;',text);self.assertIn('--action',text)
         self.assertEqual(spec['cwd'],'/missing');self.assertIn('TryExec=/missing',text);self.assertEqual(spec['actions']['New'],'true --new %u')
+
+    def test_upgrade_skips_stale_appimage_manifest_without_deleting_launcher(self):
+        apps = m.data_root().parent / 'applications'
+        apps.mkdir(parents=True)
+        stale = apps / 'old-image.desktop'
+        missing = m.data_root() / 'missing-manifest.json'
+        original = ('[Desktop Entry]\nType=Application\nName=Old Image\n'
+                    'Exec=/old/image.AppImage\nX-AppInstall-Manifest='+str(missing)+'\n')
+        stale.write_text(original)
+        messages = m.synchronize()
+        self.assertEqual(stale.read_text(), original)
+        self.assertFalse(missing.exists())
+        self.assertEqual(m.registry(), {})
+        self.assertEqual(len(messages), 1)
+        self.assertIn('Skipped stale AppInstall launcher', messages[0])
+        self.assertIn('No files were removed', messages[0])
+
     def test_reinstall_one_record(self):
         spec=self.spec();m.wrap_desktop(spec['key'],spec['desktop'],'test')
         self.assertEqual(len(m.registry()),1);self.assertEqual(len(list(self.root.glob('*.desktop'))),1)
