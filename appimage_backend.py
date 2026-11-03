@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import re
+import struct
 from pathlib import Path
 import shlex
 import shutil
@@ -66,26 +67,64 @@ def run(manifest, files):
     os.execvpe(argv[0], argv, env)
 
 
-def squashfs_offset(path, limit=1<<20):
-    """Byte offset of the squashfs superblock in a copied AppImage, or None.
+def squashfs_offset(path, limit=32 << 20):
+    """Find a valid SquashFS header without executing the AppImage runtime.
 
-    The magic appears as 'hsqs' (little endian) or 'sqsh' (big endian)."""
-    def occurrence(data):
-        for magic in (b'hsqs', b'sqsh'):
-            index = data.find(magic)
-            if index >= 0:
-                return index
-        return -1
-    window = b''
+    The ELF runtime can contain unrelated 'hsqs' or 'sqsh' byte sequences
+    before the actual embedded filesystem. Validate the complete superblock
+    instead of returning the first magic-byte match.
+    """
+    header_size = 96
+
+    def valid(header, remaining):
+        if len(header) < header_size:
+            return False
+        if header[:4] == b'hsqs':
+            endian = '<'
+        elif header[:4] == b'sqsh':
+            endian = '>'
+        else:
+            return False
+        inodes = struct.unpack_from(endian + 'I', header, 4)[0]
+        block_size = struct.unpack_from(endian + 'I', header, 12)[0]
+        compression = struct.unpack_from(endian + 'H', header, 20)[0]
+        block_log = struct.unpack_from(endian + 'H', header, 22)[0]
+        major, minor = struct.unpack_from(endian + 'HH', header, 28)
+        bytes_used = struct.unpack_from(endian + 'Q', header, 40)[0]
+        inode_table = struct.unpack_from(endian + 'Q', header, 64)[0]
+        directory_table = struct.unpack_from(endian + 'Q', header, 72)[0]
+        return (
+            inodes > 0 and major == 4 and minor == 0 and
+            1 <= compression <= 6 and
+            4096 <= block_size <= 1048576 and
+            block_size & (block_size - 1) == 0 and
+            block_log == block_size.bit_length() - 1 and
+            header_size <= bytes_used <= remaining and
+            header_size <= inode_table <= bytes_used and
+            header_size <= directory_table <= bytes_used
+        )
+
     with open(path, 'rb') as file:
-        while file.tell() < limit:
-            chunk = file.read(65536)
+        size = os.fstat(file.fileno()).st_size
+        scanned = 0
+        overlap = b''
+        while scanned < min(limit, size):
+            chunk = file.read(min(65536, limit - scanned))
             if not chunk:
-                return None
-            window = window[-4:] + chunk
-            index = occurrence(window)
-            if index >= 0:
-                return max(0, file.tell() - len(window) + index)
+                break
+            data = overlap + chunk
+            base = scanned - len(overlap)
+            for magic in (b'hsqs', b'sqsh'):
+                start = 0
+                while (index := data.find(magic, start)) != -1:
+                    offset = base + index
+                    if (offset + header_size <= size and
+                            valid(data[index:index + header_size], size - offset)):
+                        return offset
+                    start = index + 1
+            # Retain superblock candidates that cross chunk boundaries.
+            overlap = data[-(header_size - 1):]
+            scanned += len(chunk)
     return None
 
 
