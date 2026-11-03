@@ -35,6 +35,22 @@ if sys.argv[1:] == ['--uninstall']:
         f.unlink(missing_ok=True)
 else:
     root = Path(__file__).resolve().parent
+    # An incomplete source checkout must not partially overwrite a working
+    # installation. Validate *all* source assets before writing associations,
+    # replacing modules or creating user-facing launchers.
+    required = (
+        'appinstall', 'appinstall.desktop', 'confirm.py', 'package_meta.py',
+        'ui_style.py', 'appimage_backend.py', 'native_backend.py',
+        'container_backend.py', 'container_ui.py', 'launch_monitor.py',
+        'manager.py', 'result_ui.py', 'runtime_probe.py',
+        'diagnostics_core.py', 'diagnostics_ui.py',
+    )
+    missing = [name for name in required if not (root / name).is_file()]
+    if missing:
+        raise SystemExit(
+            'Incomplete AppInstall source directory: missing '+
+            ', '.join(missing)+'. No user files were changed.'
+        )
     state.mkdir(parents=True, exist_ok=True)
     apps.mkdir(parents=True, exist_ok=True)
     bindir = home / '.local/bin'
