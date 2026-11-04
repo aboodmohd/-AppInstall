@@ -68,6 +68,45 @@ class InstallerTests(unittest.TestCase):
         self.assertIn('application/vnd.flatpak=previous.desktop;',defaults.read_text())
         self.assertIn('text/plain=editor.desktop;',defaults.read_text())
 
+    def test_appimage_review_action_registered_and_removed(self):
+        menu = self.home / 'data/kio/servicemenus/appinstall-appimage-review.desktop'
+        subprocess.run(['python3', str(ROOT / 'integration.py')],
+                       env=self.env, check=True, capture_output=True)
+        self.assertTrue(menu.is_file())
+        self.assertTrue(menu.stat().st_mode & 0o100)
+        text = menu.read_text()
+        self.assertIn('MimeType=application/vnd.appimage;', text)
+        self.assertIn('Actions=ReviewWithAppInstall;', text)
+        self.assertIn('X-KDE-Priority=TopLevel', text)
+        self.assertIn('X-KDE-RequiredNumberOfUrls=1', text)
+        self.assertIn('X-AppInstall-Managed=true', text)
+        self.assertIn('Exec="'+str(self.home / '.local/bin/appinstall')+'" %f', text)
+        self.assertNotIn('Exec=./', text)
+        subprocess.run([str(self.home / '.local/bin/appinstall-uninstall')],
+                       env=self.env, check=True, capture_output=True)
+        self.assertFalse(menu.exists())
+
+    def test_registration_rejects_unrelated_service_menu(self):
+        menu = self.home / 'data/kio/servicemenus/appinstall-appimage-review.desktop'
+        menu.parent.mkdir(parents=True)
+        data = '[Desktop Entry]\\nType=Service\\nName=Unrelated\\n'
+        menu.write_text(data)
+        result = subprocess.run(['python3', str(ROOT / 'integration.py')],
+                                env=self.env, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(menu.read_text(), data)
+        self.assertFalse((self.home / '.local/bin/appinstall').exists())
+
+    def test_uninstall_preserves_user_modified_unmanaged_menu(self):
+        menu = self.home / 'data/kio/servicemenus/appinstall-appimage-review.desktop'
+        subprocess.run(['python3', str(ROOT / 'integration.py')],
+                       env=self.env, check=True, capture_output=True)
+        custom = '[Desktop Entry]\\nName=Replaced by user\\n'
+        menu.write_text(custom)
+        subprocess.run([str(self.home / '.local/bin/appinstall-uninstall')],
+                       env=self.env, check=True, capture_output=True)
+        self.assertEqual(menu.read_text(), custom)
+
     def test_desktop_entry_fields(self):
         """Desktop entry has correct GenericName, Comment, and Exec."""
         desktop = ROOT / 'appinstall.desktop'

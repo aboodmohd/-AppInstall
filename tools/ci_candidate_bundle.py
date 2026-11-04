@@ -17,7 +17,10 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 SHA_LINE = re.compile(r"^([0-9a-f]{64})  ([^\r\n]+)$")
 SHA = re.compile(r"^[0-9a-f]{40}$")
-REQUIRED = ("usr/bin/appinstall", "usr/share/licenses/appinstall/LICENSE")
+REQUIRED = (
+    "usr/bin/appinstall", "usr/share/licenses/appinstall/LICENSE",
+    "usr/share/kio/servicemenus/appinstall-appimage-review.desktop",
+)
 
 
 def _expected_sha(package, sums_path):

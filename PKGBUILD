@@ -12,6 +12,7 @@ backup=()
 
 source=('appinstall'
         'appinstall.desktop'
+        'appinstall-appimage-review.desktop'
         'confirm.py'
         'manager.py'
         'result_ui.py'
@@ -45,6 +46,7 @@ source=('appinstall'
 b2sums=(
         '0fa1eb195a96d51e5810ae4cf75747af46ae007c49e034d44a6614b81a0e89158fa93057d8d78af8c3bf7023fbe78a7232fc5dd322dc998d71a4a9269f7a10ed'
         '16c4910c07dcc10eb6953329144c8be9db021f9ddf9785e7b1f832e280cc1dc1297a4935e005c44ba9614a50ce371a9c13c45fffadcb34dca95a2d6f7a20e154'
+        '729a95b76242bdb55441601fe4386f0a1ba4b0d58bd578d815e2393876ba4e9d5e9d06f7904d6563a4b0772018cc9df90a65cf7e77271d9e24ccbff4f469dd2f'
         '565f679e8e01d0f5d0e60fb49b3804c3c603461d6cbd1f7e9a01e2acd28a237b79d8386834dcd2a8a24e7080d811656d231be5772c074cc5e42a818c027f3ee2'
         '53047e37e4510e466a620f6d2ff08f7d6460b734f1e938ea7d952deed6ff25f056d09a94bba5f7a2dd978d7f55f072c3d0983345fe70fe33c617f6b4f7de92d0'
         'd06b9051e8daa08a2fe2540c7a26be57e56e5b528cf09edeca10c68c488c0b8cb0a565ee8d5279699e8baedc9b2ef00541fabf820bb4df08178e1c8bc93e42be'
@@ -69,7 +71,7 @@ b2sums=(
         'ce04bc2194dd2ca59bedc16047090e361d9c06a1fafc6ce47814966a6d16a70046a547505221f0507e744a669e69cef356cdf6117920a15b4821332b2a792844'
         'c4f23c2cffc1ee91985059cff9d29d27f5629ade85d8819565f1fdec0a871b345b63f517cc9521241a3006a77410dae3c9dac887a765db0b6f3a3f97ccdaadc9'
         'c8e7bf349ffb0716c5e05b52f1c5b691b41fa2dced18655f181a08e40208fe556d722d2bf9dcfefcaf70bd5ae27bcfe738af6306d86db931e2ecc2658022d1d7'
-        '025abf5f04af04a4848313baab6fa9fc8ed97362cec9f97ded33ad2dd5148a4e7aa60c1d6097ae598844ca04314bdddaef0189141b648b6de5e5a8dd3eb82375'
+        'b537af6516913a0f191c5947a61427158993f0b5ed209f50588cba21575869f64ad873ba9066062b34559b98556dfaf9561b4df4847c1e9ad4ea9dd081d4f594'
         '7685cb1496c71d074dccff047286242c2a28b9e1fe52a8ea33758414a8f2ab49c6591318f5983207f9bc3f5a3f7333e2e07c66974fa0bd4c35e3a52d1ad2eb66'
         'ad9c11820ca12ef1062f4a995edc015ce8ab902fee1f0c04a3c8666caca8770f4d8bb7352df10c4768b958d0ccdf50d8167c08e0aa8a560857c09c9e8bca10e5'
         '2f17356411c62bfe54df87a45e3c98a54a29dc5707fb587876d7f3df241c6d601dd013e090fd9960db19d113ef7b433f95843592221bde58c9027afbd99ed07f'
@@ -90,6 +92,8 @@ package() {
         "$pkgdir/usr/bin/$pkgname"
     install -Dm0644 "$srcdir/appinstall.desktop" \
         "$pkgdir/usr/share/applications/$pkgname.desktop"
+    install -Dm0755 "$srcdir/appinstall-appimage-review.desktop" \
+        "$pkgdir/usr/share/kio/servicemenus/appinstall-appimage-review.desktop"
     install -Dm0644 "$srcdir/README.md" \
         "$pkgdir/usr/share/doc/$pkgname/README.md"
     install -Dm0644 "$srcdir/LICENSE" \
