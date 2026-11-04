@@ -53,33 +53,33 @@ class CandidateBundleTests(unittest.TestCase):
 
     def test_pr_merge_checkout_records_distinct_pr_head(self):
         kind, head = bundle.classify_provenance(
-            "pull_request", "a" * 40, "a" * 40, "b" * 40
+            "pull_request", "a" * 40, "b" * 40
         )
         self.assertEqual("PR_TEST_ONLY", kind)
         self.assertEqual("b" * 40, head)
 
     def test_push_candidate_has_no_pr_head(self):
         kind, head = bundle.classify_provenance(
-            "push", "a" * 40, "a" * 40, ""
+            "push", "a" * 40, ""
         )
         self.assertEqual("PUSH_CI_TEST_ONLY", kind)
         self.assertIsNone(head)
 
-    def test_mismatched_checkout_is_rejected(self):
-        with self.assertRaisesRegex(ValueError, "actual checked-out git"):
-            bundle.classify_provenance("push", "a" * 40, "b" * 40, "")
+    def test_invalid_github_event_sha_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "GITHUB_SHA"):
+            bundle.classify_provenance("push", "invalid", "")
 
     def test_pr_without_head_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "complete PR branch head"):
-            bundle.classify_provenance("pull_request", "a" * 40, "a" * 40, "")
+            bundle.classify_provenance("pull_request", "a" * 40, "")
 
     def test_non_pr_cannot_claim_pr_head(self):
         with self.assertRaisesRegex(ValueError, "unexpectedly includes"):
-            bundle.classify_provenance("push", "a" * 40, "a" * 40, "b" * 40)
+            bundle.classify_provenance("push", "a" * 40, "b" * 40)
 
     def test_unknown_event_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "Unexpected CI event"):
-            bundle.classify_provenance("release", "a" * 40, "a" * 40, "")
+            bundle.classify_provenance("release", "a" * 40, "")
 
     def test_candidate_report_keeps_manual_checks_pending(self):
         evidence = {
