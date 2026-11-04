@@ -1,6 +1,6 @@
 # AppInstall 1.0.0 — Final Stable Preflight Acceptance Checklist
 
-**Status: test candidate, NOT an approved Stable 1.0 release.**
+**Status: preflight build with stable-version metadata, NOT a published Stable 1.0 release.**
 
 The automated tests cannot demonstrate a clean real desktop installation,
 safe system package removal, or arbitrary application compatibility.
@@ -39,7 +39,7 @@ Record actual GUI launches and any errors separately.
 
 ~~~fish
 set -gx APPINSTALL_RC_TEST (mktemp -d "$HOME/.appinstall-rc.XXXXXXXX")
-git clone --depth 1 --branch release/v1.0.0-rc1-preparation https://github.com/aboodmohd/-AppInstall.git "$APPINSTALL_RC_TEST/repo"
+git clone --depth 1 --branch release/v1.0.0-final-preflight https://github.com/aboodmohd/-AppInstall.git "$APPINSTALL_RC_TEST/repo"
 and env TMPDIR="$APPINSTALL_RC_TEST" QT_QPA_PLATFORM=offscreen python3 -m unittest discover -s "$APPINSTALL_RC_TEST/repo/tests" -v
 and echo "PASS: Isolated candidate source regression suite"
 ~~~
@@ -55,7 +55,7 @@ desktop. This section intentionally supplies no copy-paste live removal command.
 - [ ] Clean snapshot: confirm absence of AppInstall and original MIME defaults
 - [ ] Obtain the candidate package from its *specific* green CI workflow run
 - [ ] Compare SHA-256 against the hash printed by that run; inspect package files
-- [ ] Install in the spare environment and confirm version 1.0.0-rc.1
+- [ ] Install in the spare environment and confirm version 1.0.0
 - [ ] Verify manager and diagnostics windows open under KDE Wayland
 - [ ] Test Dolphin review, cancel, install and monitored launch for a
       representative AppImage, Flatpak, DEB and RPM
