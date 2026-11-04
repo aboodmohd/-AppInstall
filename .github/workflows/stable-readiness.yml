@@ -114,6 +114,8 @@ jobs:
             --package "appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst" \
             --sums SHA256SUMS \
             --source-sha "$GITHUB_SHA" \
+            --event-name "$GITHUB_EVENT_NAME" \
+            --pr-head-sha "${{ github.event.pull_request.head.sha }}" \
             --run-id "$GITHUB_RUN_ID" \
             --output release-candidate-evidence
 
