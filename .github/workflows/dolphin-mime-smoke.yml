@@ -34,7 +34,7 @@ jobs:
             libxcb-shape0 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1
           python -m pip install PySide6
 
-      - name: Verify six inert MIME preview dispatch cases through Dolphin
+      - name: Verify five Dolphin previews and AppImage CLI review
         run: |
           # D-Bus-activated KDE services must inherit DISPLAY from Xvfb.
           xvfb-run -a -s "-screen 0 1280x800x24" \
