@@ -19,12 +19,17 @@ ROOT = Path(__file__).resolve().parents[1]
 INSTALLER = ROOT / "appinstall"
 MIMES = (
     "application/vnd.debian.binary-package", "application/x-deb",
-    "application/vnd.flatpak.ref", "application/vnd.flatpak.repo",
+    "application/x-rpm",
+    "application/vnd.flatpak", "application/vnd.flatpak.ref",
+    "application/vnd.flatpak.repo", "application/vnd.appimage",
 )
 TYPES = {
     "deb": ("application/vnd.debian.binary-package", "application/x-deb"),
+    "rpm": ("application/x-rpm",),
+    "flatpak": ("application/vnd.flatpak",),
     "flatpakref": ("application/vnd.flatpak.ref",),
     "flatpakrepo": ("application/vnd.flatpak.repo",),
+    "appimage": ("application/vnd.appimage",),
 }
 
 
@@ -95,6 +100,88 @@ def make_flatpak_fixture(root, kind):
     return path
 
 
+
+def make_rpm_fixture(root, env):
+    """Build an inert real RPM containing one desktop metadata file, no scripts."""
+    top = root / "rpmbuild"
+    for part in ("BUILD", "BUILDROOT", "RPMS", "SOURCES", "SPECS", "SRPMS"):
+        (top / part).mkdir(parents=True)
+    spec = top / "SPECS/appinstall-ci-rpm-fixture.spec"
+    spec.write_text(
+        "Name: appinstall-ci-rpm-fixture\n"
+        "Version: 1.0\n"
+        "Release: 1\n"
+        "Summary: Harmless AppInstall preview-only RPM fixture\n"
+        "License: MIT\n"
+        "BuildArch: noarch\n"
+        "\n"
+        "%description\n"
+        "CI-generated metadata-only RPM with no scripts or executables.\n"
+        "\n"
+        "%prep\n"
+        "%build\n"
+        "%install\n"
+        "mkdir -p %{buildroot}/usr/share/applications\n"
+        "printf '[Desktop Entry]\\nType=Application\\nName=AppInstall CI RPM Fixture\\n"
+        "Exec=/bin/false\\n' > "
+        "%{buildroot}/usr/share/applications/appinstall-ci-fixture.desktop\n"
+        "\n"
+        "%files\n"
+        "/usr/share/applications/appinstall-ci-fixture.desktop\n"
+    )
+    run(["rpmbuild", "-bb", "--define", f"_topdir {top}",
+         str(spec)], env, timeout=90)
+    artifact = top / "RPMS/noarch/appinstall-ci-rpm-fixture-1.0-1.noarch.rpm"
+    if not artifact.is_file() or artifact.stat().st_size < 1000:
+        raise RuntimeError("rpmbuild did not generate a real, inert RPM fixture")
+    return artifact
+
+
+def make_appimage_fixture(root):
+    """Minimal non-executable ELF/AppImage *header*, never an installable app."""
+    path = root / "appinstall-ci-preview.AppImage"
+    header = bytearray(128)
+    header[0:4] = b"\\x7fELF"
+    header[4:8] = b"\\x02\\x01\\x01\\x00"
+    header[8:11] = b"AI\\x02"
+    header[16:18] = b"\\x02\\x00"
+    header[18:20] = b"\\x3e\\x00"  # x86_64; CI uses amd64 Ubuntu runners
+    path.write_bytes(header)
+    path.chmod(0o644)  # Do not mark executable; this is only preview metadata
+    return path
+
+
+def make_flatpak_bundle_fixture(root):
+    """Non-installable placeholder: preview UI should not read or execute it."""
+    path = root / "appinstall-ci-preview.flatpak"
+    path.write_bytes(b"AppInstall CI harmless local Flatpak preview placeholder\\n")
+    return path
+
+
+def register_isolated_appimage_mime(isolated, env):
+    """Model the opt-in AppImage MIME association in this temporary XDG profile.
+
+    The minimal Ubuntu runner does not ship AppImageLauncher MIME definitions;
+    this only tests the opted-in handler, not distro out-of-box registration.
+    """
+    packages = isolated / "data/mime/packages"
+    packages.mkdir(parents=True)
+    xml = """<?xml version="1.0" encoding="utf-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/vnd.appimage">
+    <comment>AppInstall disposable AppImage preview fixture</comment>
+    <glob pattern="*.AppImage" weight="100"/>
+    <magic priority="95">
+      <match type="string" value="AI" offset="8"/>
+    </magic>
+  </mime-type>
+</mime-info>
+"""
+    (packages / "appinstall-ci-appimage.xml").write_text(xml)
+    run(["update-mime-database", str(packages.parent)], env)
+    print("PASS: optional AppImage MIME type registered in isolated XDG only", flush=True)
+
+
 def configure_handler(isolated, env):
     desktopdir = isolated / "data/applications"
     desktopdir.mkdir(parents=True)
@@ -136,7 +223,7 @@ def is_appinstall_package_window(window, env, artifact, kind):
         cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
     except OSError:
         return False
-    module = "container_ui.py" if kind == "deb" else "confirm.py"
+    module = "container_ui.py" if kind in ("deb", "rpm") else "confirm.py"
     return module in cmdline and artifact.name in cmdline
 
 
@@ -256,8 +343,12 @@ def main():
             "QT_QPA_PLATFORM": "xcb",
             "PYTHONDONTWRITEBYTECODE": "1",
         })
+        register_isolated_appimage_mime(root, env)
         artifacts = [
             ("deb", make_fixture(root, env)),
+            ("rpm", make_rpm_fixture(root, env)),
+            ("appimage", make_appimage_fixture(root)),
+            ("flatpak", make_flatpak_bundle_fixture(root)),
             ("flatpakref", make_flatpak_fixture(root, "flatpakref")),
             ("flatpakrepo", make_flatpak_fixture(root, "flatpakrepo")),
         ]
@@ -268,7 +359,7 @@ def main():
         if registry.exists():
             raise RuntimeError("Unexpected container-install registry: installation must never occur")
         print("PASS: no package installed or registered by the review-only smoke", flush=True)
-    print("PASS: isolated Dolphin DEB + Flatpak reference/repository dispatch completed", flush=True)
+    print("PASS: six isolated Dolphin preview dispatch fixtures (DEB/RPM/AppImage/Flatpak/ref/repo) completed", flush=True)
 
 
 if __name__ == "__main__":
