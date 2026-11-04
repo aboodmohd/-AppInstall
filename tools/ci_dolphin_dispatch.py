@@ -227,6 +227,21 @@ def is_appinstall_package_window(window, env, artifact, kind):
     return module in cmdline and artifact.name in cmdline
 
 
+def report_visible_windows(env):
+    """CI-only diagnostic; no clicks or process changes."""
+    windows = search_windows(["--name", ".*"], env)
+    for wid in windows[:32]:
+        name = run(["xdotool", "getwindowname", wid], env, check=False).stdout.strip()
+        pid = run(["xdotool", "getwindowpid", wid], env, check=False).stdout.strip()
+        try:
+            cmd = Path(f"/proc/{pid}/cmdline").read_bytes().replace(
+                b"\\0", b" "
+            ).decode(errors="replace")[:360]
+        except (OSError, ValueError):
+            cmd = "<unavailable>"
+        print(f"DEBUG: window id={wid} title={name!r} pid={pid!r} cmd={cmd!r}", flush=True)
+
+
 def verify_dolphin_dispatch(artifact, kind, env):
     # KDE in a minimal X11 session can return an empty xdg-mime filetype.
     # GIO reads the installed shared MIME database, including Flatpak's
@@ -278,7 +293,7 @@ def verify_dolphin_dispatch(artifact, kind, env):
                     ).stdout.strip())
                     break
             if observed_app_pid:
-                module = "container_ui.py" if kind == "deb" else "confirm.py"
+                module = "container_ui.py" if kind in ("deb", "rpm") else "confirm.py"
                 print(
                     f"PASS: Dolphin activated {kind}, opened real {module} "
                     "AppInstall review window; no install was requested",
@@ -287,6 +302,7 @@ def verify_dolphin_dispatch(artifact, kind, env):
                 break
             time.sleep(0.4)
         if not observed_app_pid:
+            report_visible_windows(env)
             raise RuntimeError(
                 f"Dolphin did not open AppInstall preview for {kind}; "
                 "no install was attempted"
@@ -347,10 +363,10 @@ def main():
         artifacts = [
             ("deb", make_fixture(root, env)),
             ("rpm", make_rpm_fixture(root, env)),
-            ("appimage", make_appimage_fixture(root)),
             ("flatpak", make_flatpak_bundle_fixture(root)),
             ("flatpakref", make_flatpak_fixture(root, "flatpakref")),
             ("flatpakrepo", make_flatpak_fixture(root, "flatpakrepo")),
+            ("appimage", make_appimage_fixture(root)),
         ]
         configure_handler(root, env)
         for kind, artifact in artifacts:
