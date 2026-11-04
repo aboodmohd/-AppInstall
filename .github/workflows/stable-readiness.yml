@@ -61,6 +61,13 @@ jobs:
           echo "Package: $package"
           sha256sum "$package"
           bsdtar -tf "$package" | grep -q 'usr/bin/appinstall'
+          bsdtar -tf "$package" | grep -q 'usr/share/licenses/appinstall/LICENSE'
+          # Ensure pacman treats the stable build as newer than the
+          # previously distributed beta and RC test packages.
+          test "$(vercmp "${pkgver}-${pkgrel}" "1.0.0beta1-1")" -gt 0
+          test "$(vercmp "${pkgver}-${pkgrel}" "1.0.0rc1-1")" -gt 0
+          sha256sum "$package" > SHA256SUMS
+          sha256sum -c SHA256SUMS
 
       - name: Install, upgrade, and remove Arch package in disposable container
         if: matrix.kind == 'arch'
@@ -94,6 +101,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: appinstall-package-${{ github.sha }}
-          path: appinstall-*.pkg.tar.zst
+          path: |
+            appinstall-*.pkg.tar.zst
+            SHA256SUMS
           retention-days: 14
           if-no-files-found: error
