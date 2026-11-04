@@ -1,0 +1,36 @@
+name: Native Wayland Qt smoke (Weston headless; not KDE acceptance)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wayland-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Check out AppInstall
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install disposable Wayland compositor and Qt runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            weston dbus-x11 libwayland-client0 libwayland-cursor0 \
+            libxkbcommon0 libegl1 libgl1 libopengl0 libdbus-1-3 \
+            libx11-xcb1 libxkbcommon-x11-0
+          python -m pip install PySide6
+
+      - name: Confirm AppInstall Qt windows render under native Wayland
+        run: |
+          dbus-run-session -- python tools/ci_wayland_smoke.py
