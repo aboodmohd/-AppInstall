@@ -13,7 +13,9 @@ The package checksums and links later in this document are **historical**
 and must not be used to identify a newer build. On each new Arch CI run,
 the GitHub Actions artifact now includes a generated acceptance bundle:
 
-- Exact package filename, SHA-256, source commit and workflow run URL
+- Exact package filename, SHA-256, checkout commit and workflow run URL
+- For pull requests, the separate PR branch HEAD and GitHub's synthetic merge
+  checkout commit (which can be different): PR artifacts are test builds only
 - candidate-evidence.json and MANUAL_ACCEPTANCE.md with manual gates PENDING
 - SHA256SUMS generated and verified against that exact package
 
