@@ -1,5 +1,20 @@
 # AppInstall Changelog
 
+## 1.0.0 (stable build — DRAFT / NOT PUBLISHED)
+
+- Prepare final stable CLI and Arch package version identities.
+- Retain AppInstall's passive AppImage metadata inspection, injection/symlink
+  protection, original AppImageLauncher files, and unrelated themed icons.
+- Source registration uses staged/fsynced files and a restart recovery journal.
+- Add genuine disposable tmpfs disk-full and SIGKILL recovery CI.
+- Verify clean Arch pacman install/remove without changing a separate
+  user's MIME defaults, registry or AppImage data.
+- Package the project's MIT notice in /usr/share/licenses/appinstall/.
+- Verify final build's exact package contents, SHA-256, and version ordering.
+- **Release remains blocked:** spare-system KDE acceptance, asset provenance,
+  dependency/license sign-off, and explicit publication authorization.
+
+
 ## 1.0.0-rc.1 (release candidate — NOT PUBLISHED)
 
 This is a test build for verifying the eventual stable 1.0.0 release. Do not
