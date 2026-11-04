@@ -17,7 +17,7 @@ git pull --ff-only
 ./install-user.sh
 ```
 
-Source installs require running the user-level registration script again to copy the updated modules into your user installation. Registration now checks that the required source files are all present before it changes any user files; an incomplete checkout fails with a descriptive error. This preflight does not guarantee transactional recovery from disk-full or power-loss failures during a write. If the system package is also installed, the script warns and requires confirmation before creating a second user-level executable.
+Source installs require running the user-level registration script again to copy the updated modules into your user installation. Registration verifies required source files, stages and fsyncs the replacement files, and retains adjacent recovery backups before publishing. If a write fails, the source installer attempts to restore the previous registration immediately. If the process stops abruptly, rerun the source installer (or installed uninstall helper) to recover the pending journal before reading or changing MIME defaults. The journal and backups are stored in user-controlled directories. Because individual file replacements are atomic but the entire multi-file installation is not, a killed process may temporarily leave a mixture of old and new files until the next registration recovers them. Keep your existing source checkout and application data until recovery completes. If the system package is also installed, the script warns and requires confirmation before creating a second user-level executable.
 
 ### What is preserved
 
