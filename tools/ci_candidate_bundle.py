@@ -169,6 +169,8 @@ def main():
     parser.add_argument("--sums", type=Path, required=True)
     parser.add_argument("--source-sha", required=True,
                         help="GITHUB_SHA: exact checkout, PR merge SHA on pull_request events")
+    parser.add_argument("--checkout-sha", required=True,
+                        help="Actual checkout SHA captured before makepkg changes workspace ownership")
     parser.add_argument("--event-name", required=True,
                         choices=("pull_request", "push", "workflow_dispatch"))
     parser.add_argument("--pr-head-sha", default="",
@@ -177,13 +179,8 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
-    actual_checkout = subprocess.run(
-        ["git", "-c", f"safe.directory={ROOT}", "rev-parse", "HEAD"],
-        cwd=ROOT, capture_output=True,
-        text=True, check=True, timeout=10,
-    ).stdout.strip()
     candidate_classification, pr_head = classify_provenance(
-        args.event_name, args.source_sha, actual_checkout, args.pr_head_sha
+        args.event_name, args.source_sha, args.checkout_sha, args.pr_head_sha
     )
     if not args.run_id.isdecimal() or not int(args.run_id):
         raise ValueError("GitHub run ID must be a positive integer")
