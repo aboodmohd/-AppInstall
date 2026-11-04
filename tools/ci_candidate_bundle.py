@@ -95,7 +95,10 @@ def build_report(evidence):
         "",
         "## Exact CI-built artifact",
         "",
-        f"- Source commit: {evidence['source_commit']}",
+        f"- Exact checked-out build commit: {evidence['source_commit']}",
+        f"- GitHub event: {evidence.get('ci_event', 'unknown')}",
+        f"- Candidate classification: {evidence.get('candidate_classification', 'CI_TEST_ONLY')}",
+        f"- PR branch HEAD (may differ from checkout): {evidence.get('pull_request_head_commit') or 'N/A'}",
         f"- GitHub Actions run: {evidence['workflow_url']}",
         f"- Archive filename: {evidence['package_filename']}",
         f"- SHA-256: {evidence['sha256']}",
@@ -104,6 +107,10 @@ def build_report(evidence):
         "",
         "Only the exact archive above matches this checksum. Rebuilds and",
         "other runs may have different bytes and require new verification.",
+        "",
+        "**PR build warning:** Pull request runs normally build GitHub's temporary",
+        "test merge commit, NOT necessarily the PR branch HEAD. The two SHAs",
+        "are recorded separately. PR artifacts are never final release builds.",
         "",
         "## Human-only gates (none approved by CI)",
         "",
@@ -137,17 +144,46 @@ def build_report(evidence):
     return "\n".join(lines)
 
 
+def classify_provenance(event, declared_sha, checkout_sha, pr_head_sha):
+    """Differentiate a checkout from PR-head provenance; reject mismatches."""
+    if not SHA.fullmatch(declared_sha) or not SHA.fullmatch(checkout_sha):
+        raise ValueError("Build and checkout commits must be complete 40-character SHAs")
+    if declared_sha != checkout_sha:
+        raise ValueError("GITHUB_SHA does not match the actual checked-out git commit")
+    if event == "pull_request":
+        if not SHA.fullmatch(pr_head_sha):
+            raise ValueError("PR test run must record a complete PR branch head SHA")
+        return "PR_TEST_ONLY", pr_head_sha
+    if pr_head_sha:
+        raise ValueError("Non-PR build unexpectedly includes a PR head SHA")
+    if event == "push":
+        return "PUSH_CI_TEST_ONLY", None
+    if event == "workflow_dispatch":
+        return "MANUAL_CI_TEST_ONLY", None
+    raise ValueError(f"Unexpected CI event type: {event!r}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", type=Path, required=True)
     parser.add_argument("--sums", type=Path, required=True)
-    parser.add_argument("--source-sha", required=True)
+    parser.add_argument("--source-sha", required=True,
+                        help="GITHUB_SHA: exact checkout, PR merge SHA on pull_request events")
+    parser.add_argument("--event-name", required=True,
+                        choices=("pull_request", "push", "workflow_dispatch"))
+    parser.add_argument("--pr-head-sha", default="",
+                        help="github.event.pull_request.head.sha; empty for non-PR runs")
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
-    if not SHA.fullmatch(args.source_sha):
-        raise ValueError("Source commit must be a complete 40-character SHA")
+    actual_checkout = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True,
+        text=True, check=True, timeout=10,
+    ).stdout.strip()
+    candidate_classification, pr_head = classify_provenance(
+        args.event_name, args.source_sha, actual_checkout, args.pr_head_sha
+    )
     if not args.run_id.isdecimal() or not int(args.run_id):
         raise ValueError("GitHub run ID must be a positive integer")
     if args.output.exists() and (not args.output.is_dir() or any(args.output.iterdir())):
@@ -158,6 +194,10 @@ def main():
         "schema": "appinstall-candidate-evidence-1",
         "release_decision": "NO-GO",
         "source_commit": args.source_sha,
+        "source_checkout_verified": True,
+        "ci_event": args.event_name,
+        "candidate_classification": candidate_classification,
+        "pull_request_head_commit": pr_head,
         "workflow_url": f"https://github.com/aboodmohd/-AppInstall/actions/runs/{args.run_id}",
         "package_filename": args.package.name,
         "package_version": f"{version}-{release}",
@@ -178,6 +218,11 @@ def main():
         build_report(evidence), encoding="utf-8"
     )
     print(f"PASS: package SHA256 and archive contents verified: {digest}", flush=True)
+    print(
+        f"PASS: build checkout {args.source_sha}, event={args.event_name}, "
+        f"pr_head={pr_head or 'N/A'}, classification={candidate_classification}",
+        flush=True,
+    )
     print("PASS: isolated candidate evidence bundle generated (NO-GO)", flush=True)
     print("INFO: human approval, license ownership and CachyOS test still pending", flush=True)
 
