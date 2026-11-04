@@ -27,14 +27,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             dolphin openbox dbus-x11 xvfb xauth xdotool \
-            dpkg-dev libarchive-tools shared-mime-info xdg-utils \
+            flatpak libglib2.0-bin dpkg-dev libarchive-tools shared-mime-info xdg-utils \
             libegl1 libgl1 libopengl0 libdbus-1-3 \
             libx11-xcb1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 \
             libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 \
             libxcb-shape0 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1
           python -m pip install PySide6
 
-      - name: Verify genuine Dolphin to AppInstall MIME dispatch
+      - name: Verify Dolphin DEB and Flatpak MIME dispatch
         run: |
-          dbus-run-session -- xvfb-run -a -s "-screen 0 1280x800x24" \
-            python tools/ci_dolphin_dispatch.py
+          # D-Bus-activated KDE services must inherit DISPLAY from Xvfb.
+          xvfb-run -a -s "-screen 0 1280x800x24" \
+            dbus-run-session -- python tools/ci_dolphin_dispatch.py
