@@ -5,6 +5,12 @@
 **Current published release:** `v1.0.0-beta.1` (prerelease)  
 **Release decision:** **NO-GO YET**. Complete the gates below and obtain explicit publication approval.
 
+**Further progress (2026-11-04):** PR #9 merged the RC1 source and CI candidate
+checks; PR #10 merged real ENOSPC/SIGKILL tmpfs recovery; PR #11 merged the
+clean Arch container install/uninstall data-preservation test and MIT license
+package fix. The final 1.0.0 preflight branch is **not** a published version.
+Spare-system CachyOS acceptance and code/asset provenance sign-off remain open.
+
 **Update (2026-11-04):** The four AppImage metadata/payload/icon fixes were
 merged via PR #8 as 6277703b, with 142 CI tests per platform (2 skipped) and
 11 isolated AppImage security tests on CachyOS. A separate 1.0.0-rc.1

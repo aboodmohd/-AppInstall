@@ -1,65 +1,100 @@
-# AppInstall 1.0.0-rc.1 — Release Candidate Notes
+# AppInstall 1.0.0 — Stable Release Notes (DRAFT, NOT PUBLISHED)
 
-**Status:** Candidate for testing only. **Not a published stable release.**
-The published `v1.0.0-beta.1` release is unchanged. A stable `v1.0.0` tag
-requires a separate final audit, release package checksum and explicit approval.
+**Release status: BLOCKED pending final human acceptance and publication approval.**
+This file describes the intended final `v1.0.0` build, not an already
+published release. Do not create a tag, release, or overwrite the beta.
 
-## Improvements since the beta
+AppInstall integrates AppImage, Flatpak, DEB and RPM installation with the
+Linux desktop. The primary tested desktop is **CachyOS KDE Plasma Wayland**.
+Support for every third-party package or Linux distribution is not guaranteed.
 
-- Safer desktop registration with staged writes and a crash recovery journal
-  for source upgrades; simulated disk-full and abrupt-exit tests cover rollback.
-- Improved live refresh of the Installed Applications Manager and preservation
-  of stale AppImage launchers if ownership records are missing.
-- Hardened AppImage metadata parsing: reject escaping symlinks, sanitize
-  potentially multiline launcher values, protect existing themed icons, and
-  retain original AppImageLauncher payloads during migration.
-- Verified upgrade, uninstall and data preservation flows in isolated HOME/XDG
-  test directories; all four package formats exercised on a sampled CachyOS
-  KDE setup.
+## Highlights
 
-## Packaging
+- **My Applications:** search and filter installed apps, view details, open
+  managed applications, and access supported reinstall/uninstall/launcher
+  repair actions.
+- **Application Diagnostics:** monitored launchers and actionable logs for
+  startup failures; a surviving process is not proof the GUI works.
+- **Safe AppImage preview:** passive SquashFS inspection avoids running
+  untrusted AppImage code merely to show metadata. Invalid external
+  symlinks are ignored and embedded desktop-entry text is sanitized.
+- **User data protection:** preserve original AppImageLauncher payloads,
+  unrelated themed icons, and pre-existing application records.
+- **Source update recovery:** stage/fsync files and use a journal for
+  interrupted registration; simulated errors, real disposable tmpfs ENOSPC,
+  and genuine SIGKILL/restart have been exercised in isolated tests.
+- **DEB/RPM applications:** installed inside rootless Debian/Fedora
+  Distrobox containers, not through native host package managers.
+  Containers are **not** a security sandbox.
 
-The **testing-only** Arch/CachyOS build is
-`appinstall-1.0.0rc1-1-any.pkg.tar.zst`. Obtain the exact candidate
-package from the PR's GitHub Actions **Stable readiness compatibility**
-artifact, then independently verify the SHA-256 reported in that same
-workflow run. Do **not** install on a daily-use system without a backup.
-Do not use the checksum in `PACKAGE_CHECKSUM.md`: it belongs to the
-historical beta artifact, not this candidate.
+## Supported file types
 
-- Source review branch: `release/v1.0.0-rc1-preparation`.
-- This Arch package only registers an *available* desktop handler. A source
-  user-level installation, unlike the package, may change MIME defaults.
-- Candidate package versions do not guarantee future automatic upgrade order
-  under pacman; manually check the installed package version before any
-  transition to the eventual stable package.
-
-## Supported workflows and limits
-
-| Format | Implementation | Important limit |
+| File | Installation backend | Important limit |
 | --- | --- | --- |
-| AppImage | Copied to managed generation under `~/Applications` | Preview is passive, but executing third-party code is not inherently safe |
-| Flatpak | Per-user Flatpak installation | Automatic update support applies to Flatpak only |
-| DEB | Rootless Debian Distrobox installation | Applications requiring services, drivers or missing dependencies may fail |
-| RPM | Rootless Fedora Distrobox installation | Containers are not security sandboxes |
+| .AppImage | Managed application generations under ~/Applications | Passive preview requires squashfs-tools; running the app is still untrusted execution |
+| .flatpak / .flatpakref | Flatpak per-user install | Downloads and runtime dependencies may be needed |
+| .flatpakrepo | Flatpak per-user repository addition | Adds a repository, not an application |
+| .deb | Distrobox Debian container | Not all packages work; drivers/services unsupported |
+| .rpm | Distrobox Fedora container | Not all packages work; drivers/services unsupported |
 
-The application may be opened through `appinstall --manage` and failures
-reviewed through `appinstall --diagnostics`.
+## Arch Linux / CachyOS candidate package
 
-## Still required before stable v1.0.0
+The **not-yet-published** Arch package, once the final build passes, is named:
 
-1. Final source and dependency/license review.
-2. Clean installation and uninstall on a disposable CachyOS/Arch system,
-   including preservation of existing user application data.
-3. Real KDE Wayland dialog, Dolphin double-click, manager and launch checks
-   after the candidate code is installed in the disposable test environment.
-4. A physical/disposable low-space and interrupted-update verification.
-5. Final version metadata, rebuilt stable-specific package, independent
-   checksum/contents review, and explicit release authorization.
+`appinstall-1.0.0-1-any.pkg.tar.zst`
 
-See `STABLE_RELEASE_AUDIT.md` and `STABLE_READINESS.md`.
+The exact file must be obtained from the verified GitHub Actions run for
+the **final reviewed commit**, not from a previous RC/beta package. Compare
+its `SHA256SUMS` manifest with the downloaded package using `sha256sum -c`,
+and check its contents before installing in a **disposable or backed-up**
+environment. `PACKAGE_CHECKSUM.md` describes a *historical beta package*
+and must **never** be treated as the hash of this stable build.
 
-## Historical beta
+The system package registers AppInstall as an **available** MIME handler; it
+does not set all user file-type defaults. Source registration does set
+per-user defaults and retains the previous associations for restoration.
+If you previously installed from source, check `type -a appinstall` first
+because `~/.local/bin/appinstall` may shadow `/usr/bin/appinstall`.
 
-The previous release and its unchanged checksum manifest remain available as
-`v1.0.0-beta.1` and `PACKAGE_CHECKSUM.md`. Do not re-tag the beta.
+## Dependencies
+
+On Arch, the package declares Bash, Python, PySide6, coreutils and
+xdg-utils as mandatory, with feature-specific optional packages:
+Flatpak; Podman and Distrobox; squashfs-tools; KDialog or Zenity; FUSE2
+and other notification or inspection tools. Runtime libraries required by
+individual applications can still be missing. Read
+`DEPENDENCY_LICENSE_AUDIT.md` and `KNOWN_LIMITATIONS.md` for caveats.
+
+The package installs AppInstall's MIT notice under
+`/usr/share/licenses/appinstall/LICENSE`. Other dependencies retain their
+separate upstream licenses. Repackaging Qt/PySide6 or other libraries into
+an all-in-one binary would require a separate licensing review.
+
+## Evidence recorded before this preflight
+
+- **CachyOS host:** 144 Python tests passed in the previous RC1 checkout,
+  and the My Applications and Diagnostics windows were opened under KDE
+  Wayland. This does not establish final 1.0.0 GUI acceptance.
+- **Ubuntu, Arch, Fedora 44:** 147 test cases per environment in the
+  latest prior cross-distribution CI, with 2 expected skips each and no
+  failures, plus Arch package build/reinstall/removal.
+- **Real disposable tmpfs:** filled to 0 bytes free, failed safely, then
+  retried; genuine SIGKILL mid-publication recovered the journal on restart.
+  No physical power-cut scenario was verified.
+- **Clean Arch container:** pacman installation/removal preserved a
+  separate test user's MIME defaults and application data.
+
+The final `v1.0.0` source/package must be rebuilt and re-tested before
+these results can be attributed to the final artifact.
+
+## Before Stable 1.0 publication
+
+- [ ] Obtain real spare-system CachyOS/KDE clean install, double-click,
+      UI/launch, source upgrade, uninstall and recovery acceptance evidence
+- [ ] Confirm contributor and screenshot/source-asset redistribution rights
+- [ ] Review unresolved issues, security boundaries and dependency provenance
+- [ ] Check final GitHub CI runs and inspect the exact package and manifest
+- [ ] Obtain explicit approval for merge, then separately for tag/publication
+
+Until then, this is **a draft stable build only**. The public release remains
+`v1.0.0-beta.1`.

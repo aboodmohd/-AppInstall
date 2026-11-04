@@ -1,7 +1,6 @@
 # Stable v1.0 readiness checklist
 
-AppInstall `v1.0.0-beta.1` is published. This checklist is for a possible
-future **stable v1.0.0** release. It does not claim general Linux compatibility.
+AppInstall `v1.0.0-beta.1` is published. This checklist tracks the **unpublished stable v1.0.0** preflight build; it is not a public release. It does not claim general Linux compatibility.
 
 ## Automated checks introduced
 
