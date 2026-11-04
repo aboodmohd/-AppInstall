@@ -13,6 +13,9 @@ future **stable v1.0.0** release. It does not claim general Linux compatibility.
   preservation of managed records, original defaults and user-changed defaults.
 - Isolated clean user registration and uninstall, including preservation of
   managed application records, plus refusal to update from incomplete source trees.
+- Disk-full and abrupt-exit fault-injection tests for the source file update
+  journal, preserving old installed modules and MIME settings after recovery.
+  Recheck on real KDE hardware and an actual low-space filesystem before stable.
 
 These checks run in disposable CI environments. In particular, they cannot
 verify that GUI windows work under KDE, GNOME or Xfce, or that every
