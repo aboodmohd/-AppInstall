@@ -34,7 +34,8 @@ def verify_checksum(package, sums_path):
     if not package.is_file() or not sums_path.is_file():
         raise ValueError("Built package or SHA256SUMS is missing")
     expected = _expected_sha(package, sums_path)
-    digest = hashlib.file_digest(package.open("rb"), "sha256").hexdigest()
+    with package.open("rb") as archive:
+        digest = hashlib.file_digest(archive, "sha256").hexdigest()
     if digest != expected:
         raise ValueError(f"Checksum mismatch for {package.name}")
     return digest
@@ -149,7 +150,7 @@ def main():
         raise ValueError("Source commit must be a complete 40-character SHA")
     if not args.run_id.isdecimal() or not int(args.run_id):
         raise ValueError("GitHub run ID must be a positive integer")
-    if args.output.exists() and any(args.output.iterdir()):
+    if args.output.exists() and (not args.output.is_dir() or any(args.output.iterdir())):
         raise ValueError("Output directory must not contain existing files")
     digest = verify_checksum(args.package, args.sums)
     version, release = verify_package(args.package, ROOT / "PKGBUILD")
