@@ -36,6 +36,22 @@ old AppImage manifests have automated regression tests. Repeat these workflows
 in a real KDE session before publishing the stable release. A stale launcher
 must not be deleted automatically when its ownership data is missing.
 
+## Final audit findings (2026-11-04)
+
+- **Fixed in review branch, pending merge:** AppImage desktop metadata is
+  sanitized to prevent launcher field injection, and escaping metadata
+  symlinks are ignored. AppImageLauncher source payloads are retained when
+  migrating a matching desktop shortcut.
+- **Validated on main:** source update journaling with simulated ENOSPC,
+  abrupt-exit rollback, cross-distribution CI, and reported CachyOS KDE tests.
+- **Not yet validated:** actual spare-system clean install, real low-space
+  filesystem, power-loss recovery, unsupported desktop environments, and
+  arbitrary application compatibility. Automated tests do not replace these.
+- **Release artifacts pending:** v1.0.0 version/package metadata, stable
+  notes, independently checked release package contents/checksums, and a
+  separate release approval. The checksum for v1.0.0-beta.1 is not the
+  checksum for any future stable binary.
+
 ## Manual work required before stable release
 
 - Test an actual clean install and rollback on a spare Arch/CachyOS system.
