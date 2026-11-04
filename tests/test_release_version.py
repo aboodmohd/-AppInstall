@@ -31,9 +31,14 @@ class VersionConsistencyTests(unittest.TestCase):
         self.assertIn(version, notes.splitlines()[0])
         # The historic beta package's checksum is NOT the checksum of an RC build.
         beta_manifest = (ROOT / "PACKAGE_CHECKSUM.md").read_text()
-        self.assertIn('1.0.0-beta.1', beta_manifest.splitlines()[0])
+        historical_versions = re.findall(
+            r'\b\d+\.\d+\.\d+(?:-(?:beta|rc)\.\d+)?\b',
+            beta_manifest.splitlines()[0])
+        self.assertIn('1.0.0-beta.1', historical_versions)
         if version != '1.0.0-beta.1':
-            self.assertNotIn(version, beta_manifest.splitlines()[0])
+            # Version equality must be exact: "1.0.0" is naturally a
+            # substring of the preserved historical "1.0.0-beta.1".
+            self.assertNotIn(version, historical_versions)
 
 
 if __name__ == "__main__":
