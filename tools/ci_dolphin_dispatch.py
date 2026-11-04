@@ -109,10 +109,24 @@ def is_appinstall_package_window(window, env):
 
 
 def verify_dolphin_dispatch(artifact, env):
-    filetype = run(["xdg-mime", "query", "filetype", str(artifact)], env).stdout.strip()
-    if filetype not in MIMES:
-        raise RuntimeError(f"Fixture has unexpected MIME type: {filetype!r}")
-    print(f"PASS: real .deb fixture detected as {filetype}", flush=True)
+    # KDE/XDG can return an empty MIME response outside a full Plasma
+    # session, even for a valid Debian archive. Check the real bytes with
+    # libmagic; let Dolphin/KIO provide the actual dispatch verdict.
+    xdg_type = run(
+        ["xdg-mime", "query", "filetype", str(artifact)], env, check=False
+    ).stdout.strip()
+    magic_type = run(
+        ["file", "--brief", "--mime-type", str(artifact)], env
+    ).stdout.strip()
+    print(
+        f"INFO: xdg-mime filetype={xdg_type!r}, libmagic={magic_type!r}",
+        flush=True,
+    )
+    if magic_type not in MIMES:
+        raise RuntimeError(
+            f"Harmless Debian fixture has unexpected libmagic MIME: {magic_type!r}"
+        )
+    print("PASS: real .deb fixture identified by libmagic", flush=True)
 
     manager = subprocess.Popen(
         ["openbox"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
