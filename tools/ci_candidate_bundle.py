@@ -178,7 +178,8 @@ def main():
     args = parser.parse_args()
 
     actual_checkout = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True,
+        ["git", "-c", f"safe.directory={ROOT}", "rev-parse", "HEAD"],
+        cwd=ROOT, capture_output=True,
         text=True, check=True, timeout=10,
     ).stdout.strip()
     candidate_classification, pr_head = classify_provenance(
