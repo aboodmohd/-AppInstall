@@ -52,6 +52,19 @@ must not be deleted automatically when its ownership data is missing.
   separate release approval. The checksum for v1.0.0-beta.1 is not the
   checksum for any future stable binary.
 
+## Disposable filesystem and package lifecycle CI
+
+Source recovery now has a real tmpfs ENOSPC and real SIGKILL mid-publication
+test in a disposable GitHub runner, followed by journal-based restart. This
+is not a physical power-cut or a spare CachyOS host test.
+
+A separate Arch container gate tests a clean install and uninstall while
+preserving a non-root test user's MIME defaults, managed registry, and
+AppImage data. The package must also ship its MIT notice in the standard
+Arch license path. The third-party license review in
+`DEPENDENCY_LICENSE_AUDIT.md` is preliminary: contributor ownership and
+screenshot provenance still require independent verification.
+
 ## Manual work required before stable release
 
 - Test an actual clean install and rollback on a spare Arch/CachyOS system.
