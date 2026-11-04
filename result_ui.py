@@ -69,7 +69,7 @@ class SuccessDialog(QDialog):
 
 class FailureDialog(QDialog):
     """Install/repair failure review. Retry is only enabled when the caller proved it safe."""
-    def __init__(self, name, category, explanation='', technical='', logs='', retry=None, parent=None):
+    def __init__(self, name, category, explanation='', technical='', logs='', retry=None, parent=None, headline=None):
         super().__init__(parent)
         self.setWindowTitle('AppInstall — Could not finish')
         self.resize(560, 460)
@@ -78,14 +78,16 @@ class FailureDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(26, 24, 26, 20)
         layout.setSpacing(12)
-        title = QLabel(name+' could not be installed')
+        title = QLabel(headline if headline is not None else name+' could not be installed')
+        title.setObjectName('failure-headline')
         title.setTextFormat(Qt.PlainText)
         title.setWordWrap(True)
         title.setStyleSheet('font-size: 18px; font-weight: 700;')
         layout.addWidget(title)
         kind = QLabel('Problem type: '+category)
         kind.setTextFormat(Qt.PlainText)
-        kind.setStyleSheet('color: palette(mid);')
+        kind.setObjectName('failure-category')
+        kind.setStyleSheet('color: palette(window-text);')
         layout.addWidget(kind)
         body = QPlainTextEdit()
         body.setReadOnly(True)
