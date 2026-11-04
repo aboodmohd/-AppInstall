@@ -55,7 +55,7 @@ class Workflow(QDialog):
         head.addWidget(self.title)
         self.subtitle=QLabel('Checking the package before any change')
         self.subtitle.setTextFormat(Qt.PlainText)
-        self.subtitle.setStyleSheet('color: palette(mid);')
+        self.subtitle.setStyleSheet('color: palette(window-text);')
         head.addWidget(self.subtitle)
         header.addLayout(head,1); layout.addLayout(header)
         self.description=QLabel(); self.description.setWordWrap(True); self.description.setTextFormat(Qt.PlainText)
@@ -64,7 +64,7 @@ class Workflow(QDialog):
         self.stage_label=QLabel('')
 
         self.stage_label.setTextFormat(Qt.PlainText)
-        self.stage_label.setStyleSheet('color: palette(mid); font-weight: 600;')
+        self.stage_label.setStyleSheet('color: palette(window-text); font-weight: 600;')
         status.addWidget(self.stage_label,1)
         self.bar=QProgressBar(); self.bar.setRange(0,0); self.bar.setTextVisible(False)
         self.bar.setFixedWidth(200); status.addWidget(self.bar,0); self.bar.hide()
