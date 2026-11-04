@@ -323,8 +323,9 @@ def install(source, destination, fallback=False):
                     backup.mkdir(exist_ok=True)
                     shutil.copy2(old, backup/old.name)
                     old.unlink()
-                    if oldtarget.is_file() and oldtarget != target:
-                        oldtarget.unlink()
+                    # Never delete another installer's payload. The matching
+                    # AppImageLauncher shortcut is backed up, but its source
+                    # AppImage remains available for manual recovery.
             except (OSError, KeyError, configparser.Error):
                 pass
         if previous:
