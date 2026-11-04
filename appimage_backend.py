@@ -43,6 +43,33 @@ def app_name(value):
     return re.sub(r'\s*\(v?\d+(?:\.\d+)+(?:[^)]*)\)\s*$', '', value).strip()
 
 
+def desktop_text(value):
+    """One trusted desktop-entry line from potentially untrusted AppImage metadata.
+
+    ConfigParser permits indented multiline values; copying those into a new
+    desktop file can otherwise inject arbitrary keys such as Exec or Actions.
+    """
+    return ''.join(' ' if ord(char) < 32 or ord(char) == 127 else char
+                   for char in str(value))
+
+
+def safe_desktop_files(root):
+    """Select metadata within the unpacked AppDir; ignore escaping symlinks."""
+    base = root.resolve()
+    candidates = sorted(root.glob('*.desktop'))
+    if not candidates:
+        candidates = sorted(root.rglob('*.desktop'))
+    result = []
+    for entry in candidates:
+        try:
+            resolved = entry.resolve(strict=True)
+            if resolved.is_relative_to(base) and resolved.is_file():
+                result.append(entry)
+        except (OSError, RuntimeError):
+            continue
+    return result
+
+
 def categories(value):
     main = {'AudioVideo', 'Audio', 'Video', 'Development', 'Education', 'Game',
             'Graphics', 'Network', 'Office', 'Science', 'Settings', 'System', 'Utility'}
@@ -173,14 +200,10 @@ def install(source, destination, fallback=False):
             root = None
             hint = 'Detailed preview unavailable: '+str(limitation)
             print(hint, file=sys.stderr)
-        entries = sorted(root.glob('*.desktop')) if root else []
-        if entries and not all(p.is_file() for p in entries):
-            entries = [p for p in entries if p.is_file()]
-        if not entries and root:
-            entries = sorted(root.rglob('*.desktop'))
+        entries = safe_desktop_files(root) if root else []
         original = next((p for p in entries if desktop(p).get('Type') == 'Application'), None)
         meta = desktop(original) if original else {}
-        name = app_name(meta.get('Name', source.stem).replace('\n', ' '))
+        name = app_name(desktop_text(meta.get('Name', source.stem)))
         ident = hashlib.sha256(name.encode()).hexdigest()[:16]
         entry = apps/f'appinstall-{ident}.desktop'
         # Reuse the application's desktop ID: self-registration then updates the
@@ -249,15 +272,15 @@ def install(source, destination, fallback=False):
                     raise RuntimeError('Extracted AppImage has no AppRun launcher.')
             info = dict(target=str(target), desktop_exec=meta.get('Exec','AppRun'), working_directory=meta.get('Path',''), desktop_args=shlex.split(meta.get('Exec','AppRun'))[1:], args=arguments(meta.get('Exec','AppRun')), fallback=extracted, generation=str(generation))
             helper = Path(__file__).resolve()
-            comment = meta.get('Comment', 'AppImage application' if root else 'AppImage application. Detailed preview unavailable; the image was not executed.')
+            comment = desktop_text(meta.get('Comment', 'AppImage application' if root else 'AppImage application. Detailed preview unavailable; the image was not executed.'))
             lines = ['[Desktop Entry]', 'Type=Application', 'Name='+name,
-                     'Comment='+comment.replace('\n',' '),
+                     'Comment='+comment,
                      'Icon='+icon, 'Terminal=false', 'Categories='+categories(meta.get('Categories', '')),
                      'Exec='+quote(sys.executable)+' '+quote(helper)+' --run '+quote(manifest)+' %U',
                      'X-AppInstall-Exec='+str(target), 'X-AppInstall-Manifest='+str(manifest)]
             startup_wm_class = meta.get('StartupWMClass', '')
             if startup_wm_class:
-                lines.append('StartupWMClass='+startup_wm_class)
+                lines.append('StartupWMClass='+desktop_text(startup_wm_class))
             lines.append('TryExec='+str(target))
             text = '\n'.join(lines)+'\n'
             # Only validated, fully staged artifacts are made visible.
