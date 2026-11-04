@@ -148,7 +148,7 @@ def review_window(file, kind, ref, name, description, icon, details):
                        'appimage': 'AppImage application', 'flatpakrepo': 'Software repository',
                        'deb': 'Debian package', 'rpm': 'RPM package'}.get(kind, kind))
     subtitle.setTextFormat(Qt.PlainText)
-    subtitle.setStyleSheet('color: palette(mid);')
+    subtitle.setStyleSheet('color: palette(window-text);')
     text.addWidget(subtitle)
     try: size_text = meta.human_size(file.stat().st_size)
     except OSError: size_text = ''
@@ -160,7 +160,7 @@ def review_window(file, kind, ref, name, description, icon, details):
             ('Destination', 'System-wide — administrator required' if kind in ('deb', 'rpm') else 'Install for your account')]
     for row, (label, value) in enumerate(rows):
         key = QLabel(label)
-        key.setStyleSheet('color: palette(mid);')
+        key.setStyleSheet('color: palette(window-text);')
         facts.addWidget(key, row, 0)
         entry = QLabel(value)
         entry.setTextFormat(Qt.PlainText)
@@ -181,7 +181,7 @@ def review_window(file, kind, ref, name, description, icon, details):
                     'not security sandboxes.' if kind in ('deb', 'rpm') else
                     'Only install applications from sources you trust.')
     notice.setWordWrap(True)
-    notice.setStyleSheet('color: palette(mid);')
+    notice.setStyleSheet('color: palette(window-text);')
     layout.addWidget(notice)
 
     line = QFrame(); line.setFrameShape(QFrame.HLine)
