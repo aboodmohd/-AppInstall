@@ -104,6 +104,19 @@ jobs:
           bash -n tools/arch_clean_install_gate.sh
           bash tools/arch_clean_install_gate.sh "appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst" "$expected"
 
+      - name: Generate exact-candidate evidence and manual acceptance bundle
+        if: matrix.kind == 'arch'
+        run: |
+          set -eu
+          pkgver=$(sed -n 's/^pkgver=//p' PKGBUILD)
+          pkgrel=$(sed -n 's/^pkgrel=//p' PKGBUILD)
+          python3 tools/ci_candidate_bundle.py \
+            --package "appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst" \
+            --sums SHA256SUMS \
+            --source-sha "$GITHUB_SHA" \
+            --run-id "$GITHUB_RUN_ID" \
+            --output release-candidate-evidence
+
       - name: Preserve disposable Arch package for candidate testing
         if: matrix.kind == 'arch'
         uses: actions/upload-artifact@v4
@@ -112,5 +125,6 @@ jobs:
           path: |
             appinstall-*.pkg.tar.zst
             SHA256SUMS
+            release-candidate-evidence/
           retention-days: 14
           if-no-files-found: error
