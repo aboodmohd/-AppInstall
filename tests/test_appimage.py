@@ -229,6 +229,14 @@ class AppImageTests(unittest.TestCase):
             (appdir/'safe.desktop').write_text('[Desktop Entry]\nName=Safe\n')
             self.assertEqual([p.name for p in backend.safe_desktop_files(appdir)],
                              ['safe.desktop'])
+            # Invalid top-level metadata must not block a nested safe entry.
+            (appdir/'safe.desktop').unlink()
+            nested = appdir/'usr/share/applications'
+            nested.mkdir(parents=True)
+            (nested/'nested.desktop').write_text(
+                '[Desktop Entry]\nType=Application\nName=Nested\n')
+            self.assertEqual([p.name for p in backend.safe_desktop_files(appdir)],
+                             ['nested.desktop'])
 
     def test_desktop_entry_includes_try_exec(self):
         """Generated desktop entry's TryExec is preserved through wrap_desktop."""
