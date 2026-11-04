@@ -77,6 +77,8 @@ class InstallerTests(unittest.TestCase):
         text = menu.read_text()
         self.assertIn('MimeType=application/vnd.appimage;', text)
         self.assertIn('Actions=ReviewWithAppInstall;', text)
+        self.assertIn('X-KDE-Priority=TopLevel', text)
+        self.assertIn('X-KDE-RequiredNumberOfUrls=1', text)
         self.assertIn('X-AppInstall-Managed=true', text)
         self.assertIn('Exec="'+str(self.home / '.local/bin/appinstall')+'" %f', text)
         self.assertNotIn('Exec=./', text)
