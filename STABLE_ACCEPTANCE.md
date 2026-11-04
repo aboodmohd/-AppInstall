@@ -1,4 +1,4 @@
-# AppInstall 1.0.0-rc.1 — Acceptance Checklist
+# AppInstall 1.0.0 — Final Stable Preflight Acceptance Checklist
 
 **Status: test candidate, NOT an approved Stable 1.0 release.**
 
