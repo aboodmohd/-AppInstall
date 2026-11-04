@@ -69,6 +69,14 @@ jobs:
           sha256sum "$package" > SHA256SUMS
           sha256sum -c SHA256SUMS
 
+      - name: Check screenshot evidence and distribution boundary
+        if: matrix.kind == 'arch'
+        run: |
+          set -eu
+          pkgver=$(sed -n 's/^pkgver=//p' PKGBUILD)
+          pkgrel=$(sed -n 's/^pkgrel=//p' PKGBUILD)
+          python3 tools/ci_release_evidence_gate.py --package "appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst"
+
       - name: Install, upgrade, and remove Arch package in disposable container
         if: matrix.kind == 'arch'
         run: |
