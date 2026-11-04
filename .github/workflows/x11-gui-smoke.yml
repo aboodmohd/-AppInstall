@@ -1,0 +1,33 @@
+name: X11 graphical smoke (not KDE/Wayland acceptance)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gui-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - name: Check out AppInstall
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install isolated X11 GUI dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xauth xdotool libegl1 libgl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0
+          python -m pip install PySide6
+
+      - name: Verify CLI dispatch and graphical window startup on Xvfb
+        run: |
+          xvfb-run -a -s "-screen 0 1280x800x24" python tools/ci_x11_gui_smoke.py
