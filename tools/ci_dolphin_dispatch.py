@@ -19,12 +19,17 @@ ROOT = Path(__file__).resolve().parents[1]
 INSTALLER = ROOT / "appinstall"
 MIMES = (
     "application/vnd.debian.binary-package", "application/x-deb",
-    "application/vnd.flatpak.ref", "application/vnd.flatpak.repo",
+    "application/x-rpm",
+    "application/vnd.flatpak", "application/vnd.flatpak.ref",
+    "application/vnd.flatpak.repo", "application/vnd.appimage",
 )
 TYPES = {
     "deb": ("application/vnd.debian.binary-package", "application/x-deb"),
+    "rpm": ("application/x-rpm",),
+    "flatpak": ("application/vnd.flatpak",),
     "flatpakref": ("application/vnd.flatpak.ref",),
     "flatpakrepo": ("application/vnd.flatpak.repo",),
+    "appimage": ("application/vnd.appimage",),
 }
 
 
@@ -95,6 +100,88 @@ def make_flatpak_fixture(root, kind):
     return path
 
 
+
+def make_rpm_fixture(root, env):
+    """Build an inert real RPM containing one desktop metadata file, no scripts."""
+    top = root / "rpmbuild"
+    for part in ("BUILD", "BUILDROOT", "RPMS", "SOURCES", "SPECS", "SRPMS"):
+        (top / part).mkdir(parents=True)
+    spec = top / "SPECS/appinstall-ci-rpm-fixture.spec"
+    spec.write_text(
+        "Name: appinstall-ci-rpm-fixture\n"
+        "Version: 1.0\n"
+        "Release: 1\n"
+        "Summary: Harmless AppInstall preview-only RPM fixture\n"
+        "License: MIT\n"
+        "BuildArch: noarch\n"
+        "\n"
+        "%description\n"
+        "CI-generated metadata-only RPM with no scripts or executables.\n"
+        "\n"
+        "%prep\n"
+        "%build\n"
+        "%install\n"
+        "mkdir -p %{buildroot}/usr/share/applications\n"
+        "printf '[Desktop Entry]\\nType=Application\\nName=AppInstall CI RPM Fixture\\n"
+        "Exec=/bin/false\\n' > "
+        "%{buildroot}/usr/share/applications/appinstall-ci-fixture.desktop\n"
+        "\n"
+        "%files\n"
+        "/usr/share/applications/appinstall-ci-fixture.desktop\n"
+    )
+    run(["rpmbuild", "-bb", "--define", f"_topdir {top}",
+         str(spec)], env, timeout=90)
+    artifact = top / "RPMS/noarch/appinstall-ci-rpm-fixture-1.0-1.noarch.rpm"
+    if not artifact.is_file() or artifact.stat().st_size < 1000:
+        raise RuntimeError("rpmbuild did not generate a real, inert RPM fixture")
+    return artifact
+
+
+def make_appimage_fixture(root):
+    """Minimal non-executable ELF/AppImage *header*, never an installable app."""
+    path = root / "appinstall-ci-preview.AppImage"
+    header = bytearray(128)
+    header[0:4] = b"\x7fELF"
+    header[4:8] = b"\x02\x01\x01\x00"
+    header[8:11] = b"AI\x02"
+    header[16:18] = b"\x02\x00"
+    header[18:20] = b"\x3e\x00"  # x86_64; CI uses amd64 Ubuntu runners
+    path.write_bytes(header)
+    path.chmod(0o644)  # Do not mark executable; this is only preview metadata
+    return path
+
+
+def make_flatpak_bundle_fixture(root):
+    """Non-installable placeholder: preview UI should not read or execute it."""
+    path = root / "appinstall-ci-preview.flatpak"
+    path.write_bytes(b"AppInstall CI harmless local Flatpak preview placeholder\\n")
+    return path
+
+
+def register_isolated_appimage_mime(isolated, env):
+    """Model the opt-in AppImage MIME association in this temporary XDG profile.
+
+    The minimal Ubuntu runner does not ship AppImageLauncher MIME definitions;
+    this only tests the opted-in handler, not distro out-of-box registration.
+    """
+    packages = isolated / "data/mime/packages"
+    packages.mkdir(parents=True)
+    xml = """<?xml version="1.0" encoding="utf-8"?>
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/vnd.appimage">
+    <comment>AppInstall disposable AppImage preview fixture</comment>
+    <glob pattern="*.AppImage" weight="100"/>
+    <magic priority="95">
+      <match type="string" value="AI" offset="8"/>
+    </magic>
+  </mime-type>
+</mime-info>
+"""
+    (packages / "appinstall-ci-appimage.xml").write_text(xml)
+    run(["update-mime-database", str(packages.parent)], env)
+    print("PASS: optional AppImage MIME type registered in isolated XDG only", flush=True)
+
+
 def configure_handler(isolated, env):
     desktopdir = isolated / "data/applications"
     desktopdir.mkdir(parents=True)
@@ -136,11 +223,28 @@ def is_appinstall_package_window(window, env, artifact, kind):
         cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
     except OSError:
         return False
-    module = "container_ui.py" if kind == "deb" else "confirm.py"
+    module = "container_ui.py" if kind in ("deb", "rpm") else "confirm.py"
     return module in cmdline and artifact.name in cmdline
 
 
-def verify_dolphin_dispatch(artifact, kind, env):
+def report_visible_windows(env):
+    """CI-only diagnostic; no clicks or process changes."""
+    windows = search_windows(["--name", ".*"], env)
+    for wid in windows[:32]:
+        name = run(["xdotool", "getwindowname", wid], env, check=False).stdout.strip()
+        pid = run(["xdotool", "getwindowpid", wid], env, check=False).stdout.strip()
+        if not pid.isdigit():
+            continue
+        try:
+            cmd = Path(f"/proc/{pid}/cmdline").read_bytes().replace(
+                b"\0", b" "
+            ).decode(errors="replace")[:360]
+        except (OSError, ValueError):
+            cmd = "<unavailable>"
+        print(f"DEBUG: window id={wid} title={name!r} pid={pid!r} cmd={cmd!r}", flush=True)
+
+
+def verify_dolphin_dispatch(artifact, kind, env, *, required=True):
     # KDE in a minimal X11 session can return an empty xdg-mime filetype.
     # GIO reads the installed shared MIME database, including Flatpak's
     # .flatpakref/.flatpakrepo registrations supplied by the CI runner.
@@ -181,7 +285,7 @@ def verify_dolphin_dispatch(artifact, kind, env):
         # NEVER activate a confirmation/installation button inside AppInstall.
         run(["xdotool", "windowactivate", "--sync", window], env)
         run(["xdotool", "key", "--clearmodifiers", "Return"], env)
-        deadline = time.monotonic() + 45
+        deadline = time.monotonic() + (45 if required else 8)
         while time.monotonic() < deadline:
             windows = search_windows(["--name", "^AppInstall$"], env)
             for app_window in windows:
@@ -191,7 +295,7 @@ def verify_dolphin_dispatch(artifact, kind, env):
                     ).stdout.strip())
                     break
             if observed_app_pid:
-                module = "container_ui.py" if kind == "deb" else "confirm.py"
+                module = "container_ui.py" if kind in ("deb", "rpm") else "confirm.py"
                 print(
                     f"PASS: Dolphin activated {kind}, opened real {module} "
                     "AppInstall review window; no install was requested",
@@ -200,6 +304,15 @@ def verify_dolphin_dispatch(artifact, kind, env):
                 break
             time.sleep(0.4)
         if not observed_app_pid:
+            if not required:
+                print(
+                    "LIMITATION: Dolphin did not dispatch the synthetic ELF/AppImage "
+                    "fixture under Ubuntu/X11; real CachyOS AppImage handling "
+                    "still needs manual acceptance",
+                    flush=True,
+                )
+                return False
+            report_visible_windows(env)
             raise RuntimeError(
                 f"Dolphin did not open AppInstall preview for {kind}; "
                 "no install was attempted"
@@ -207,6 +320,7 @@ def verify_dolphin_dispatch(artifact, kind, env):
         time.sleep(0.5)
         if not Path(f"/proc/{observed_app_pid}").exists():
             raise RuntimeError(f"{kind} AppInstall review process exited immediately")
+        return True
     finally:
         if observed_app_pid:
             try:
@@ -228,6 +342,62 @@ def verify_dolphin_dispatch(artifact, kind, env):
         except subprocess.TimeoutExpired:
             manager.kill()
             manager.wait(timeout=5)
+
+
+def verify_appimage_direct_review(artifact, env):
+    """Confirm the fake ELF header opens AppInstall via CLI; do not install."""
+    wm = subprocess.Popen(
+        ["openbox"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+    child = None
+    with tempfile.TemporaryFile(mode="w+b") as output:
+        try:
+            time.sleep(0.4)
+            child = subprocess.Popen(
+                ["/usr/bin/bash", str(INSTALLER), str(artifact)],
+                env=env, stdout=output, stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+            deadline = time.monotonic() + 22
+            while time.monotonic() < deadline:
+                for window in search_windows(["--name", "^AppInstall$"], env):
+                    if is_appinstall_package_window(window, env, artifact, "appimage"):
+                        if child.poll() is not None:
+                            raise RuntimeError("AppImage CLI preview parent exited early")
+                        print(
+                            "PASS: synthetic AppImage opens actual confirm.py via "
+                            "direct AppInstall CLI; no install requested",
+                            flush=True,
+                        )
+                        return
+                if child.poll() is not None:
+                    break
+                time.sleep(0.25)
+            output.flush()
+            output.seek(0)
+            raise RuntimeError(
+                "Synthetic AppImage direct CLI did not open confirm.py: " +
+                output.read()[-4500:].decode(errors="replace")
+            )
+        finally:
+            if child:
+                if child.poll() is None:
+                    try:
+                        os.killpg(child.pid, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                try:
+                    child.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    os.killpg(child.pid, signal.SIGKILL)
+                    child.wait(timeout=5)
+            if wm.poll() is None:
+                wm.terminate()
+            try:
+                wm.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                wm.kill()
+                wm.wait(timeout=5)
 
 
 def main():
@@ -256,19 +426,32 @@ def main():
             "QT_QPA_PLATFORM": "xcb",
             "PYTHONDONTWRITEBYTECODE": "1",
         })
+        register_isolated_appimage_mime(root, env)
         artifacts = [
             ("deb", make_fixture(root, env)),
+            ("rpm", make_rpm_fixture(root, env)),
+            ("flatpak", make_flatpak_bundle_fixture(root)),
             ("flatpakref", make_flatpak_fixture(root, "flatpakref")),
             ("flatpakrepo", make_flatpak_fixture(root, "flatpakrepo")),
+            ("appimage", make_appimage_fixture(root)),
         ]
         configure_handler(root, env)
+        successes = 0
         for kind, artifact in artifacts:
-            verify_dolphin_dispatch(artifact, kind, env)
+            successes += int(
+                verify_dolphin_dispatch(
+                    artifact, kind, env, required=(kind != "appimage")
+                )
+            )
+            if kind == "appimage":
+                verify_appimage_direct_review(artifact, env)
+        if successes < 5:
+            raise RuntimeError(f"Expected five process-backed Dolphin previews; observed {successes}")
         registry = root / "data/appinstall/containers/registry.json"
         if registry.exists():
             raise RuntimeError("Unexpected container-install registry: installation must never occur")
         print("PASS: no package installed or registered by the review-only smoke", flush=True)
-    print("PASS: isolated Dolphin DEB + Flatpak reference/repository dispatch completed", flush=True)
+    print("PASS: five Dolphin MIME previews + one direct AppImage CLI review verified", flush=True)
 
 
 if __name__ == "__main__":
