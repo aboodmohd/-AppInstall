@@ -1,0 +1,47 @@
+name: Real tmpfs filesystem recovery
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-filesystem-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Mount a small disposable tmpfs
+        shell: bash
+        run: |
+          set -euo pipefail
+          disk="$RUNNER_TEMP/appinstall-recovery-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -- "$disk"
+          sudo mount -t tmpfs -o size=32m,nosuid,nodev tmpfs "$disk"
+          sudo chown "$(id -u):$(id -g)" "$disk"
+          echo "APPINSTALL_TEST_MOUNT=$disk" >> "$GITHUB_ENV"
+          mountpoint -q "$disk"
+
+      - name: Verify real ENOSPC and interrupted update recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/real_tmpfs_gate.py "$APPINSTALL_TEST_MOUNT"
+
+      - name: Unmount disposable filesystem
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -n "${APPINSTALL_TEST_MOUNT:-}" ] && mountpoint -q "$APPINSTALL_TEST_MOUNT"; then
+            sudo umount -- "$APPINSTALL_TEST_MOUNT"
+          fi
+          if [ -n "${APPINSTALL_TEST_MOUNT:-}" ] && [ -d "$APPINSTALL_TEST_MOUNT" ]; then
+            rmdir -- "$APPINSTALL_TEST_MOUNT"
+          fi
