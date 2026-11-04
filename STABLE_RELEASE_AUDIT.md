@@ -5,6 +5,11 @@
 **Current published release:** `v1.0.0-beta.1` (prerelease)  
 **Release decision:** **NO-GO YET**. Complete the gates below and obtain explicit publication approval.
 
+**Update (2026-11-04):** The four AppImage metadata/payload/icon fixes were
+merged via PR #8 as 6277703b, with 142 CI tests per platform (2 skipped) and
+11 isolated AppImage security tests on CachyOS. A separate 1.0.0-rc.1
+candidate preparation branch is under review; no stable tag is published.
+
 ## Scope and evidence
 
 Reviewed source registration, journaling and recovery, AppImage passive metadata,
