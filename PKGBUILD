@@ -92,6 +92,10 @@ package() {
         "$pkgdir/usr/share/doc/$pkgname/README.md"
     install -Dm0644 "$srcdir/LICENSE" \
         "$pkgdir/usr/share/doc/$pkgname/LICENSE"
+    # MIT is a license family, so ship this project's exact notice under
+    # /usr/share/licenses as required by Arch packaging guidance.
+    install -Dm0644 "$srcdir/LICENSE" \
+        "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
     install -Dm0644 "$srcdir/LAUNCH_DIAGNOSTICS.md" \
         "$pkgdir/usr/share/doc/$pkgname/LAUNCH_DIAGNOSTICS.md"
     install -Dm0644 "$srcdir/INTEGRATION_TESTING.md" \
