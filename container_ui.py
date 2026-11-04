@@ -26,6 +26,15 @@ def classify(message):
     return 'Package or compatibility problem'
 
 
+def failure_context(args, info):
+    """Display package-validation failures separately from install/repair failures."""
+    if info is not None:
+        return info.get('name', 'Package'), None
+    if args and args[0] and not args[0].startswith('--'):
+        return Path(args[0]).name, 'Package validation failed'
+    return 'Container operation', None
+
+
 class Job(QThread):
     done = Signal(object)
     failed = Signal(str)
@@ -103,9 +112,10 @@ class Workflow(QDialog):
     def failure(self,message):
         self.logs.appendPlainText(message)
         self.description.setText('Operation failed. Review the problem summary below.')
-        name=self.info.get('name',Path(self.args[0]).name if self.args and not self.args[0].startswith('--') else 'Container operation') if self.info else 'AppInstall'
+        name, headline = failure_context(self.args, self.info)
         result_ui.FailureDialog(name, classify(message), '', technical=message,
-                                logs=self.logs.toPlainText(), retry=self.retry_callback).exec()
+                                logs=self.logs.toPlainText(), retry=self.retry_callback,
+                                headline=headline).exec()
         self.description.setText('Operation failed. Review details below.'); self.action.setEnabled(False)
     def read(self):
         if self.args[0]=='--info':
