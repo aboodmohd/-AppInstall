@@ -3,10 +3,24 @@
 **Updated 2026-11-04. Decision: NO-GO for public Stable 1.0 until the
 unverified acceptance and provenance items below are explicitly signed off.**
 
-**Current main:** \`ba6ecd0a2ffba9d0663559ee9c5d140324d58600\`
-(PR #12 merged; CLI version \`1.0.0\`; Arch \`pkgver=1.0.0\`).
+**Historical baseline from PR #12:** ba6ecd0a2ffba9d0663559ee9c5d140324d58600 (CLI 1.0.0; pkgver=1.0.0). **That commit is not current main.** Check the live GitHub main branch for the latest commit and CI artifact.
 **Only GitHub release currently published:** \`v1.0.0-beta.1\`.
 The fact that the *source* says 1.0.0 does **not** mean stable is published.
+
+## Fresh CI candidate evidence (one bundle per build)
+
+The package checksums and links later in this document are **historical**
+and must not be used to identify a newer build. On each new Arch CI run,
+the GitHub Actions artifact now includes a generated acceptance bundle:
+
+- Exact package filename, SHA-256, source commit and workflow run URL
+- candidate-evidence.json and MANUAL_ACCEPTANCE.md with manual gates PENDING
+- SHA256SUMS generated and verified against that exact package
+
+This bundle is **not a signature, independent CachyOS verification or
+copyright sign-off**. In a disposable VM or spare system, independently
+compute SHA-256 and compare it to the matching CI run before acceptance.
+Stable 1.0 remains NO-GO without explicit separate publication approval.
 
 ## Machine-verifiable evidence already complete
 
