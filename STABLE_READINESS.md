@@ -38,10 +38,10 @@ must not be deleted automatically when its ownership data is missing.
 
 ## Final audit findings (2026-11-04)
 
-- **Fixed in review branch, pending merge:** AppImage desktop metadata is
-  sanitized to prevent launcher field injection, and escaping metadata
-  symlinks are ignored. AppImageLauncher source payloads are retained when
-  migrating a matching desktop shortcut.
+- **Merged in PR #8 (2026-11-04):** AppImage desktop metadata is sanitized
+  against launcher field injection, escaping metadata symlinks are ignored,
+  AppImageLauncher source payloads are retained, and unrelated user themed
+  icons are protected during integration.
 - **Validated on main:** source update journaling with simulated ENOSPC,
   abrupt-exit rollback, cross-distribution CI, and reported CachyOS KDE tests.
 - **Not yet validated:** actual spare-system clean install, real low-space
