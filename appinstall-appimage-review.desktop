@@ -1,8 +1,10 @@
 [Desktop Entry]
 Type=Service
 Name=AppInstall AppImage Review
-MimeType=application/vnd.appimage;application/x-iso9660-appimage;
+MimeType=application/vnd.appimage;application/x-iso9660-appimage;application/x-quickdrop-appimage;
 Actions=ReviewWithAppInstall;
+X-KDE-Priority=TopLevel
+X-KDE-RequiredNumberOfUrls=1
 X-AppInstall-Managed=true
 
 [Desktop Action ReviewWithAppInstall]
