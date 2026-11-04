@@ -1,5 +1,28 @@
 # AppInstall Changelog
 
+## 1.0.0-rc.1 (release candidate — NOT PUBLISHED)
+
+This is a test build for verifying the eventual stable 1.0.0 release. Do not
+mistake this branch or its CI artifact for an approved stable release.
+
+### Security and reliability
+- Import AppImage metadata without executing application runtimes.
+- Sanitize embedded launcher metadata and reject paths escaping AppDir.
+- Preserve other applications' themed icons and the original
+  AppImageLauncher AppImage files during shortcut migration.
+- Protect user source upgrades with staged, fsynced writes, backups and a
+  recovery journal; verify rollback through disk-full and abrupt-exit tests.
+- Preserve existing source install data, MIME defaults and managed records.
+
+### Testing
+- Cross-distribution headless tests on Ubuntu, Arch and Fedora.
+- Arch package build/reinstall/removal tested in disposable CI container.
+- CachyOS isolated AppImage security and source-recovery tests passed.
+- Real KDE, arbitrary DEB/RPM/Flatpak/AppImage compatibility and physical
+  power-loss recovery remain release gates.
+
+---
+
 ## 1.0.0-beta.1 (released 2026-11-02)
 
 ### Added
