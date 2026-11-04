@@ -1,5 +1,11 @@
 # AppInstall Upgrade Guide
 
+> **Stable 1.0.0 preflight:** the version in this branch is a
+> not-yet-published test build. The published release remains
+> v1.0.0-beta.1. Do not install over an existing source/user deployment
+> before a backed-up spare-system acceptance run and explicit approval.
+
+
 ## Evaluating 1.0.0-rc.1 (testing only)
 
 This release-candidate branch is not Stable 1.0. Avoid installing on a
