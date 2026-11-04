@@ -56,7 +56,7 @@ class SourceTransaction:
             if not isinstance(item, dict) or item.get('target') not in self.allowed:
                 raise RuntimeError('Source update journal contains an unexpected path.')
             target = Path(item['target'])
-            if Path(item['stage']).parent != target.parent:
+            if item['stage'] and Path(item['stage']).parent != target.parent:
                 raise RuntimeError('Source update staging path is unexpected.')
             if item.get('backup') and Path(item['backup']).parent != target.parent:
                 raise RuntimeError('Source update backup path is unexpected.')
