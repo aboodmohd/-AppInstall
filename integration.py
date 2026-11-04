@@ -16,6 +16,7 @@ data = Path(os.environ.get('XDG_DATA_HOME', home / '.local/share'))
 config = Path(os.environ.get('XDG_CONFIG_HOME', home / '.config'))
 state = data / 'appinstall'
 apps = data / 'applications'
+service_menu = data / 'kio' / 'servicemenus' / 'appinstall-appimage-review.desktop'
 bindir = home / '.local/bin'
 mime_path = config / 'mimeapps.list'
 record = state / 'associations.json'
@@ -37,7 +38,8 @@ root = Path(__file__).resolve().parent
 
 if not uninstalling:
     # Check every required file before writing any user-owned location.
-    required = ('appinstall', 'appinstall.desktop', *modules)
+    required = ('appinstall', 'appinstall.desktop',
+                'appinstall-appimage-review.desktop', *modules)
     missing = [name for name in required if not (root / name).is_file()]
     if missing:
         raise SystemExit(
@@ -54,6 +56,7 @@ destinations = [
     bindir / 'appinstall',
     bindir / 'appinstall-uninstall',
     apps / 'appinstall.desktop',
+    service_menu,
     record,
     mime_path,
 ]
@@ -89,6 +92,10 @@ with SourceTransaction(state, destinations) as transaction:
                 else:
                     defaults[mime] = previous
         # Do not remove managed application records, data, or launch logs.
+        if service_menu.is_file() and not service_menu.is_symlink():
+            if 'X-AppInstall-Managed=true' in service_menu.read_text(
+                    encoding='utf-8').splitlines():
+                changes[service_menu] = None
         for target in (
             apps / 'appinstall.desktop',
             bindir / 'appinstall',
@@ -104,6 +111,12 @@ with SourceTransaction(state, destinations) as transaction:
             if mime not in old:
                 old[mime] = defaults.get(mime)
             defaults[mime] = 'appinstall.desktop;'
+        if service_menu.exists() and not service_menu.is_symlink():
+            # Never overwrite an unrelated user's same-named service menu.
+            existing = service_menu.read_text(encoding='utf-8')
+            if 'X-AppInstall-Managed=true' not in existing.splitlines():
+                raise SystemExit('An unrelated AppImage service menu already exists at '+
+                                 str(service_menu)+'. Nothing was installed.')
         changes[record] = (json.dumps(old).encode(), 0o600)
         for name in modules:
             source = root / name
@@ -116,6 +129,10 @@ with SourceTransaction(state, destinations) as transaction:
             'Exec=appinstall %F',
             'Exec=' + quoted(bindir / 'appinstall') + ' %F')
         changes[apps / 'appinstall.desktop'] = (desktop.encode(), 0o644)
+        review_menu = (root / 'appinstall-appimage-review.desktop').read_text().replace(
+            'Exec=appinstall %f',
+            'Exec=' + quoted(bindir / 'appinstall') + ' %f')
+        changes[service_menu] = (review_menu.encode(), 0o755)
         uninstall = (
             '#!/bin/sh\nexec python3 '+
             shlex.quote(str(state / 'integration.py'))+
