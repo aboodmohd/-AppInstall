@@ -235,7 +235,7 @@ def report_visible_windows(env):
         pid = run(["xdotool", "getwindowpid", wid], env, check=False).stdout.strip()
         try:
             cmd = Path(f"/proc/{pid}/cmdline").read_bytes().replace(
-                b"\\0", b" "
+                b"\0", b" "
             ).decode(errors="replace")[:360]
         except (OSError, ValueError):
             cmd = "<unavailable>"
