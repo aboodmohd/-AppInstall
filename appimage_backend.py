@@ -261,7 +261,13 @@ def install(source, destination, fallback=False):
                     if re.fullmatch(r'[A-Za-z0-9_.-]+', iconname):
                         themed = data/'icons/hicolor'/('scalable' if suffix == '.svg' else '256x256')/'apps'
                         themed.mkdir(parents=True, exist_ok=True)
-                        shutil.copyfile(installed_icon, themed/(iconname+suffix))
+                        themed_icon = themed/(iconname+suffix)
+                        # The themed namespace is shared with other apps.
+                        # Never overwrite a pre-existing user icon or follow
+                        # its symlink; our desktop launcher already uses the
+                        # generation-owned absolute icon path.
+                        if not themed_icon.exists() and not themed_icon.is_symlink():
+                            shutil.copyfile(installed_icon, themed_icon)
                     break
                 except OSError:
                     continue
