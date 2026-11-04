@@ -221,7 +221,7 @@ class AppImageTests(unittest.TestCase):
             self.assertEqual(text.count('\nActions='), 0)
             self.assertNotIn('\nExec=/bin/false', text)
             self.assertIn('StartupWMClass=example', text)
-            self.assertIn('appimage_backend.py', backend.desktop(launcher)['Exec'])
+            self.assertIn('launch_monitor.py', backend.desktop(launcher)['Exec'])
 
     def test_passive_metadata_ignores_symlinks_outside_appdir(self):
         with tempfile.TemporaryDirectory() as temp:
