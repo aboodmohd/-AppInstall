@@ -72,6 +72,9 @@ class AppImageTests(unittest.TestCase):
             # ELF stub + squashfs magic so passive preview locates the payload offset.
             source.write_bytes(fixture_appimage())
             destination = root/'Applications'
+            themed_icon = root/'data/icons/hicolor/256x256/apps/icon.png'
+            themed_icon.parent.mkdir(parents=True)
+            themed_icon.write_bytes(b'existing user-owned themed icon')
             env = {'XDG_DATA_HOME':str(root/'data'), 'XDG_STATE_HOME':str(root/'state')}
             def extract(argv, **kwargs):
                 # Stand-in for unsquashfs: passive unpack only, nothing spawns the image.
@@ -92,6 +95,8 @@ class AppImageTests(unittest.TestCase):
                 self.assertEqual(info['args'],['--example'])
                 self.assertEqual(meta['Categories'],'AudioVideo;')
                 self.assertEqual(Path(meta['Icon']).read_bytes(),b'icon')
+                self.assertEqual(themed_icon.read_bytes(),
+                                 b'existing user-owned themed icon')
                 self.assertTrue(source.exists())
                 self.assertEqual(entry.name, 'app.desktop')
                 # Simulate the app rewriting its own desktop entry on launch.
