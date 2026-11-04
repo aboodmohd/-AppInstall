@@ -22,6 +22,25 @@ metadata, icon, or contents when double-clicked.
 - `test_archive_escape_names_are_rejected_by_unsquashfs`: extraction
   contained within scratch directory; no path escape
 
+## Stable release audit: imported AppImage metadata (2026-11-04)
+
+- Metadata from an AppImage is untrusted even when extracted passively.
+  Desktop-entry values may contain indented continuation lines; these are
+  flattened before writing a new launcher, preventing embedded values from
+  injecting standalone `Exec=` or `Actions=` keys.
+- Embedded `.desktop` symlinks that resolve outside the extracted AppDir
+  are ignored during preview; the loader can still find legitimate nested
+  desktop entries.
+- When importing icons into the shared user theme, AppInstall refuses to
+  overwrite an existing icon or follow an existing destination symlink;
+  launchers use the application generation's private absolute icon path.
+- When replacing an AppImageLauncher shortcut, AppInstall backs up the old
+  shortcut but no longer deletes the pre-existing AppImage payload.
+  AppInstall only cleans up its own previous generation.
+- Tests use malicious desktop metadata and simulated legacy launchers.
+  These controls are *not* a general guarantee that executing third-party
+  applications is safe.
+
 ## Archive extraction security
 
 - Extraction destination is a `tempfile.TemporaryDirectory` scratch

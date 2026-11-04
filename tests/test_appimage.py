@@ -72,6 +72,9 @@ class AppImageTests(unittest.TestCase):
             # ELF stub + squashfs magic so passive preview locates the payload offset.
             source.write_bytes(fixture_appimage())
             destination = root/'Applications'
+            themed_icon = root/'data/icons/hicolor/256x256/apps/icon.png'
+            themed_icon.parent.mkdir(parents=True)
+            themed_icon.write_bytes(b'existing user-owned themed icon')
             env = {'XDG_DATA_HOME':str(root/'data'), 'XDG_STATE_HOME':str(root/'state')}
             def extract(argv, **kwargs):
                 # Stand-in for unsquashfs: passive unpack only, nothing spawns the image.
@@ -92,6 +95,8 @@ class AppImageTests(unittest.TestCase):
                 self.assertEqual(info['args'],['--example'])
                 self.assertEqual(meta['Categories'],'AudioVideo;')
                 self.assertEqual(Path(meta['Icon']).read_bytes(),b'icon')
+                self.assertEqual(themed_icon.read_bytes(),
+                                 b'existing user-owned themed icon')
                 self.assertTrue(source.exists())
                 self.assertEqual(entry.name, 'app.desktop')
                 # Simulate the app rewriting its own desktop entry on launch.
@@ -111,6 +116,44 @@ class AppImageTests(unittest.TestCase):
                     backend.install(source,destination)
                 self.assertEqual(entry.read_text(),before)
                 self.assertEqual(manifest.read_text(),current)
+    def test_retires_legacy_shortcut_but_never_deletes_legacy_appimage(self):
+        """Existing AppImageLauncher payload belongs to the user, not AppInstall."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root/'new.AppImage'
+            source.write_bytes(fixture_appimage())
+            destination = root/'Applications'
+            destination.mkdir()
+            old_payload = destination/'previous.AppImage'
+            old_payload.write_bytes(b'important previous version')
+            apps = root/'data/applications'
+            apps.mkdir(parents=True)
+            legacy = apps/'appimagekit_previous.desktop'
+            legacy.write_text(
+                '[Desktop Entry]\nType=Application\nName=Example App\n'
+                f'TryExec={old_payload}\nExec={old_payload}\n')
+            env = {'XDG_DATA_HOME': str(root/'data'),
+                   'XDG_STATE_HOME': str(root/'state')}
+
+            def extract(argv, **kwargs):
+                appdir = Path(argv[argv.index('-d') + 1])
+                appdir.mkdir()
+                (appdir/'AppRun').write_text('#!/bin/sh\n')
+                (appdir/'app.desktop').write_text(
+                    '[Desktop Entry]\nType=Application\nName=Example App\n'
+                    'Exec=AppRun %U\n')
+                return subprocess.CompletedProcess(argv, 0, b'')
+
+            with patch.dict(os.environ, env), \
+                 patch.object(backend.shutil, 'which',
+                              lambda name: '/usr/bin/unsquashfs' if name == 'unsquashfs' else None), \
+                 patch.object(backend.subprocess, 'run', side_effect=extract):
+                backend.install(source, destination)
+            self.assertFalse(legacy.exists())
+            self.assertEqual(old_payload.read_bytes(), b'important previous version')
+            backup = root/'data/appinstall/launcher-backups'/legacy.name
+            self.assertTrue(backup.exists())
+
     def test_categories_and_identity(self):
         self.assertEqual(backend.categories('Development;IDE;'), 'Development;IDE;')
         self.assertEqual(backend.categories('Entertainment;'), 'AudioVideo;')
@@ -142,6 +185,63 @@ class AppImageTests(unittest.TestCase):
                 entry = next((root/'data/applications').glob('*.desktop'))
                 meta = backend.desktop(entry)
                 self.assertEqual(meta.get('StartupWMClass'),'example-app')
+
+    def test_embedded_multiline_metadata_cannot_inject_launcher_commands(self):
+        """Continuation lines must not become executable desktop-file keys."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root/'download.AppImage'
+            source.write_bytes(fixture_appimage())
+            destination = root/'Applications'
+            env = {'XDG_DATA_HOME': str(root/'data'),
+                   'XDG_STATE_HOME': str(root/'state')}
+
+            def extract(argv, **kwargs):
+                appdir = Path(argv[argv.index('-d') + 1])
+                appdir.mkdir()
+                (appdir/'AppRun').write_text('#!/bin/sh\n')
+                (appdir/'app.desktop').write_text(
+                    '[Desktop Entry]\nType=Application\nName=Example App\n'
+                    'Exec=AppRun %U\n'
+                    'StartupWMClass=example\n'
+                    ' Exec=/bin/false\n'
+                    ' Actions=untrusted;\n'
+                    'Comment=Description\n'
+                    ' Exec=/bin/false\n')
+                return subprocess.CompletedProcess(argv, 0, b'')
+
+            with patch.dict(os.environ, env), \
+                 patch.object(backend.shutil, 'which',
+                              lambda name: '/usr/bin/unsquashfs' if name == 'unsquashfs' else None), \
+                 patch.object(backend.subprocess, 'run', side_effect=extract):
+                backend.install(source, destination)
+            launcher = next((root/'data/applications').glob('*.desktop'))
+            text = launcher.read_text()
+            self.assertEqual(text.count('\nExec='), 1)
+            self.assertEqual(text.count('\nActions='), 0)
+            self.assertNotIn('\nExec=/bin/false', text)
+            self.assertIn('StartupWMClass=example', text)
+            self.assertIn('launch_monitor.py', backend.desktop(launcher)['Exec'])
+
+    def test_passive_metadata_ignores_symlinks_outside_appdir(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            appdir = base/'squashfs-root'
+            appdir.mkdir()
+            private = base/'private.desktop'
+            private.write_text('[Desktop Entry]\nName=Do Not Read\n')
+            (appdir/'external.desktop').symlink_to(private)
+            (appdir/'safe.desktop').write_text('[Desktop Entry]\nName=Safe\n')
+            self.assertEqual([p.name for p in backend.safe_desktop_files(appdir)],
+                             ['safe.desktop'])
+            # Invalid top-level metadata must not block a nested safe entry.
+            (appdir/'safe.desktop').unlink()
+            nested = appdir/'usr/share/applications'
+            nested.mkdir(parents=True)
+            (nested/'nested.desktop').write_text(
+                '[Desktop Entry]\nType=Application\nName=Nested\n')
+            self.assertEqual([p.name for p in backend.safe_desktop_files(appdir)],
+                             ['nested.desktop'])
 
     def test_desktop_entry_includes_try_exec(self):
         """Generated desktop entry's TryExec is preserved through wrap_desktop."""
