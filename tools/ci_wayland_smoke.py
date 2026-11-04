@@ -92,9 +92,8 @@ def check_app_window(flag, label, env):
         try:
             deadline = time.monotonic() + 30
             while time.monotonic() < deadline:
-                log.flush()
-                log.seek(0)
-                content = log.read()
+                # pread keeps the child process's shared append offset intact.
+                content = os.pread(log.fileno(), 8 * 1024 * 1024, 0)
                 if child.poll() is not None:
                     raise RuntimeError(
                         f"{label} exited early with {child.returncode}; "
@@ -114,11 +113,9 @@ def check_app_window(flag, label, env):
                     )
                     return
                 time.sleep(0.25)
-            log.flush()
-            log.seek(0)
             raise RuntimeError(
                 f"Timed out waiting for {label} Wayland top-level traffic: " +
-                log.read()[-7000:].decode(errors="replace")
+                os.pread(log.fileno(), 8 * 1024 * 1024, 0)[-7000:].decode(errors="replace")
             )
         finally:
             stop_process(child)
