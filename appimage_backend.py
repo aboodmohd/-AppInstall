@@ -56,18 +56,21 @@ def desktop_text(value):
 def safe_desktop_files(root):
     """Select metadata within the unpacked AppDir; ignore escaping symlinks."""
     base = root.resolve()
-    candidates = sorted(root.glob('*.desktop'))
-    if not candidates:
-        candidates = sorted(root.rglob('*.desktop'))
-    result = []
-    for entry in candidates:
-        try:
-            resolved = entry.resolve(strict=True)
-            if resolved.is_relative_to(base) and resolved.is_file():
-                result.append(entry)
-        except (OSError, RuntimeError):
-            continue
-    return result
+    def validated(candidates):
+        result = []
+        for entry in candidates:
+            try:
+                resolved = entry.resolve(strict=True)
+                if resolved.is_relative_to(base) and resolved.is_file():
+                    result.append(entry)
+            except (OSError, RuntimeError):
+                continue
+        return result
+
+    # A malicious top-level symlink must not prevent fallback to legitimate
+    # metadata stored deeper in the image.
+    return (validated(sorted(root.glob('*.desktop'))) or
+            validated(sorted(root.rglob('*.desktop'))))
 
 
 def categories(value):
