@@ -41,8 +41,9 @@ If an upgrade causes problems, revert to the previous package:
 # Package rollback
 sudo pacman -U appinstall-0.2.0-1-any.pkg.tar.zst  # if you kept the old package
 
-# Source rollback
+# Source rollback (from a local checkout with the previous version)
 git checkout <previous-commit>
+./install-user.sh
 ```
 
 Managed application data is stored under:
