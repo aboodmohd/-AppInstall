@@ -51,9 +51,42 @@ class CandidateBundleTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "exactly one"):
             bundle.verify_checksum(self.package, self.sums)
 
+    def test_pr_merge_checkout_records_distinct_pr_head(self):
+        kind, head = bundle.classify_provenance(
+            "pull_request", "a" * 40, "a" * 40, "b" * 40
+        )
+        self.assertEqual("PR_TEST_ONLY", kind)
+        self.assertEqual("b" * 40, head)
+
+    def test_push_candidate_has_no_pr_head(self):
+        kind, head = bundle.classify_provenance(
+            "push", "a" * 40, "a" * 40, ""
+        )
+        self.assertEqual("PUSH_CI_TEST_ONLY", kind)
+        self.assertIsNone(head)
+
+    def test_mismatched_checkout_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "actual checked-out git"):
+            bundle.classify_provenance("push", "a" * 40, "b" * 40, "")
+
+    def test_pr_without_head_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "complete PR branch head"):
+            bundle.classify_provenance("pull_request", "a" * 40, "a" * 40, "")
+
+    def test_non_pr_cannot_claim_pr_head(self):
+        with self.assertRaisesRegex(ValueError, "unexpectedly includes"):
+            bundle.classify_provenance("push", "a" * 40, "a" * 40, "b" * 40)
+
+    def test_unknown_event_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "Unexpected CI event"):
+            bundle.classify_provenance("release", "a" * 40, "a" * 40, "")
+
     def test_candidate_report_keeps_manual_checks_pending(self):
         evidence = {
             "source_commit": "a" * 40,
+            "ci_event": "pull_request",
+            "candidate_classification": "PR_TEST_ONLY",
+            "pull_request_head_commit": "b" * 40,
             "workflow_url": "https://github.com/aboodmohd/-AppInstall/actions/runs/123",
             "package_filename": self.package.name,
             "sha256": self.digest,
@@ -65,6 +98,9 @@ class CandidateBundleTests(unittest.TestCase):
         self.assertIn("CachyOS", report)
         self.assertIn("PENDING", report)
         self.assertIn("publication approval", report)
+        self.assertIn("PR_TEST_ONLY", report)
+        self.assertIn("temporary", report)
+        self.assertIn("b" * 40, report)
         self.assertNotIn("| APPROVED |", report)
 
 
