@@ -111,6 +111,44 @@ class AppImageTests(unittest.TestCase):
                     backend.install(source,destination)
                 self.assertEqual(entry.read_text(),before)
                 self.assertEqual(manifest.read_text(),current)
+    def test_retires_legacy_shortcut_but_never_deletes_legacy_appimage(self):
+        """Existing AppImageLauncher payload belongs to the user, not AppInstall."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root/'new.AppImage'
+            source.write_bytes(fixture_appimage())
+            destination = root/'Applications'
+            destination.mkdir()
+            old_payload = destination/'previous.AppImage'
+            old_payload.write_bytes(b'important previous version')
+            apps = root/'data/applications'
+            apps.mkdir(parents=True)
+            legacy = apps/'appimagekit_previous.desktop'
+            legacy.write_text(
+                '[Desktop Entry]\nType=Application\nName=Example App\n'
+                f'TryExec={old_payload}\nExec={old_payload}\n')
+            env = {'XDG_DATA_HOME': str(root/'data'),
+                   'XDG_STATE_HOME': str(root/'state')}
+
+            def extract(argv, **kwargs):
+                appdir = Path(argv[argv.index('-d') + 1])
+                appdir.mkdir()
+                (appdir/'AppRun').write_text('#!/bin/sh\n')
+                (appdir/'app.desktop').write_text(
+                    '[Desktop Entry]\nType=Application\nName=Example App\n'
+                    'Exec=AppRun %U\n')
+                return subprocess.CompletedProcess(argv, 0, b'')
+
+            with patch.dict(os.environ, env), \
+                 patch.object(backend.shutil, 'which',
+                              lambda name: '/usr/bin/unsquashfs' if name == 'unsquashfs' else None), \
+                 patch.object(backend.subprocess, 'run', side_effect=extract):
+                backend.install(source, destination)
+            self.assertFalse(legacy.exists())
+            self.assertEqual(old_payload.read_bytes(), b'important previous version')
+            backup = root/'data/appinstall/launcher-backups'/legacy.name
+            self.assertTrue(backup.exists())
+
     def test_categories_and_identity(self):
         self.assertEqual(backend.categories('Development;IDE;'), 'Development;IDE;')
         self.assertEqual(backend.categories('Entertainment;'), 'AudioVideo;')
