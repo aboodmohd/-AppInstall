@@ -149,7 +149,7 @@ def verify_dolphin_dispatch(artifact, kind, env):
     ).stdout.strip()
     gio = run(["gio", "info", "-a", "standard::content-type", str(artifact)], env)
     content_types = [
-        row.split(":", 1)[1].strip()
+        row.split("standard::content-type:", 1)[1].strip()
         for row in gio.stdout.splitlines()
         if "standard::content-type:" in row
     ]
