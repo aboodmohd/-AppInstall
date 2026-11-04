@@ -9,7 +9,6 @@ import fcntl
 import json
 import os
 from pathlib import Path
-import stat
 import tempfile
 import uuid
 
@@ -72,7 +71,8 @@ class SourceTransaction:
 
     def _cleanup(self, entries):
         for item in entries:
-            Path(item['stage']).unlink(missing_ok=True)
+            if item['stage']:
+                Path(item['stage']).unlink(missing_ok=True)
             if item.get('backup'):
                 Path(item['backup']).unlink(missing_ok=True)
         self.journal.unlink(missing_ok=True)
