@@ -141,11 +141,11 @@ def make_appimage_fixture(root):
     """Minimal non-executable ELF/AppImage *header*, never an installable app."""
     path = root / "appinstall-ci-preview.AppImage"
     header = bytearray(128)
-    header[0:4] = b"\\x7fELF"
-    header[4:8] = b"\\x02\\x01\\x01\\x00"
-    header[8:11] = b"AI\\x02"
-    header[16:18] = b"\\x02\\x00"
-    header[18:20] = b"\\x3e\\x00"  # x86_64; CI uses amd64 Ubuntu runners
+    header[0:4] = b"\x7fELF"
+    header[4:8] = b"\x02\x01\x01\x00"
+    header[8:11] = b"AI\x02"
+    header[16:18] = b"\x02\x00"
+    header[18:20] = b"\x3e\x00"  # x86_64; CI uses amd64 Ubuntu runners
     path.write_bytes(header)
     path.chmod(0o644)  # Do not mark executable; this is only preview metadata
     return path
