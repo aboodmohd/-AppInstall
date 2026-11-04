@@ -1,6 +1,6 @@
 # Maintainer: Abood <abood@localhost>
 pkgname=appinstall
-pkgver=1.0.0rc1
+pkgver=1.0.0
 pkgrel=1
 pkgdesc="Double-click installer for AppImage, Flatpak, DEB, and RPM files on Linux desktops"
 arch=('any')
