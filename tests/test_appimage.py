@@ -143,6 +143,55 @@ class AppImageTests(unittest.TestCase):
                 meta = backend.desktop(entry)
                 self.assertEqual(meta.get('StartupWMClass'),'example-app')
 
+    def test_embedded_multiline_metadata_cannot_inject_launcher_commands(self):
+        """Continuation lines must not become executable desktop-file keys."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root/'download.AppImage'
+            source.write_bytes(fixture_appimage())
+            destination = root/'Applications'
+            env = {'XDG_DATA_HOME': str(root/'data'),
+                   'XDG_STATE_HOME': str(root/'state')}
+
+            def extract(argv, **kwargs):
+                appdir = Path(argv[argv.index('-d') + 1])
+                appdir.mkdir()
+                (appdir/'AppRun').write_text('#!/bin/sh\n')
+                (appdir/'app.desktop').write_text(
+                    '[Desktop Entry]\nType=Application\nName=Example App\n'
+                    'Exec=AppRun %U\n'
+                    'StartupWMClass=example\n'
+                    ' Exec=/bin/false\n'
+                    ' Actions=untrusted;\n'
+                    'Comment=Description\n'
+                    ' Exec=/bin/false\n')
+                return subprocess.CompletedProcess(argv, 0, b'')
+
+            with patch.dict(os.environ, env), \
+                 patch.object(backend.shutil, 'which',
+                              lambda name: '/usr/bin/unsquashfs' if name == 'unsquashfs' else None), \
+                 patch.object(backend.subprocess, 'run', side_effect=extract):
+                backend.install(source, destination)
+            launcher = next((root/'data/applications').glob('*.desktop'))
+            text = launcher.read_text()
+            self.assertEqual(text.count('\nExec='), 1)
+            self.assertEqual(text.count('\nActions='), 0)
+            self.assertNotIn('\nExec=/bin/false', text)
+            self.assertIn('StartupWMClass=example', text)
+            self.assertIn('appimage_backend.py', backend.desktop(launcher)['Exec'])
+
+    def test_passive_metadata_ignores_symlinks_outside_appdir(self):
+        with tempfile.TemporaryDirectory() as temp:
+            base = Path(temp)
+            appdir = base/'squashfs-root'
+            appdir.mkdir()
+            private = base/'private.desktop'
+            private.write_text('[Desktop Entry]\nName=Do Not Read\n')
+            (appdir/'external.desktop').symlink_to(private)
+            (appdir/'safe.desktop').write_text('[Desktop Entry]\nName=Safe\n')
+            self.assertEqual([p.name for p in backend.safe_desktop_files(appdir)],
+                             ['safe.desktop'])
+
     def test_desktop_entry_includes_try_exec(self):
         """Generated desktop entry's TryExec is preserved through wrap_desktop."""
         with tempfile.TemporaryDirectory() as temp:
