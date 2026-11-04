@@ -12,6 +12,7 @@ backup=()
 
 source=('appinstall'
         'appinstall.desktop'
+        'appinstall-appimage-review.desktop'
         'confirm.py'
         'manager.py'
         'result_ui.py'
@@ -45,6 +46,7 @@ source=('appinstall'
 b2sums=(
         '0fa1eb195a96d51e5810ae4cf75747af46ae007c49e034d44a6614b81a0e89158fa93057d8d78af8c3bf7023fbe78a7232fc5dd322dc998d71a4a9269f7a10ed'
         '16c4910c07dcc10eb6953329144c8be9db021f9ddf9785e7b1f832e280cc1dc1297a4935e005c44ba9614a50ce371a9c13c45fffadcb34dca95a2d6f7a20e154'
+        '91419d510a1e9e1c70f14ba77cb1c913a8f508f1760682e3bb5021af5f698e1ed468891121fb698d53863863253978fad2d4857ba905ec91462570eb3006f4e7'
         '565f679e8e01d0f5d0e60fb49b3804c3c603461d6cbd1f7e9a01e2acd28a237b79d8386834dcd2a8a24e7080d811656d231be5772c074cc5e42a818c027f3ee2'
         '53047e37e4510e466a620f6d2ff08f7d6460b734f1e938ea7d952deed6ff25f056d09a94bba5f7a2dd978d7f55f072c3d0983345fe70fe33c617f6b4f7de92d0'
         'd06b9051e8daa08a2fe2540c7a26be57e56e5b528cf09edeca10c68c488c0b8cb0a565ee8d5279699e8baedc9b2ef00541fabf820bb4df08178e1c8bc93e42be'
@@ -90,6 +92,8 @@ package() {
         "$pkgdir/usr/bin/$pkgname"
     install -Dm0644 "$srcdir/appinstall.desktop" \
         "$pkgdir/usr/share/applications/$pkgname.desktop"
+    install -Dm0755 "$srcdir/appinstall-appimage-review.desktop" \
+        "$pkgdir/usr/share/kio/servicemenus/appinstall-appimage-review.desktop"
     install -Dm0644 "$srcdir/README.md" \
         "$pkgdir/usr/share/doc/$pkgname/README.md"
     install -Dm0644 "$srcdir/LICENSE" \
