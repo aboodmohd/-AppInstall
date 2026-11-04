@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Service
+Name=AppInstall AppImage Review
+MimeType=application/vnd.appimage;application/x-iso9660-appimage;
+Actions=ReviewWithAppInstall;
+X-AppInstall-Managed=true
+
+[Desktop Action ReviewWithAppInstall]
+Name=Review with AppInstall…
+Icon=package-x-generic
+Exec=appinstall %f
