@@ -10,6 +10,20 @@ merged via PR #8 as 6277703b, with 142 CI tests per platform (2 skipped) and
 11 isolated AppImage security tests on CachyOS. A separate 1.0.0-rc.1
 candidate preparation branch is under review; no stable tag is published.
 
+## Current CI and licensing progress (2026-11-04)
+
+- PR #9 release-candidate preparation merged as `fe166cec`: 144 tests
+  completed on CachyOS and cross-distribution CI (two CI skips per platform).
+- PR #10 real-filesystem recovery merged as `145b92ff`. CI filled an
+  isolated 32 MiB tmpfs to zero free bytes, verified the failed update
+  preserved MIME defaults and managed data, then recovered after genuine
+  SIGKILL mid-publication. Not a physical power-loss test.
+- A fresh Arch package lifecycle gate and a preliminary third-party
+  license/dependency audit are proposed; a passing Arch container gate
+  is not a spare CachyOS desktop acceptance test.
+- See `DEPENDENCY_LICENSE_AUDIT.md`; contributor/source and screenshot
+  provenance still require independent confirmation.
+
 ## Scope and evidence
 
 Reviewed source registration, journaling and recovery, AppImage passive metadata,
