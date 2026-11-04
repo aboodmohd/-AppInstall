@@ -17,7 +17,15 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 INSTALLER = ROOT / "appinstall"
-MIMES = ("application/vnd.debian.binary-package", "application/x-deb")
+MIMES = (
+    "application/vnd.debian.binary-package", "application/x-deb",
+    "application/vnd.flatpak.ref", "application/vnd.flatpak.repo",
+)
+TYPES = {
+    "deb": ("application/vnd.debian.binary-package", "application/x-deb"),
+    "flatpakref": ("application/vnd.flatpak.ref",),
+    "flatpakrepo": ("application/vnd.flatpak.repo",),
+}
 
 
 def run(args, env, *, timeout=20, check=True):
@@ -64,6 +72,29 @@ def make_fixture(root, env):
     return artifact
 
 
+def make_flatpak_fixture(root, kind):
+    if kind == "flatpakref":
+        path = root / "appinstall-ci-flatpak-ref.flatpakref"
+        # Deliberately invalid App ID: prevents Flathub metadata network lookup.
+        path.write_text(
+            "[Flatpak Ref]\n"
+            "Name=ci_metadata_only\n"
+            "Title=AppInstall CI Reference\n"
+            "Branch=stable\n"
+            "Url=https://example.invalid/disposable-repo\n"
+        )
+    elif kind == "flatpakrepo":
+        path = root / "appinstall-ci-flatpak-repo.flatpakrepo"
+        path.write_text(
+            "[Flatpak Repo]\n"
+            "Title=AppInstall CI Repository\n"
+            "Url=https://example.invalid/disposable-repo\n"
+        )
+    else:
+        raise ValueError(f"Unexpected fixture type: {kind}")
+    return path
+
+
 def configure_handler(isolated, env):
     desktopdir = isolated / "data/applications"
     desktopdir.mkdir(parents=True)
@@ -97,7 +128,7 @@ def configure_handler(isolated, env):
             break
 
 
-def is_appinstall_package_window(window, env):
+def is_appinstall_package_window(window, env, artifact, kind):
     pid = run(["xdotool", "getwindowpid", window], env, check=False).stdout.strip()
     if not pid.isdigit():
         return False
@@ -105,28 +136,33 @@ def is_appinstall_package_window(window, env):
         cmdline = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\0", b" ").decode(errors="replace")
     except OSError:
         return False
-    return "container_ui.py" in cmdline and "appinstall-ci-mime-fixture" in cmdline
+    module = "container_ui.py" if kind == "deb" else "confirm.py"
+    return module in cmdline and artifact.name in cmdline
 
 
-def verify_dolphin_dispatch(artifact, env):
-    # KDE/XDG can return an empty MIME response outside a full Plasma
-    # session, even for a valid Debian archive. Check the real bytes with
-    # libmagic; let Dolphin/KIO provide the actual dispatch verdict.
+def verify_dolphin_dispatch(artifact, kind, env):
+    # KDE in a minimal X11 session can return an empty xdg-mime filetype.
+    # GIO reads the installed shared MIME database, including Flatpak's
+    # .flatpakref/.flatpakrepo registrations supplied by the CI runner.
     xdg_type = run(
         ["xdg-mime", "query", "filetype", str(artifact)], env, check=False
     ).stdout.strip()
-    magic_type = run(
-        ["file", "--brief", "--mime-type", str(artifact)], env
-    ).stdout.strip()
+    gio = run(["gio", "info", "-a", "standard::content-type", str(artifact)], env)
+    content_types = [
+        row.split(":", 1)[1].strip()
+        for row in gio.stdout.splitlines()
+        if "standard::content-type:" in row
+    ]
     print(
-        f"INFO: xdg-mime filetype={xdg_type!r}, libmagic={magic_type!r}",
+        f"INFO: {kind} xdg-mime={xdg_type!r}, gio={content_types!r}",
         flush=True,
     )
-    if magic_type not in MIMES:
+    if not content_types or content_types[-1] not in TYPES[kind]:
         raise RuntimeError(
-            f"Harmless Debian fixture has unexpected libmagic MIME: {magic_type!r}"
+            f"{kind} fixture not recognized by installed MIME database: "
+            f"{content_types!r}, expected={TYPES[kind]!r}"
         )
-    print("PASS: real .deb fixture identified by libmagic", flush=True)
+    print(f"PASS: harmless {kind} fixture has registered MIME type", flush=True)
 
     manager = subprocess.Popen(
         ["openbox"], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
@@ -140,34 +176,37 @@ def verify_dolphin_dispatch(artifact, env):
             env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         )
         window = wait_for_window(["--class", "dolphin"], env)
-        print(f"PASS: Dolphin file-manager window appeared (X11 window {window})", flush=True)
+        print(f"PASS: Dolphin opened for {kind} (X11 window {window})", flush=True)
         # --select highlights the fixture; Return activates the selected file.
+        # NEVER activate a confirmation/installation button inside AppInstall.
         run(["xdotool", "windowactivate", "--sync", window], env)
         run(["xdotool", "key", "--clearmodifiers", "Return"], env)
         deadline = time.monotonic() + 45
         while time.monotonic() < deadline:
             windows = search_windows(["--name", "^AppInstall$"], env)
             for app_window in windows:
-                if is_appinstall_package_window(app_window, env):
+                if is_appinstall_package_window(app_window, env, artifact, kind):
                     observed_app_pid = int(run(
                         ["xdotool", "getwindowpid", app_window], env
                     ).stdout.strip())
                     break
             if observed_app_pid:
+                module = "container_ui.py" if kind == "deb" else "confirm.py"
                 print(
-                    "PASS: Dolphin activated the .deb and launched the real "
-                    "AppInstall container-package preview UI", flush=True
+                    f"PASS: Dolphin activated {kind}, opened real {module} "
+                    "AppInstall review window; no install was requested",
+                    flush=True,
                 )
                 break
             time.sleep(0.4)
         if not observed_app_pid:
             raise RuntimeError(
-                "Dolphin file activation did not open the AppInstall "
-                "container-package preview (no install was attempted)"
+                f"Dolphin did not open AppInstall preview for {kind}; "
+                "no install was attempted"
             )
         time.sleep(0.5)
         if not Path(f"/proc/{observed_app_pid}").exists():
-            raise RuntimeError("AppInstall preview process exited immediately")
+            raise RuntimeError(f"{kind} AppInstall review process exited immediately")
     finally:
         if observed_app_pid:
             try:
@@ -217,14 +256,19 @@ def main():
             "QT_QPA_PLATFORM": "xcb",
             "PYTHONDONTWRITEBYTECODE": "1",
         })
-        artifact = make_fixture(root, env)
+        artifacts = [
+            ("deb", make_fixture(root, env)),
+            ("flatpakref", make_flatpak_fixture(root, "flatpakref")),
+            ("flatpakrepo", make_flatpak_fixture(root, "flatpakrepo")),
+        ]
         configure_handler(root, env)
-        verify_dolphin_dispatch(artifact, env)
+        for kind, artifact in artifacts:
+            verify_dolphin_dispatch(artifact, kind, env)
         registry = root / "data/appinstall/containers/registry.json"
         if registry.exists():
             raise RuntimeError("Unexpected container-install registry: installation must never occur")
         print("PASS: no package installed or registered by the review-only smoke", flush=True)
-    print("PASS: isolated Dolphin MIME dispatch smoke completed", flush=True)
+    print("PASS: isolated Dolphin DEB + Flatpak reference/repository dispatch completed", flush=True)
 
 
 if __name__ == "__main__":
