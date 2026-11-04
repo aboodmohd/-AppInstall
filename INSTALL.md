@@ -1,5 +1,9 @@
 # AppInstall Installation Guide
 
+> **Release candidate branch:** Version 1.0.0-rc.1 is for testing on a
+> disposable system. The published 1.0.0-beta.1 package shown below is
+> historical; it is not the candidate package. Stable 1.0.0 is not released.
+
 ## System requirements
 
 - Python 3

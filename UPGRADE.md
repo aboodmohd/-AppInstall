@@ -1,6 +1,13 @@
 # AppInstall Upgrade Guide
 
-## Upgrading from 0.2.0 to 1.0.0-beta.1
+## Evaluating 1.0.0-rc.1 (testing only)
+
+This release-candidate branch is not Stable 1.0. Avoid installing on a
+working system until the clean-install and rollback gates are complete.
+All recovery tests should use disposable HOME/XDG directories or a spare
+Arch/CachyOS system, not the active user's managed application directories.
+
+### Historical beta upgrade (0.2.0 to 1.0.0-beta.1)
 
 ### Package upgrade (Arch/CachyOS)
 

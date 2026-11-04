@@ -5,6 +5,11 @@
 **Current published release:** `v1.0.0-beta.1` (prerelease)  
 **Release decision:** **NO-GO YET**. Complete the gates below and obtain explicit publication approval.
 
+**Update (2026-11-04):** The four AppImage metadata/payload/icon fixes were
+merged via PR #8 as 6277703b, with 142 CI tests per platform (2 skipped) and
+11 isolated AppImage security tests on CachyOS. A separate 1.0.0-rc.1
+candidate preparation branch is under review; no stable tag is published.
+
 ## Scope and evidence
 
 Reviewed source registration, journaling and recovery, AppImage passive metadata,
@@ -40,7 +45,7 @@ These are samples, not proof of compatibility for every package or desktop.
 - [x] Installation, launch, uninstall, reinstall, no duplicates and manager-refresh smoke tests reported
 - [x] Isolated source upgrade and recovery tests reported on CachyOS
 - [x] Cross-distribution CI and Arch package checks passed for reference main commit
-- [ ] Review and merge the AppImage metadata / payload preservation fixes after CI and real-device checks
+- [x] Review and merge the AppImage metadata / payload preservation fixes: PR #8 merged as 6277703b after CI and isolated CachyOS tests
 - [ ] Actual clean installation and rollback on a spare Arch/CachyOS environment, not just an isolated HOME
 - [ ] Real disk-full / abruptly terminated upgrade on a disposable filesystem and verify recoverability, permissions and MIME associations
 - [ ] Recheck UI dialogs, Dolphin double-click and launch/failure diagnostics after final changes on KDE Wayland

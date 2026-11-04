@@ -53,16 +53,36 @@ jobs:
           useradd --create-home --shell /bin/bash appbuild
           chown -R appbuild:appbuild "$GITHUB_WORKSPACE"
           runuser -u appbuild -- env GITHUB_WORKSPACE="$GITHUB_WORKSPACE" bash -c 'cd "$GITHUB_WORKSPACE" && makepkg --noconfirm --clean'
-          test -f appinstall-1.0.0beta1-1-any.pkg.tar.zst
+          pkgver=$(sed -n 's/^pkgver=//p' PKGBUILD)
+          pkgrel=$(sed -n 's/^pkgrel=//p' PKGBUILD)
+          test -n "$pkgver" && test -n "$pkgrel"
+          package="appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst"
+          test -f "$package"
+          echo "Package: $package"
+          sha256sum "$package"
+          bsdtar -tf "$package" | grep -q 'usr/bin/appinstall'
 
       - name: Install, upgrade, and remove Arch package in disposable container
         if: matrix.kind == 'arch'
         run: |
-          package=appinstall-1.0.0beta1-1-any.pkg.tar.zst
+          pkgver=$(sed -n 's/^pkgver=//p' PKGBUILD)
+          pkgrel=$(sed -n 's/^pkgrel=//p' PKGBUILD)
+          package="appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst"
+          expected=$(sed -n 's/^VERSION="\([^"]*\)"$/\1/p' appinstall)
+          test -n "$expected"
           pacman -U --noconfirm --needed "$package"
-          test "$(appinstall --version)" = "appinstall 1.0.0-beta.1"
+          test "$(appinstall --version)" = "appinstall $expected"
           pacman -Q appinstall
           pacman -U --noconfirm "$package"
-          test "$(appinstall --version)" = "appinstall 1.0.0-beta.1"
+          test "$(appinstall --version)" = "appinstall $expected"
           pacman -R --noconfirm appinstall
           ! pacman -Q appinstall
+
+      - name: Preserve disposable Arch package for candidate testing
+        if: matrix.kind == 'arch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: appinstall-package-${{ github.sha }}
+          path: appinstall-*.pkg.tar.zst
+          retention-days: 14
+          if-no-files-found: error
