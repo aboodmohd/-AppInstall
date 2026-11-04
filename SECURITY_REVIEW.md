@@ -31,6 +31,9 @@ metadata, icon, or contents when double-clicked.
 - Embedded `.desktop` symlinks that resolve outside the extracted AppDir
   are ignored during preview; the loader can still find legitimate nested
   desktop entries.
+- When importing icons into the shared user theme, AppInstall refuses to
+  overwrite an existing icon or follow an existing destination symlink;
+  launchers use the application generation's private absolute icon path.
 - When replacing an AppImageLauncher shortcut, AppInstall backs up the old
   shortcut but no longer deletes the pre-existing AppImage payload.
   AppInstall only cleans up its own previous generation.
