@@ -3,6 +3,7 @@
 These tests use a disposable HOME/XDG tree. No system package or live user
 installation is touched.
 """
+import errno
 import json
 import os
 from pathlib import Path
@@ -10,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTER = ROOT / "integration.py"
@@ -170,6 +172,94 @@ class SourceUpgradeSmokeTests(unittest.TestCase):
         final = self.defaults_file.read_text()
         self.assertIn(MIME + "=user-choice.desktop;", final)
         self.assertIn("text/plain=editor.desktop;", final)
+
+
+class SourceTransactionRecoveryTests(unittest.TestCase):
+    """All real user data lives in disposable HOME/XDG test directories."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix='appinstall-transaction-')
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.state = self.root / 'data/appinstall'
+        self.first = self.root / 'bin/appinstall'
+        self.second = self.root / 'config/mimeapps.list'
+        self.first.parent.mkdir(parents=True)
+        self.second.parent.mkdir(parents=True)
+        self.first.write_bytes(b'old executable')
+        self.second.write_bytes(b'old mime defaults')
+        sys.path.insert(0, str(ROOT))
+        from source_transaction import SourceTransaction
+        self.transaction = SourceTransaction
+
+    def test_disk_full_mid_commit_rolls_back_all_files(self):
+        with self.transaction(self.state, (self.first, self.second)) as txn:
+            original = txn._publish
+            attempts = 0
+
+            def fail_on_second(stage, target):
+                nonlocal attempts
+                attempts += 1
+                if attempts == 2:
+                    raise OSError(errno.ENOSPC, 'No space left on device')
+                return original(stage, target)
+
+            with patch.object(txn, '_publish', side_effect=fail_on_second):
+                with self.assertRaises(OSError) as error:
+                    txn.apply({
+                        self.first: (b'new executable', 0o755),
+                        self.second: (b'new mime defaults', 0o600),
+                    })
+            self.assertEqual(error.exception.errno, errno.ENOSPC)
+            self.assertFalse(txn.journal.exists())
+
+        self.assertEqual(self.first.read_bytes(), b'old executable')
+        self.assertEqual(self.second.read_bytes(), b'old mime defaults')
+
+    def test_failed_uninstall_recovers_removed_file(self):
+        with self.transaction(self.state, (self.first, self.second)) as txn:
+            with patch.object(txn, '_publish',
+                              side_effect=OSError(errno.ENOSPC, 'No space left')):
+                with self.assertRaises(OSError):
+                    txn.apply({
+                        self.first: None,
+                        self.second: (b'new mime defaults', 0o600),
+                    })
+        self.assertEqual(self.first.read_bytes(), b'old executable')
+        self.assertEqual(self.second.read_bytes(), b'old mime defaults')
+
+    def test_next_run_recovers_after_abrupt_process_exit(self):
+        # os._exit simulates SIGKILL/power interruption: finally/__exit__
+        # cannot execute, so the persisted journal must guide the next run.
+        script = r"""
+import os
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from source_transaction import SourceTransaction
+state, first, second = map(Path, sys.argv[2:])
+with SourceTransaction(state, (first, second)) as transaction:
+    publish = transaction._publish
+    def interrupt(stage, target):
+        publish(stage, target)
+        os._exit(77)
+    transaction._publish = interrupt
+    transaction.apply({
+        first: (b'new executable', 0o755),
+        second: (b'new mime defaults', 0o600),
+    })
+"""
+        result = subprocess.run(
+            [sys.executable, '-c', script, str(ROOT),
+             str(self.state), str(self.first), str(self.second)],
+            capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 77, result.stderr)
+        self.assertEqual(self.first.read_bytes(), b'new executable')
+        self.assertEqual(self.second.read_bytes(), b'old mime defaults')
+        with self.transaction(self.state, (self.first, self.second)) as transaction:
+            self.assertFalse(transaction.journal.exists())
+        self.assertEqual(self.first.read_bytes(), b'old executable')
+        self.assertEqual(self.second.read_bytes(), b'old mime defaults')
 
 
 if __name__ == "__main__":
