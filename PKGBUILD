@@ -40,7 +40,8 @@ source=('appinstall'
         'source_transaction.py'
         'STABLE_ACCEPTANCE.md'
         'STABLE_READINESS.md'
-        'STABLE_RELEASE_AUDIT.md')
+        'STABLE_RELEASE_AUDIT.md'
+        'DEPENDENCY_LICENSE_AUDIT.md')
 b2sums=(
         'f7be76a5b506ba951aaf9034e9e616df00f5b052fd902f1445b7b921201e00b5ebcefa134bce77b411cd4e310b43cc91391f35bb1e561616a5a2abe12cf7365d'
         '16c4910c07dcc10eb6953329144c8be9db021f9ddf9785e7b1f832e280cc1dc1297a4935e005c44ba9614a50ce371a9c13c45fffadcb34dca95a2d6f7a20e154'
@@ -71,8 +72,9 @@ b2sums=(
         '025abf5f04af04a4848313baab6fa9fc8ed97362cec9f97ded33ad2dd5148a4e7aa60c1d6097ae598844ca04314bdddaef0189141b648b6de5e5a8dd3eb82375'
         '7685cb1496c71d074dccff047286242c2a28b9e1fe52a8ea33758414a8f2ab49c6591318f5983207f9bc3f5a3f7333e2e07c66974fa0bd4c35e3a52d1ad2eb66'
         '46eb5952451e8a50c560b0cce52b04d5d42dd51bf58dc8a56626507941a66e1b8a2caad1d58e16198377ea538f8f30b9c11517dfa266eba059d34ba4de7b7934'
-        'eea0358f0a2529e7c685173ea1d21ca984f4be010034b770e470a874712ab6531c983c8e012ad9e35a9289ff67f37c2201c1658ee7925e80e147b77d6764d724'
-        'b920de30bb683ade8c8cbefe5ae9e4367594976f76c1f65491f12b095c1a4d31c77edcc8345b39721f7f8ab6e35b2256b4d8f183c4361a3389771caf24d8e9f6'
+        '042bb1f97966fd259be6c4b1c578f2890a191a817963738db56102444214651de37db4b354c7042104f59b91f2cba8ce416486170d077d63f753462cff054981'
+        '859ba6bb452319d2ceb901fbb7c7bb8030761e393b740c3cd4bd1362c37b848994c0f96792be43d1185f509b19aa6acbd60d4ffa2a7b7a47e7dbf4c133946265'
+        '530520f73b96df4fbbdde4dd475f3d1788386fa6c15670e8e62615244b1de36d646dfb37138a1a32984f8f9ad3ee75a6af091cf3d18d61361a21cfbab9312df7'
 )
 
 package() {
@@ -92,6 +94,10 @@ package() {
         "$pkgdir/usr/share/doc/$pkgname/README.md"
     install -Dm0644 "$srcdir/LICENSE" \
         "$pkgdir/usr/share/doc/$pkgname/LICENSE"
+    # MIT is a license family, so ship this project's exact notice under
+    # /usr/share/licenses as required by Arch packaging guidance.
+    install -Dm0644 "$srcdir/LICENSE" \
+        "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
     install -Dm0644 "$srcdir/LAUNCH_DIAGNOSTICS.md" \
         "$pkgdir/usr/share/doc/$pkgname/LAUNCH_DIAGNOSTICS.md"
     install -Dm0644 "$srcdir/INTEGRATION_TESTING.md" \
@@ -110,7 +116,7 @@ package() {
         "$pkgdir/usr/share/doc/$pkgname/KNOWN_LIMITATIONS.md"
     install -Dm0644 "$srcdir/SECURITY_REVIEW.md" \
         "$pkgdir/usr/share/doc/$pkgname/SECURITY_REVIEW.md"
-    for guide in STABLE_ACCEPTANCE.md STABLE_READINESS.md STABLE_RELEASE_AUDIT.md; do
+    for guide in STABLE_ACCEPTANCE.md STABLE_READINESS.md STABLE_RELEASE_AUDIT.md DEPENDENCY_LICENSE_AUDIT.md; do
         install -Dm0644 "$srcdir/$guide" "$pkgdir/usr/share/doc/$pkgname/$guide"
     done
 }

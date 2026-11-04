@@ -78,6 +78,17 @@ jobs:
           pacman -R --noconfirm appinstall
           ! pacman -Q appinstall
 
+      - name: Validate clean package installation and user data preservation
+        if: matrix.kind == 'arch'
+        run: |
+          set -eu
+          pkgver=$(sed -n 's/^pkgver=//p' PKGBUILD)
+          pkgrel=$(sed -n 's/^pkgrel=//p' PKGBUILD)
+          expected=$(sed -n 's/^VERSION="\([^"]*\)"$/\1/p' appinstall)
+          test -n "$expected"
+          bash -n tools/arch_clean_install_gate.sh
+          bash tools/arch_clean_install_gate.sh "appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst" "$expected"
+
       - name: Preserve disposable Arch package for candidate testing
         if: matrix.kind == 'arch'
         uses: actions/upload-artifact@v4
