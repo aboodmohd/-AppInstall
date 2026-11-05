@@ -60,10 +60,10 @@ class Diagnostics(QDialog):
         self.records=[];self.jobs=[];self.busy=False
         layout=QVBoxLayout(self)
         heading=QLabel('Application Diagnostics');font=heading.font();font.setPointSize(20);heading.setFont(font);layout.addWidget(heading)
-        self.table=QTableWidget(0,5);self.table.setHorizontalHeaderLabels(['Application','Format','Container','Last launch','Last detected error'])
+        self.table=QTableWidget(0,5);self.table.setHorizontalHeaderLabels(['Application','Format','Container','Latest attempt','Last recorded failure'])
         self.table.setSelectionBehavior(QTableWidget.SelectRows);self.table.setSelectionMode(QTableWidget.SingleSelection);self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.itemSelectionChanged.connect(self.details);layout.addWidget(self.table)
-        self.text=QPlainTextEdit();self.text.setReadOnly(True);self.text.setMaximumHeight(170);layout.addWidget(self.text)
+        self.text=QPlainTextEdit();self.text.setReadOnly(True);self.text.setMaximumHeight(210);layout.addWidget(self.text)
         self.buttons={};row=QHBoxLayout()
         for label,callback in [('Open',self.launch),('View Logs',self.logs),('Repair Launcher',self.repair),('Re-export',self.reexport),('Retry Container',self.container),('Repair Dependency',self.dependency),('Port Owner',self.port),('Uninstall',self.uninstall)]:
             button=QPushButton(label);button.clicked.connect(callback);self.buttons[label]=button;row.addWidget(button)
@@ -94,7 +94,7 @@ class Diagnostics(QDialog):
         for button in self.buttons.values():button.setEnabled(bool(record) and not self.busy)
         if not record:self.text.setPlainText('No AppInstall-managed applications have been registered yet. Install a file or refresh after migration.');return
         last=record.get('last') or {};error=last.get('error') or {}
-        self.text.setPlainText(record['name']+'\nManaged launcher: '+record['desktop']+'\nLast status: '+last.get('status','Never launched')+'\n'+error.get('detail','No detected launch error. Running or detached does not prove the application is usable.')+'\n'+('Logs: '+last['log'] if last.get('log') else 'No launch logs yet.'))
+        self.text.setPlainText(core.diagnostic_details(record))
         self.buttons['Uninstall'].setEnabled(record['format'] in ('deb','rpm','appimage','flatpak') and not self.busy)
         self.buttons['View Logs'].setEnabled(bool(last.get('log')) and not self.busy)
         for label in ('Re-export','Retry Container'):self.buttons[label].setEnabled(bool(record.get('container')) and not self.busy)
