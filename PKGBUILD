@@ -92,6 +92,11 @@ package() {
         "$pkgdir/usr/bin/$pkgname"
     install -Dm0644 "$srcdir/appinstall.desktop" \
         "$pkgdir/usr/share/applications/$pkgname.desktop"
+    # Pin the system launcher to the pacman-owned executable. A separate
+    # source/user install may place an older appinstall first in PATH.
+    # integration.py still rewrites its user-level launcher independently.
+    sed -i 's|^Exec=appinstall %F$|Exec=/usr/bin/appinstall %F|' \
+        "$pkgdir/usr/share/applications/$pkgname.desktop"
     install -Dm0755 "$srcdir/appinstall-appimage-review.desktop" \
         "$pkgdir/usr/share/kio/servicemenus/appinstall-appimage-review.desktop"
     # Use the pacman-owned executable even when ~/.local/bin/appinstall

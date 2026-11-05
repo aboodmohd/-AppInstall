@@ -61,6 +61,8 @@ jobs:
           echo "Package: $package"
           sha256sum "$package"
           bsdtar -tf "$package" | grep -q 'usr/bin/appinstall'
+          # System desktop entry must resolve the pacman build, not a beta in PATH.
+          bsdtar -xOf "$package" usr/share/applications/appinstall.desktop | grep -Fxq 'Exec=/usr/bin/appinstall %F'
           # A packaged service-menu action must not resolve a user-local beta via PATH.
           bsdtar -xOf "$package" usr/share/kio/servicemenus/appinstall-appimage-review.desktop | grep -Fxq 'Exec=/usr/bin/appinstall %f'
           bsdtar -tf "$package" | grep -q 'usr/share/licenses/appinstall/LICENSE'
