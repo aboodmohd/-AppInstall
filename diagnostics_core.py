@@ -21,6 +21,41 @@ def applications():
     return sorted(result,key=lambda item:item['name'].casefold())
 
 
+
+def diagnostic_details(record):
+    """Separate the latest launch result from the most recent recorded failure."""
+    latest = record.get('last') or {}
+    previous_failure = record.get('last_error') or {}
+    latest_error = latest.get('error') or {}
+    failure_error = previous_failure.get('error') or {}
+
+    if latest:
+        latest_message = latest_error.get('detail') or (
+            'No error detected; the application may still be unusable.'
+        )
+    else:
+        latest_message = 'No launch recorded.'
+
+    if failure_error:
+        failure_message = (
+            failure_error.get('category', 'unknown') + ' — ' +
+            failure_error.get('detail', 'Details unavailable') +
+            ' (at ' + previous_failure.get('started', 'unknown time') + ')'
+        )
+    else:
+        failure_message = 'None recorded.'
+
+    return '\n'.join([
+        record.get('name', 'Application'),
+        'Managed launcher: ' + record.get('desktop', 'Unknown'),
+        'Latest attempt: ' + latest.get('started', 'Never'),
+        'Latest attempt status: ' + latest.get('status', 'Never launched'),
+        'Latest attempt error: ' + latest_message,
+        'Most recent recorded failure: ' + failure_message,
+        'Latest attempt log: ' + latest.get('log', 'No launch logs yet.'),
+    ])
+
+
 def open_application(key,files=()):
     return subprocess.Popen([sys.executable,str(Path(monitor.__file__).resolve()),'--launch',key,'--',*files],start_new_session=True)
 
