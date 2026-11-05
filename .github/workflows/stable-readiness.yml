@@ -61,6 +61,8 @@ jobs:
           echo "Package: $package"
           sha256sum "$package"
           bsdtar -tf "$package" | grep -q 'usr/bin/appinstall'
+          # A packaged service-menu action must not resolve a user-local beta via PATH.
+          bsdtar -xOf "$package" usr/share/kio/servicemenus/appinstall-appimage-review.desktop | grep -Fxq 'Exec=/usr/bin/appinstall %f'
           bsdtar -tf "$package" | grep -q 'usr/share/licenses/appinstall/LICENSE'
           # Ensure pacman treats the stable build as newer than the
           # previously distributed beta and RC test packages.
