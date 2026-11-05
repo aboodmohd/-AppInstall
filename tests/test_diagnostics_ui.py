@@ -41,3 +41,19 @@ class DiagnosticsUITests(unittest.TestCase):
         window=ui.Diagnostics();self.assertEqual(window.table.rowCount(),1)
         self.assertFalse(window.buttons['Repair Dependency'].isEnabled());self.assertFalse(window.buttons['Port Owner'].isEnabled());self.assertFalse(window.buttons['Uninstall'].isEnabled())
         window.close()
+    def test_latest_attempt_and_historical_error_are_labeled_separately(self):
+        old=dict(started='2026-11-05T09:30:00+00:00',status='failed',
+                 error=dict(category='executable',detail='The executable does not exist.'),log='/tmp/old.log')
+        latest=dict(started='2026-11-05T09:33:40+00:00',status='detached_or_exited_unverified',
+                    error=None,log='/tmp/latest.log')
+        record=dict(key='test:ui',name='UI Example',format='test',desktop='/tmp/ui.desktop',
+                    last=latest,last_error=old,history=[latest,old])
+        with patch.object(ui.core,'applications',return_value=[record]):
+            window=ui.Diagnostics()
+            self.assertEqual(window.table.horizontalHeaderItem(3).text(),'Latest attempt')
+            self.assertEqual(window.table.horizontalHeaderItem(4).text(),'Last recorded failure')
+            summary=window.text.toPlainText()
+            self.assertIn('Latest attempt status: detached_or_exited_unverified',summary)
+            self.assertIn('Latest attempt error: No error detected;',summary)
+            self.assertIn('Most recent recorded failure: executable — The executable does not exist.',summary)
+            window.close()
