@@ -48,7 +48,8 @@ class DiagnosticsUITests(unittest.TestCase):
                     error=None,log='/tmp/latest.log')
         record=dict(key='test:ui',name='UI Example',format='test',desktop='/tmp/ui.desktop',
                     last=latest,last_error=old,history=[latest,old])
-        with patch.object(ui.core,'applications',return_value=[record]):
+        with patch.object(ui.core,'applications',return_value=[record]), \
+             patch.object(ui.core,'library_packages',return_value=[]):
             window=ui.Diagnostics()
             self.assertEqual(window.table.horizontalHeaderItem(3).text(),'Latest attempt')
             self.assertEqual(window.table.horizontalHeaderItem(4).text(),'Last recorded failure')
