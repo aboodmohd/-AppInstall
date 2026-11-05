@@ -94,6 +94,11 @@ package() {
         "$pkgdir/usr/share/applications/$pkgname.desktop"
     install -Dm0755 "$srcdir/appinstall-appimage-review.desktop" \
         "$pkgdir/usr/share/kio/servicemenus/appinstall-appimage-review.desktop"
+    # Use the pacman-owned executable even when ~/.local/bin/appinstall
+    # from a source/beta installation appears first in PATH.
+    # The source installer rewrites its own menu to the user-local path.
+    sed -i 's|^Exec=appinstall %f$|Exec=/usr/bin/appinstall %f|' \
+        "$pkgdir/usr/share/kio/servicemenus/appinstall-appimage-review.desktop"
     install -Dm0644 "$srcdir/README.md" \
         "$pkgdir/usr/share/doc/$pkgname/README.md"
     install -Dm0644 "$srcdir/LICENSE" \
