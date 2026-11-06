@@ -61,11 +61,14 @@ def drive():
     # event loop is running. Do not monkey-patch the PySide6 C++ type.
     for dialog in app.topLevelWidgets():
         if isinstance(dialog, QMessageBox) and dialog.isVisible():
-            dialog.done(QMessageBox.StandardButton.Yes)
+            yes_button = dialog.button(QMessageBox.StandardButton.Yes)
+            if yes_button is None:
+                raise RuntimeError("Confirmation does not contain a Yes button")
+            yes_button.click()  # real button semantics; QMessageBox.question returns Yes
             QTimer.singleShot(20, drive)
             return
     if time.monotonic() >= deadline:
-        print("FAIL: UI workflow did not finish in 40 seconds", flush=True)
+        print(f"FAIL: UI workflow timed out in phase={phase}, stage={window.stage}", flush=True)
         app.exit(2)
         return
     if phase == 0 and window.stage == "preview" and window.action.isEnabled():
