@@ -1,5 +1,43 @@
 # AppInstall 1.0.0 — final release GO / NO-GO evidence
 
+## Current release-gate addendum — 2026-11-06
+
+**Decision: HOLD / NO-GO. Do not create a `v1.0.0` tag or publish Stable without a new, explicit owner instruction.** The owner expressly required clean testing on a **separate, freshly installed CachyOS KDE/Wayland system** before release ([issue #14: release hold](https://github.com/aboodmohd/-AppInstall/issues/14#issuecomment-6657128604)). Physical tests on the owner's *existing* dual-boot installation and tests on a live USB are useful evidence but do **not** meet that requirement.
+
+### Current code, CI and exact candidate (supersedes older reference hashes below)
+
+| Item | Verified status |
+| --- | --- |
+| GitHub `main` reference | `2737fadd360ab1089b0382f65e6ea32ee0acffb6`, after merged PR [#30](https://github.com/aboodmohd/-AppInstall/pull/30) |
+| CI on that **main** commit | **7/7 PASS**, including Arch, Fedora, Ubuntu unit tests, GUI, Dolphin MIME, native Weston/Wayland smoke, and disposable tmpfs recovery |
+| Arch artifact and workflow | `appinstall-package-2737fadd360ab1089b0382f65e6ea32ee0acffb6`, [Actions run 42208369538](https://github.com/aboodmohd/-AppInstall/actions/runs/42208369538), artifact ID `13497641722`; expires 2026-11-20 |
+| Artifact ZIP digest | SHA-256 `af78db5c62f577e7e93b269e844fdc28a30439336911d5bda2cb29cce1139ed3` |
+| **Package** digest (not ZIP) | `appinstall-1.0.0-1-any.pkg.tar.zst`: SHA-256 `35209d89dc5aa86fecf0ed80bd19697814f62d1901b9dbe96460cbb0725a9e0d`, matched bundled `SHA256SUMS` and CI evidence JSON on independent inspection ([issue #14 evidence](https://github.com/aboodmohd/-AppInstall/issues/14#issuecomment-6683585053)) |
+| Asset classification | **`PUSH_CI_TEST_ONLY` / NO-GO**, not a release asset or owner authorization |
+
+The 2026-11-06 package was inspected for metadata, the packaged MIT notice, source modules, and both absolute `/usr/bin/appinstall` desktop launchers; no third-party runtime binaries or repository screenshots were identified in the package payload. These are **technical observations**, not independent copyright or legal clearance. **If this documentation or any other source changes and produces a later commit, obtain and verify that later build's specific artifact rather than reusing this digest.**
+
+### Current physical-host and live USB evidence
+
+- Existing installed CachyOS KDE Wayland host: `appinstall 1.0.0` from `/usr/bin/appinstall`, `pacman -Qkk appinstall` reported **42 total files, 0 altered**; My Applications and Application Diagnostics windows opened.
+- Owner-reported launch smoke: representative installed **AppImage, Flatpak, DEB and RPM** applications all opened (4/4). This is not arbitrary package compatibility.
+- Isolated source regression run: **171 tests, OK, zero skips**, on the local test-patched checkout; PR #30 merged that test correction and all seven CI jobs passed again on `main`.
+- Guarded real UI interaction on the existing host: review **Cancel** did not invoke the mock Flatpak installer; forced backend installation error returned code `1` with the expected diagnostic. Neither operation installed a real application.
+- Disposable AppImage backend test: synthetic non-launchable image installed, reinstalled without duplicate menu entries, removed, and preserved the downloaded source. This is metadata/registry lifecycle evidence, **not a real AppImage launch**.
+- Separate CachyOS **live USB**: exact earlier candidate `69302aa` checksum/extraction/Bash syntax/CLI verified; no live-session pacman installation or end-to-end GUI/package lifecycle was completed.
+- [Issue #14](https://github.com/aboodmohd/-AppInstall/issues/14) contains dated owner-reported terminal outputs and distinctions between tested and untested behavior.
+
+### Remaining blockers — keep all unchecked until verified
+
+- [ ] **Separate freshly installed CachyOS/KDE Wayland**: actual clean pacman package install, dependency resolution, Dolphin four-format review/install/launch, manager/diagnostics, reinstall and removal, data/default MIME preservation, and recovery checks. A disposable system with backups is required; do not erase/modify the owner's daily-use system to satisfy this gate.
+- [ ] **Third-party notice/redistribution check:** owner declared the AppInstall source original and eight repository screenshots owner-created/authorized ([issue #14 declaration](https://github.com/aboodmohd/-AppInstall/issues/14#issuecomment-6656840134)); independent code/asset inspection, external snippets and any applicable attribution/licensing obligations remain separate and must not be claimed complete.
+- [ ] **Final publication artifact:** recheck *the exact files to be uploaded* and their SHA-256, code commit, license and complete CI on the final candidate; a CI artifact is not automatically the published file.
+- [ ] **Separate owner approval** to create/push the stable tag and publish `v1.0.0`, only after the preceding gates.
+
+**Historical material follows.** Old checksums, references to PR status, and dated gate counts below describe prior candidate snapshots; do not interpret them as the current release decision.
+
+---
+
 **Updated 2026-11-04. Decision: NO-GO for public Stable 1.0 until the
 unverified acceptance and provenance items below are explicitly signed off.**
 
