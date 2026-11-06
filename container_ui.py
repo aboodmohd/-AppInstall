@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 import sys
 try:
-    from PySide6.QtCore import QThread, Signal, Qt, QTimer
+    from PySide6.QtCore import QThread, Signal, Qt, QTimer, Slot
     from PySide6.QtGui import QIcon
     from PySide6.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
                                    QPlainTextEdit, QMessageBox, QInputDialog, QProgressBar, QFrame)
@@ -39,8 +39,9 @@ class Job(QThread):
     done = Signal(object)
     failed = Signal(str)
     progress = Signal(str)
-    def __init__(self, callback):
-        super().__init__(); self.callback=callback
+    def __init__(self, callback, parent=None):
+        # Keep the QThread wrapper owned by the GUI until the thread finishes.
+        super().__init__(parent); self.callback=callback
     def run(self):
         try:
             PROGRESS.set(self.progress.emit)
@@ -51,6 +52,9 @@ class Job(QThread):
 class Workflow(QDialog):
     def __init__(self,args,shot=None):
         super().__init__()
+        # Destroy the dialog before QApplication teardown, not during Python
+        # module cleanup (where stale PySide6 wrappers can segfault).
+        self.setAttribute(Qt.WA_DeleteOnClose, True)
         self.args=args; self.engine=None; self.info=None; self.job=None; self.jobs=[]
         self.shot=shot; self.retry_callback=None
         self.setWindowTitle('AppInstall'); self.setMinimumWidth(640); self.resize(660,540)
@@ -95,20 +99,31 @@ class Workflow(QDialog):
         self.stage='preview'
         self.work(self.read,self.preview,'Validating package')
     def closeEvent(self,event):
-        if self.job and self.job.isRunning(): event.ignore()
+        if any(job.isRunning() for job in self.jobs): event.ignore()
         else: event.accept()
     def reject(self):
-        if not self.job or not self.job.isRunning(): super().reject()
+        if not any(job.isRunning() for job in self.jobs): super().reject()
     def work(self,callback,success,label=''):
         if self.job and self.job.isRunning(): return  # duplicate-click guard
         self.action.setEnabled(False); self.close_button.setEnabled(False)
         self.stage_label.setText(label); self.bar.show()
         self.retry_callback=callback if callback==self.read else None
-        self.job=Job(callback); self.jobs.append(self.job)
+        self.job=Job(callback, self); self.jobs.append(self.job)
         self.job.progress.connect(self.logs.appendPlainText); self.job.done.connect(success); self.job.failed.connect(self.failure)
-        def idle():
-            self.bar.hide(); self.stage_label.setText(''); self.close_button.setEnabled(True)
-        self.job.finished.connect(idle); self.job.start()
+        self.job.finished.connect(self._job_finished)
+        self.job.start()
+    @Slot()
+    def _job_finished(self):
+        # QThread.finished is delivered to this GUI-thread QObject. Release
+        # callbacks (some capture this Workflow), drop completed workers and
+        # defer their QObject deletion while the Qt event loop still runs.
+        job=self.sender()
+        if job is None: return
+        job.callback=None
+        if job in self.jobs: self.jobs.remove(job)
+        if self.job is job: self.job=None
+        self.bar.hide(); self.stage_label.setText(''); self.close_button.setEnabled(True)
+        job.deleteLater()
     def failure(self,message):
         self.logs.appendPlainText(message)
         self.description.setText('Operation failed. Review the problem summary below.')
