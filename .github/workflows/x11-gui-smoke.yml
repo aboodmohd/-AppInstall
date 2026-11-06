@@ -49,3 +49,7 @@ jobs:
           QT_DEBUG_PLUGINS: '1'
         run: |
           xvfb-run -a -s "-screen 0 1280x800x24" python tools/ci_x11_gui_smoke.py
+
+      - name: Verify mocked DEB/RPM install GUI worker shutdown without side effects
+        run: |
+          xvfb-run -a -s "-screen 0 1280x800x24" python tools/ci_container_ui_lifecycle.py
