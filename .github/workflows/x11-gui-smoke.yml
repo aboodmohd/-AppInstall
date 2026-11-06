@@ -54,5 +54,7 @@ jobs:
         run: |
           # Test dialogs/cleanup without QThread first, then same UI with jobs.
           # Both commands must exit 0, including Python interpreter shutdown.
+          # Test with no worker and no unused Open button callback first.
+          xvfb-run -a -s "-screen 0 1280x800x24" python tools/ci_container_ui_lifecycle.py --sync --no-open-action
           xvfb-run -a -s "-screen 0 1280x800x24" python tools/ci_container_ui_lifecycle.py --sync
           xvfb-run -a -s "-screen 0 1280x800x24" python tools/ci_container_ui_lifecycle.py
