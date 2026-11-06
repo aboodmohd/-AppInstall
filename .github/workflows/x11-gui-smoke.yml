@@ -58,3 +58,4 @@ jobs:
           xvfb-run -a -s "-screen 0 1280x800x24" python tools/ci_container_ui_lifecycle.py --sync --no-open-action
           xvfb-run -a -s "-screen 0 1280x800x24" python tools/ci_container_ui_lifecycle.py --sync
           xvfb-run -a -s "-screen 0 1280x800x24" python tools/ci_container_ui_lifecycle.py
+          xvfb-run -a -s "-screen 0 1280x800x24" python tools/ci_container_ui_lifecycle.py --open
