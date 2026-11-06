@@ -70,10 +70,16 @@ def drive():
         return
     if phase == 0 and window.stage == "preview" and window.action.isEnabled():
         phase = 1
+        # QMessageBox.question starts a nested event loop inside click().
+        # Arm the next poll BEFORE opening that modal window.
+        QTimer.singleShot(20, drive)
         window.action.click()  # Prepare and review (fake transaction)
+        return
     elif phase == 1 and window.stage == "transaction" and window.action.isEnabled():
         phase = 2
+        QTimer.singleShot(20, drive)
         window.action.click()  # Install (fake)
+        return
     elif phase == 2:
         for dialog in app.topLevelWidgets():
             if isinstance(dialog, ui.result_ui.SuccessDialog) and dialog.isVisible():
