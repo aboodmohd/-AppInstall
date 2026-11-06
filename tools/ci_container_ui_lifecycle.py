@@ -4,6 +4,7 @@
 Run in a real desktop session, or inside Xvfb. A non-zero process exit (such
 as SIGSEGV / 139) fails CI even if Qt's event loop returned 0.
 """
+import gc
 import sys
 import time
 from pathlib import Path
@@ -91,4 +92,10 @@ QTimer.singleShot(20, drive)
 rc = app.exec()
 if rc != 0 or phase != 4:
     raise SystemExit(f"FAIL: event loop exit {rc}, phase {phase}")
+# Discard Qt/Python wrappers and any cyclic signal callbacks while the
+# QApplication instance still exists, rather than in interpreter finalization.
+del window
+gc.collect()
+del app
+gc.collect()
 print("PASS: simulated Prepare -> Install -> Done -> Close, process exit zero", flush=True)
