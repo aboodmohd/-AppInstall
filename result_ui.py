@@ -22,6 +22,7 @@ class SuccessDialog(QDialog):
         self.setWindowTitle('AppInstall — Installation Complete')
         self.setMinimumWidth(420)
         self.setModal(True)
+        self._open_action = open_action
         layout = QVBoxLayout(self)
         layout.setContentsMargins(26, 24, 26, 20)
         layout.setSpacing(14)
@@ -59,12 +60,26 @@ class SuccessDialog(QDialog):
             open_button = QPushButton('&Open Application')
             open_button.setObjectName('primary')
             open_button.setDefault(True)
-            open_button.clicked.connect(lambda: (self.accept(), open_action()))
+            open_button.clicked.connect(self._open_selected)
             buttons.addWidget(open_button)
-        done.clicked.connect(self.accept)
+        done.clicked.connect(self._done_selected)
         buttons.addWidget(done)
         layout.addLayout(buttons)
         self.setStyleSheet(ui_style.primary_button_stylesheet(self) + ui_style.ghost_button_stylesheet(self))
+
+    def _done_selected(self):
+        # Release an unused application launch callback before Qt teardown.
+        self._open_action = None
+        self.accept()
+
+    def _open_selected(self):
+        # Do not connect a Python lambda capturing other UI objects to the
+        # QPushButton: Qt may retain it until interpreter shutdown.
+        action = self._open_action
+        self._open_action = None
+        self.accept()
+        if action:
+            action()
 
 
 class FailureDialog(QDialog):
