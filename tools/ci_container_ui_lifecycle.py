@@ -11,11 +11,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QMessageBox, QPushButton
 import container_ui as ui
 
 
 class FakeEngine:
+    launches = 0
+
     def __init__(self):
         self.registry = {}
 
@@ -31,7 +33,8 @@ class FakeEngine:
         return "deb:appinstall-ui-test"
 
     def launch(self, key):
-        raise RuntimeError("The test must never launch a real application.")
+        assert key == "deb:appinstall-ui-test", key
+        type(self).launches += 1
 
 
 ui.Engine = FakeEngine
@@ -48,6 +51,10 @@ ui.inspect_package = lambda path: {
     "icon": "",
     "icon_name": "applications-utilities",
 }
+open_requested = "--open" in sys.argv
+if open_requested:
+    sys.argv.remove("--open")
+
 no_open_action = "--no-open-action" in sys.argv
 if no_open_action:
     sys.argv.remove("--no-open-action")
@@ -116,8 +123,13 @@ def drive():
     elif phase == 2:
         for dialog in app.topLevelWidgets():
             if isinstance(dialog, ui.result_ui.SuccessDialog) and dialog.isVisible():
+                target = "Open Application" if open_requested else "Done"
+                buttons = [button for button in dialog.findChildren(QPushButton)
+                           if button.text().replace("&", "") == target]
+                if len(buttons) != 1:
+                    raise RuntimeError(f"Expected exactly one {target!r} button")
                 phase = 3
-                dialog.accept()  # Done
+                buttons[0].click()  # Exercise the production Qt button connection.
                 break
     elif phase == 3 and window.stage == "open":
         # The workflow can only close once its QThread has actually stopped.
@@ -134,10 +146,15 @@ QTimer.singleShot(20, drive)
 rc = app.exec()
 if rc != 0 or phase != 4:
     raise SystemExit(f"FAIL: event loop exit {rc}, phase {phase}")
+expected_launches = 1 if open_requested else 0
+if FakeEngine.launches != expected_launches:
+    raise SystemExit(f"FAIL: fake launches={FakeEngine.launches}, expected={expected_launches}")
 # Discard Qt/Python wrappers and any cyclic signal callbacks while the
 # QApplication instance still exists, rather than in interpreter finalization.
 del window
 gc.collect()
 del app
 gc.collect()
-print("PASS: simulated Prepare -> Install -> Done -> Close, process exit zero; sync="+str(sync_mode), flush=True)
+print("PASS: simulated Prepare -> Install -> "+
+      ("Open Application" if open_requested else "Done")+
+      " -> Close, process exit zero; sync="+str(sync_mode), flush=True)
