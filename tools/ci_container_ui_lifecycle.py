@@ -48,6 +48,22 @@ ui.inspect_package = lambda path: {
     "icon": "",
     "icon_name": "applications-utilities",
 }
+sync_mode = "--sync" in sys.argv
+if sync_mode:
+    sys.argv.remove("--sync")
+
+    def run_inline(self, callback, success, label=""):
+        # Diagnostic A/B path: same real dialogs and fake transaction, but
+        # no QThread objects at all. This never accesses the real backend.
+        try:
+            result = callback()
+        except BaseException as exc:
+            self.failure(str(exc))
+        else:
+            success(result)
+
+    ui.Workflow.work = run_inline
+
 app = QApplication(sys.argv)
 window = ui.Workflow(["SIMULATED-TEST.deb"])
 window.show()
@@ -110,4 +126,4 @@ del window
 gc.collect()
 del app
 gc.collect()
-print("PASS: simulated Prepare -> Install -> Done -> Close, process exit zero", flush=True)
+print("PASS: simulated Prepare -> Install -> Done -> Close, process exit zero; sync="+str(sync_mode), flush=True)
