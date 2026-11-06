@@ -56,8 +56,6 @@ window = ui.Workflow(["SIMULATED-TEST.deb"])
 window.show()
 phase = 0
 deadline = time.monotonic() + 40
-timer = QTimer(window)
-timer.setInterval(20)
 
 
 def drive():
@@ -81,13 +79,15 @@ def drive():
     elif phase == 3 and window.stage == "open":
         # The workflow can only close once its QThread has actually stopped.
         if all(not job.isRunning() for job in window.jobs):
-            timer.stop()
             if window.close():
                 phase = 4
 
 
-timer.timeout.connect(drive)
-timer.start()
+    if phase != 4:
+        QTimer.singleShot(20, drive)
+
+
+QTimer.singleShot(20, drive)
 rc = app.exec()
 if rc != 0 or phase != 4:
     raise SystemExit(f"FAIL: event loop exit {rc}, phase {phase}")
