@@ -205,7 +205,13 @@ class Workflow(QDialog):
         self.logs.appendPlainText('Installation recorded. GUI launch has not been verified.')
         if self.shot: QTimer.singleShot(350,self.capture)
         else:
-            open_app=(lambda: self.engine.launch(self.engine.key(record))) if record.get('exports') else None
+            # Never capture the Qt Workflow in a nested modal button's
+            # Python callback. The QObject may be torn down while that
+            # signal/lambda is retained by PySide6 until interpreter exit.
+            # Capture the plain-Python backend and immutable key instead.
+            engine=self.engine
+            app_key=engine.key(record) if record.get('exports') else None
+            open_app=(lambda: engine.launch(app_key)) if app_key is not None else None
             result_ui.SuccessDialog(record.get('application_name',record['name'])+' '+record['version'],
                                     'Installed in its '+('Debian' if record['kind']=='deb' else 'Fedora')+' container.',
                                     open_app).exec()
