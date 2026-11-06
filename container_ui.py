@@ -43,10 +43,15 @@ class Job(QThread):
         # Keep the QThread wrapper owned by the GUI until the thread finishes.
         super().__init__(parent); self.callback=callback
     def run(self):
+        # Do not retain a PySide6 bound signal emitter in this worker thread's
+        # context after QThread finishes. That can outlive the QObject wrapper.
+        token = PROGRESS.set(self.progress.emit)
         try:
-            PROGRESS.set(self.progress.emit)
             self.done.emit(self.callback())
-        except BaseException as error: self.failed.emit(str(error))
+        except BaseException as error:
+            self.failed.emit(str(error))
+        finally:
+            PROGRESS.reset(token)
 
 
 class Workflow(QDialog):
