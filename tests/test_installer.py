@@ -123,13 +123,16 @@ class InstallerTests(unittest.TestCase):
 
     def test_installed_appinstall_supports_manage(self):
         """The deployed appinstall executable supports --manage."""
-        installed = Path.home() / '.local/bin' / 'appinstall'
-        if installed.exists():
-            text = installed.read_text()
-            self.assertIn('--manage', text)
-            self.assertIn('manager.py', text)
-        else:
+        candidates = (
+            Path.home() / '.local/bin' / 'appinstall',
+            Path('/usr/bin/appinstall'),
+        )
+        installed = next((p for p in candidates if p.is_file()), None)
+        if installed is None:
             self.skipTest('Installed appinstall not found')
+        text = installed.read_text()
+        self.assertIn('--manage', text)
+        self.assertIn('manager.py', text)
 
     def test_integration_copies_result_ui(self):
         """integration.py includes result_ui.py in its module copy list."""
