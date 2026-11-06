@@ -1,5 +1,19 @@
 # AppInstall screenshot provenance review — Stable 1.0
 
+## Owner declaration and review boundary — 2026-11-06
+
+**Owner attestation has already been received.** In the Stable 1.0 review, the owner declared **“AppInstall source code original by me”** and confirmed **all eight `evidence/phase4/` screenshots were theirs and authorized** for public redistribution. See the [recorded owner declaration in issue #14](https://github.com/aboodmohd/-AppInstall/issues/14#issuecomment-6656840134). **Do not ask the owner to repeat this statement solely because earlier checklists were left blank.**
+
+**What this establishes:** a recorded declaration by the copyright claimant concerning their original contributions and the eight screenshots. It is **not** an independent ownership investigation, evidence about third-party snippets/icons, or an audit of all applicable software licenses. A subsequent technical inventory inspected source/packaging and found no obvious bundled third-party executables, but does **not** certify all code provenance or satisfy every notice obligation ([technical review](https://github.com/aboodmohd/-AppInstall/issues/14#issuecomment-6657199708)).
+
+**For final sign-off:** identify any externally sourced snippets or artwork, check relevant licenses/notices and document attribution or removal if required. Review the existing [dependency license audit](DEPENDENCY_LICENSE_AUDIT.md). Record the reviewer, reviewed scope and date in [issue #14](https://github.com/aboodmohd/-AppInstall/issues/14) before closing the **independent third-party rights/notice** item. This is separate from the already recorded owner statement.
+
+**Release status: HOLD / NO-GO.** Fresh **separately installed CachyOS** acceptance, verification of the exact asset to be published, and fresh explicit owner approval remain open. An unchanged binary payload check does not authorize a Stable release.
+
+The earlier 2026-11-04 inventory and unchecked human-review list are retained below as historical context; where they request the **owner declaration**, that part is now documented above. Independent rights clearance remains pending.
+
+---
+
 **Review date:** 2026-11-04  
 **Status:** Automated evidence verification added; human copyright/redistribution sign-off **still required**. This document is evidence, not certification or permission to publish.
 
