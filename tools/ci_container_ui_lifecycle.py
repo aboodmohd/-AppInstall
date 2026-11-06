@@ -48,6 +48,20 @@ ui.inspect_package = lambda path: {
     "icon": "",
     "icon_name": "applications-utilities",
 }
+no_open_action = "--no-open-action" in sys.argv
+if no_open_action:
+    sys.argv.remove("--no-open-action")
+
+    OriginalSuccessDialog = ui.result_ui.SuccessDialog
+
+    class NoOpenActionSuccessDialog(OriginalSuccessDialog):
+        def __init__(self, name, description="", open_action=None, parent=None):
+            # Diagnostic only: test the exact Done path without an unused
+            # action callback that otherwise captures the Workflow instance.
+            super().__init__(name, description, open_action=None, parent=parent)
+
+    ui.result_ui.SuccessDialog = NoOpenActionSuccessDialog
+
 sync_mode = "--sync" in sys.argv
 if sync_mode:
     sys.argv.remove("--sync")
