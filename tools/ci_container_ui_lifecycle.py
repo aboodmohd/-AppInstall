@@ -48,10 +48,6 @@ ui.inspect_package = lambda path: {
     "icon": "",
     "icon_name": "applications-utilities",
 }
-ui.QMessageBox.question = staticmethod(
-    lambda *args, **kwargs: QMessageBox.StandardButton.Yes
-)
-
 app = QApplication(sys.argv)
 window = ui.Workflow(["SIMULATED-TEST.deb"])
 window.show()
@@ -61,6 +57,13 @@ deadline = time.monotonic() + 40
 
 def drive():
     global phase
+    # Use the real Qt question box; a timer clicks Yes while its modal
+    # event loop is running. Do not monkey-patch the PySide6 C++ type.
+    for dialog in app.topLevelWidgets():
+        if isinstance(dialog, QMessageBox) and dialog.isVisible():
+            dialog.done(QMessageBox.StandardButton.Yes)
+            QTimer.singleShot(20, drive)
+            return
     if time.monotonic() >= deadline:
         print("FAIL: UI workflow did not finish in 40 seconds", flush=True)
         app.exit(2)
