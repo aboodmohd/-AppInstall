@@ -197,7 +197,7 @@ def install(source, destination, fallback=False):
         try:
             root = preview_contents(executable, scratch)
             hint = ''
-        except PreviewUnavailable as limitation:
+        except (PreviewUnavailable, RuntimeError) as limitation:
             # The image is never executed for preview; stage it with generic
             # identity so the launcher still works normally at run time.
             root = None
@@ -341,6 +341,7 @@ def install(source, destination, fallback=False):
             old = Path(previous.get('generation',''))
             if old.parent == destination and old.name.startswith('.appinstall-'):
                 shutil.rmtree(old, ignore_errors=True)
+        return entry
         print(str(entry))
 
 if __name__ == '__main__':

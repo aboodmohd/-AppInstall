@@ -109,6 +109,25 @@ def _launcher_exists(record):
     return False
 
 
+def _flatpak_installed(appid):
+    """Check if a Flatpak application is actually installed in user
+    or system scope. A desktop entry can persist after uninstallation,
+    so its presence alone is not sufficient evidence."""
+    if not appid:
+        return False
+    try:
+        result = subprocess.run(
+            ['flatpak', 'info', appid],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            return True
+        return False
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        pass
+    return False
+
+
 def _appimage_target(raw):
     """Resolve the AppImage generation path from the manifest when the
     launch registry record does not store it directly."""
@@ -200,8 +219,14 @@ def build_app_record(key, raw, source):
         if not _launcher_exists(raw):
             problems.append('launcher missing')
     elif fmt == 'flatpak':
-        if not _launcher_exists(raw):
-            problems.append('launcher missing')
+        appid = key.rsplit(':', 1)[-1] if key.startswith('flatpak:') else None
+        if appid:
+            installed = _flatpak_installed(appid)
+            if installed is False:
+                problems.append('application file missing')
+            # installed is True -> app confirmed present, no problem
+            # installed is None -> could not determine (flatpak missing,
+            # timeout, etc.) — do not mark as missing; leave status as-is
     elif fmt in ('deb', 'rpm'):
         if status not in (STATUS_INSTALLED, 'installing', 'removing'):
             problems.append('container record not installed')
