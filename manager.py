@@ -109,6 +109,34 @@ def _launcher_exists(record):
     return False
 
 
+def _flatpak_installed(appid):
+    """Return True/False for a confirmed inventory result, None on failure.
+
+    An unsuccessful ``flatpak info`` cannot distinguish absence from access
+    errors. List applications instead; without scope flags Flatpak includes
+    both user and system installations (including additional installations).
+    """
+    if not appid:
+        return None
+    try:
+        result = subprocess.run(
+            ['flatpak', 'list', '--app', '--columns=application'],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode != 0:
+            return None
+        installed = {line.strip() for line in result.stdout.splitlines()}
+        if appid in installed:
+            return True
+        # A warning may indicate a partially readable inventory. It cannot
+        # establish absence, even if the command returned success.
+        return None if result.stderr.strip() else False
+    except Exception:
+        # Missing CLI, timeouts, access/decoding errors and unexpected query
+        # failures are unknown, never evidence that an application is absent.
+        return None
+
+
 def _appimage_target(raw):
     """Resolve the AppImage generation path from the manifest when the
     launch registry record does not store it directly."""
@@ -172,9 +200,8 @@ def _friendly_launch_status(status):
 def build_app_record(key, raw, source):
     """Normalize one raw registry record into a unified app record.
 
-    Does not launch containers or call flatpak; status is inferred from the
-    recorded state and on-disk evidence that can be checked without side
-    effects.
+    Does not launch containers. Status uses recorded state, on-disk evidence
+    and a read-only Flatpak inventory query.
     """
     if not isinstance(raw, dict):
         raw = {}
@@ -200,8 +227,14 @@ def build_app_record(key, raw, source):
         if not _launcher_exists(raw):
             problems.append('launcher missing')
     elif fmt == 'flatpak':
-        if not _launcher_exists(raw):
-            problems.append('launcher missing')
+        appid = key.rsplit(':', 1)[-1] if key.startswith('flatpak:') else None
+        if appid:
+            installed = _flatpak_installed(appid)
+            if installed is False:
+                problems.append('application file missing')
+            # installed is True -> app confirmed present, no problem
+            # installed is None -> could not determine (flatpak missing,
+            # timeout, etc.) — do not mark as missing; leave status as-is
     elif fmt in ('deb', 'rpm'):
         if status not in (STATUS_INSTALLED, 'installing', 'removing'):
             problems.append('container record not installed')

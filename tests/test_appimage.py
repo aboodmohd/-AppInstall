@@ -1,4 +1,8 @@
 import importlib.util
+import contextlib
+import errno
+import io
+import sys
 import json
 import os
 import struct
@@ -104,18 +108,134 @@ class AppImageTests(unittest.TestCase):
                 # A legacy AppInstall entry must be retired at the next install.
                 legacy = entry.parent/'appinstall-legacy.desktop'
                 legacy.write_text('[Desktop Entry]\nType=Application\nName=Example App\n')
-                first = info['generation']
-                backend.install(source,destination,True)
-                self.assertFalse(Path(first).exists())
+                first = Path(info['generation'])
+                result = backend.install(source,destination,True)
+                self.assertFalse(first.exists())
+                self.assertIsInstance(result, Path)
+                self.assertEqual(result, entry)
                 self.assertEqual(len(list((root/'data/applications').glob('*.desktop'))),1)
-                before = entry.read_text()
+                self.assertIsNotNone(result)
+                self.assertTrue(entry.is_file())
                 manifest = Path(backend.desktop(entry)['X-AppInstall-Manifest'])
-                current = manifest.read_text()
-            with patch.dict(os.environ,env), patch.object(backend.shutil,'which',lambda name:passive.get(name) if name in passive else backend.shutil.which(name)), patch.object(backend.subprocess,'run',return_value=subprocess.CompletedProcess([],1,b'broken image')):
-                with self.assertRaises(RuntimeError):
-                    backend.install(source,destination)
-                self.assertEqual(entry.read_text(),before)
-                self.assertEqual(manifest.read_text(),current)
+                self.assertTrue(manifest.is_file())
+                current = json.loads(manifest.read_text())
+                self.assertTrue(Path(current['fallback'], 'AppRun').is_file())
+                before_entry, before_manifest = entry.read_bytes(), manifest.read_bytes()
+                before_payload = Path(current['target']).read_bytes()
+                generations = set(destination.iterdir())
+                # Fail during publication, after replacing the manifest. The
+                # old manifest, launcher and payload must survive together.
+                real_replace = Path.replace
+                def fail_launcher(path, target):
+                    if path == entry.with_suffix('.new'):
+                        raise OSError(errno.ENOSPC, 'simulated full filesystem')
+                    return real_replace(path, target)
+                with patch.object(Path, 'replace', fail_launcher):
+                    with self.assertRaises(OSError):
+                        backend.install(source, destination)
+                self.assertEqual(entry.read_bytes(), before_entry)
+                self.assertEqual(manifest.read_bytes(), before_manifest)
+                self.assertEqual(Path(current['target']).read_bytes(), before_payload)
+                self.assertEqual(set(destination.iterdir()), generations)
+                # An extracted launch cannot silently accept unreadable contents.
+                with patch.object(backend.subprocess, 'run', return_value=
+                                  subprocess.CompletedProcess([], 1, b'broken image')):
+                    with self.assertRaisesRegex(RuntimeError, 'Extracted launches require'):
+                        backend.install(source, destination, True)
+                self.assertEqual(entry.read_bytes(), before_entry)
+                self.assertEqual(manifest.read_bytes(), before_manifest)
+                self.assertEqual(Path(current['target']).read_bytes(), before_payload)
+                self.assertEqual(set(destination.iterdir()), generations)
+    def test_passive_preview_failures_allow_normal_install(self):
+        for error in (backend.PreviewUnavailable('no passive reader'),
+                      RuntimeError('passive extraction failed')):
+            with self.subTest(error=type(error).__name__), tempfile.TemporaryDirectory() as temp:
+                root = Path(temp)
+                source = root / 'Example.AppImage'
+                source.write_bytes(fixture_appimage())
+                env = {'XDG_DATA_HOME': str(root / 'data'),
+                       'XDG_STATE_HOME': str(root / 'state')}
+                stdout, stderr = io.StringIO(), io.StringIO()
+                with patch.dict(os.environ, env), \
+                     patch.object(backend, 'preview_contents', side_effect=error), \
+                     patch.object(backend.subprocess, 'run') as run, \
+                     contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                    result = backend.install(source, root / 'Applications')
+                run.assert_not_called()  # Never execute the image for preview.
+                self.assertIsInstance(result, Path)
+                self.assertTrue(result.is_file())
+                self.assertEqual(stdout.getvalue(), '')
+                self.assertIn('Detailed preview unavailable', stderr.getvalue())
+                manifest = Path(backend.desktop(result)['X-AppInstall-Manifest'])
+                info = json.loads(manifest.read_text())
+                self.assertEqual(info['fallback'], '')
+                self.assertEqual(Path(info['target']).read_bytes(), source.read_bytes())
+
+    def test_cli_stdout_is_desktop_path_and_open_manifest_is_usable(self):
+        with tempfile.TemporaryDirectory(prefix='appinstall cli ') as temp:
+            root = Path(temp)
+            source = root / 'Example App.AppImage'
+            # No SquashFS: deterministic passive fallback without dependencies.
+            source.write_bytes(b'\x7fELF' + b'\0' * 100)
+            env = dict(os.environ, HOME=str(root),
+                       XDG_DATA_HOME=str(root / 'data'), XDG_STATE_HOME=str(root / 'state'))
+            result = subprocess.run(
+                [sys.executable, str(Path(backend.__file__)), str(source), str(root / 'Applications')],
+                env=env, capture_output=True, text=True, timeout=20)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(len(result.stdout.splitlines()), 1)
+            entry = Path(result.stdout.strip())
+            self.assertTrue(entry.is_file())
+            manifest = backend.desktop(entry)['X-AppInstall-Manifest']
+            info = json.loads(Path(manifest).read_text())
+            with patch.object(backend.os, 'execvpe') as execute:
+                backend.run(manifest, [])
+            self.assertEqual(execute.call_args.args[0], info['target'])
+            self.assertTrue(Path(info['target']).is_file())
+
+    def test_shell_installer_passes_cli_manifest_to_open_action(self):
+        script = (Path(backend.__file__).parent / 'appinstall').read_text()
+        def function(name):
+            start = script.index(name + '() {')
+            return script[start:script.index('\n}', start) + 2]
+        with tempfile.TemporaryDirectory(prefix='appinstall shell ') as temp:
+            root = Path(temp)
+            source = root / 'Example App.AppImage'
+            source.write_bytes(b'\x7fELF' + b'\0' * 100)
+            env = dict(os.environ, HOME=str(root),
+                       XDG_DATA_HOME=str(root / 'data'), XDG_STATE_HOME=str(root / 'state'),
+                       INSTALL_DIR=str(root / 'Applications'), APPS_DIR=str(root / 'data/applications'),
+                       OPEN_ARGS=str(root / 'open-args'), NOTICE=str(root / 'notice'),
+                       NO_OPEN='0', ASSUME_YES='0')
+            # Run the actual installer function and backend. Stub desktop UI,
+            # database refresh and launch so no application is opened.
+            harness = function('desktop_key') + '\n' + function('install_appimage_pkg') + r"""
+validate_appimage() { return 0; }
+ldconfig() { printf '%s\n' 'libfuse.so.2'; }
+progress_start() { :; }
+progress_close() { :; }
+have() { return 1; }
+dialog_confirm() { return 0; }
+notify_ok() { printf '%s\n' "$1" > "$NOTICE"; }
+error_dialog() { printf '%s\n' "$1" >&2; }
+nohup() { printf '%s\n' "$@" > "$OPEN_ARGS"; }
+install_appimage_pkg "$1"
+result=$?
+wait
+exit "$result"
+"""
+            result = subprocess.run(
+                ['bash', '-c', harness, str(Path(backend.__file__).parent / 'appinstall'), str(source)],
+                env=env, capture_output=True, text=True, timeout=20)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            args = (root / 'open-args').read_text().splitlines()
+            self.assertEqual(args[:3], ['python3', str(Path(backend.__file__)), '--run'])
+            self.assertEqual(len(args), 4)
+            manifest = Path(args[3])
+            self.assertTrue(manifest.is_file())
+            self.assertTrue(Path(json.loads(manifest.read_text())['target']).is_file())
+            self.assertIn('Installed Example App', (root / 'notice').read_text())
+
     def test_retires_legacy_shortcut_but_never_deletes_legacy_appimage(self):
         """Existing AppImageLauncher payload belongs to the user, not AppInstall."""
         with tempfile.TemporaryDirectory() as temp:
