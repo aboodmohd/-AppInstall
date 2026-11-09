@@ -342,7 +342,6 @@ def install(source, destination, fallback=False):
             if old.parent == destination and old.name.startswith('.appinstall-'):
                 shutil.rmtree(old, ignore_errors=True)
         return entry
-        print(str(entry))
 
 if __name__ == '__main__':
     try:
@@ -353,7 +352,7 @@ if __name__ == '__main__':
             if spec:launch_monitor.monitor(spec,sys.argv[3:])
             else:run(sys.argv[2], sys.argv[3:])
         else:
-            install(sys.argv[1], sys.argv[2], '--extract' in sys.argv[3:])
+            print(install(sys.argv[1], sys.argv[2], '--extract' in sys.argv[3:]))
     except Exception as error:
         print(str(error), file=sys.stderr)
         sys.exit(1)

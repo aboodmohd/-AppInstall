@@ -38,6 +38,68 @@ def make_app(key='appimage:example', fmt='appimage', **overrides):
     return key, raw
 
 
+class FlatpakDetectionTests(unittest.TestCase):
+    def query(self, stdout='', returncode=0, stderr=''):
+        result = manager.subprocess.CompletedProcess([], returncode, stdout, stderr)
+        with patch.object(manager.subprocess, 'run', return_value=result) as run:
+            answer = manager._flatpak_installed('org.example.App')
+        # No --user/--system filter: inventory must include both scopes.
+        run.assert_called_once_with(
+            ['flatpak', 'list', '--app', '--columns=application'],
+            capture_output=True, text=True, timeout=10)
+        return answer
+
+    def test_user_scope_application_is_installed(self):
+        self.assertIs(self.query('org.example.App\n'), True)
+
+    def test_system_scope_application_is_installed(self):
+        self.assertIs(self.query('org.other.UserApp\norg.example.App\n'), True)
+
+    def test_absent_from_successful_combined_inventory(self):
+        self.assertIs(self.query('org.other.UserApp\norg.other.SystemApp\n'), False)
+
+    def test_empty_successful_inventory_confirms_absence(self):
+        self.assertIs(self.query(), False)
+
+    def test_application_id_requires_exact_match(self):
+        self.assertIs(self.query('org.example.AppExtra\n'), False)
+
+    def test_nonzero_exit_is_unknown_even_with_partial_output(self):
+        for code in (1, 2, 127, -9):
+            with self.subTest(code=code):
+                self.assertIsNone(self.query('org.example.App\n', code, 'access denied'))
+
+    def test_warning_cannot_confirm_absence(self):
+        self.assertIsNone(self.query(stderr='Unable to read system installation'))
+        self.assertIs(self.query('org.example.App\n', stderr='other installation unreadable'), True)
+
+    def test_query_exceptions_are_unknown(self):
+        for error in (FileNotFoundError(), PermissionError(),
+                      manager.subprocess.TimeoutExpired('flatpak', 10),
+                      OSError('I/O error'), RuntimeError('unexpected failure'),
+                      UnicodeDecodeError('utf8', b'\xff', 0, 1, 'invalid')):
+            with self.subTest(error=type(error).__name__), \
+                 patch.object(manager.subprocess, 'run', side_effect=error):
+                self.assertIsNone(manager._flatpak_installed('org.example.App'))
+
+    def test_missing_id_is_unknown_without_query(self):
+        with patch.object(manager.subprocess, 'run') as run:
+            self.assertIsNone(manager._flatpak_installed(''))
+        run.assert_not_called()
+
+    def test_inventory_status_uses_three_states(self):
+        key, raw = make_app('flatpak:org.example.App', 'flatpak')
+        for installed, expected in ((True, manager.STATUS_INSTALLED),
+                                    (False, manager.STATUS_MISSING),
+                                    (None, manager.STATUS_INSTALLED)):
+            with self.subTest(installed=installed), \
+                 patch.object(manager, '_flatpak_installed', return_value=installed):
+                record = manager.build_app_record(key, raw, 'launch-monitor')
+                self.assertEqual(record['status'], expected)
+                self.assertEqual('application file missing' in record['problems'],
+                                 installed is False)
+
+
 class InventoryTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

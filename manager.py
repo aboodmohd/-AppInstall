@@ -110,22 +110,31 @@ def _launcher_exists(record):
 
 
 def _flatpak_installed(appid):
-    """Check if a Flatpak application is actually installed in user
-    or system scope. A desktop entry can persist after uninstallation,
-    so its presence alone is not sufficient evidence."""
+    """Return True/False for a confirmed inventory result, None on failure.
+
+    An unsuccessful ``flatpak info`` cannot distinguish absence from access
+    errors. List applications instead; without scope flags Flatpak includes
+    both user and system installations (including additional installations).
+    """
     if not appid:
-        return False
+        return None
     try:
         result = subprocess.run(
-            ['flatpak', 'info', appid],
+            ['flatpak', 'list', '--app', '--columns=application'],
             capture_output=True, text=True, timeout=10
         )
-        if result.returncode == 0:
+        if result.returncode != 0:
+            return None
+        installed = {line.strip() for line in result.stdout.splitlines()}
+        if appid in installed:
             return True
-        return False
-    except (FileNotFoundError, subprocess.TimeoutExpired):
-        pass
-    return False
+        # A warning may indicate a partially readable inventory. It cannot
+        # establish absence, even if the command returned success.
+        return None if result.stderr.strip() else False
+    except Exception:
+        # Missing CLI, timeouts, access/decoding errors and unexpected query
+        # failures are unknown, never evidence that an application is absent.
+        return None
 
 
 def _appimage_target(raw):
@@ -191,9 +200,8 @@ def _friendly_launch_status(status):
 def build_app_record(key, raw, source):
     """Normalize one raw registry record into a unified app record.
 
-    Does not launch containers or call flatpak; status is inferred from the
-    recorded state and on-disk evidence that can be checked without side
-    effects.
+    Does not launch containers. Status uses recorded state, on-disk evidence
+    and a read-only Flatpak inventory query.
     """
     if not isinstance(raw, dict):
         raw = {}
