@@ -1,3 +1,13 @@
+# Fresh CachyOS acceptance addendum — 2026-11-10
+
+**Fresh installed-system acceptance was performed after the older HOLD addenda below.** The repository owner installed CachyOS KDE Wayland cleanly, verified the exact local candidate from source commit `9cf51696f574dd80f7adf9336c33adff79ed30f3`, reported 44/44 real-app checks across AppImage/Flatpak/DEB/RPM, and passed the local Pacman install/remove/reinstall, user-settings and MIME comparisons, invalid-input tests, and package payload/license inspection. Full detailed scope and limitations: [fresh-system acceptance report](FRESH_CACHYOS_ACCEPTANCE_2026-11-10.md); owner terminal results are logged under [issue #14](https://github.com/aboodmohd/-AppInstall/issues/14).
+
+**This supersedes the older claim below that a separate fresh CachyOS install had not been completed.** The fresh-host test confirms an important manual gate, but does not certify all applications, missing-dependency/network-failure behavior, physical power interruption or third-party rights. The owner-source and eight-screenshot ownership declarations have already been recorded; an independent third-party notice/asset review still needs sign-off.
+
+**Release decision remains HOLD / NO-GO.** Before tagging or publishing Stable v1.0.0, complete the remaining applicable security/license review, ensure final release notes and audit match actual coverage, verify fresh CI and exact uploaded artifacts against the **final reviewed commit**, and obtain the owner's explicit separate publication approval. The locally built test package SHA-256 is `14cab16fe1dc3cc63c11526184b948deca2755499272830dcde48fa993b2a5e3`; it must **not** be assumed to be the final published asset checksum.
+
+---
+
 # AppInstall 1.0.0 — final release GO / NO-GO evidence
 
 ## Current release-gate addendum — 2026-11-06
