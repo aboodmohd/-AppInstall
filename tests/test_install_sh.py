@@ -591,6 +591,19 @@ class InstallerConsentTests(unittest.TestCase):
             self.assertEqual(rc, 2)
             self.assertTrue((Path(home) / '.local/bin/appinstall').exists())
 
+    def test_api_token_header_accepts_punctuation_without_argv_exposure(self):
+        rc, out, err = run_sourced(
+            'GITHUB_TOKEN="test.token-with+punctuation="; '
+            'curl() { printf "ARG:%s\\n" "$@"; cat; }; api_get /example')
+        self.assertEqual(rc, 0, err)
+        self.assertIn('Authorization: Bearer test.token-with+punctuation=', out)
+        self.assertNotIn('ARG:Authorization:', out)
+        self.assertIn('ARG:@-', out)
+
+    def test_api_rejects_header_injection(self):
+        rc, _, _ = run_sourced("GITHUB_TOKEN=$'token\\r\\nInjected: header'; api_get /example")
+        self.assertEqual(rc, 4)
+
     def test_optional_packages_are_explicit_and_noninteractive_with_yes(self):
         rc, out, err = run_sourced(
             'ASSUME_YES=1; WITH_OPTIONAL=1; '

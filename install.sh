@@ -274,8 +274,10 @@ api_get() { # path -> stdout
     return 0
   fi
   if [[ -n "$token" ]]; then
-    [[ "$token" =~ ^[A-Za-z0-9_]+$ ]] || return 4
-    printf 'header = "Authorization: Bearer %s"\n' "$token" | curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 120 --config - -H "Accept: application/vnd.github+json" "${API_BASE}$1"
+    # GitHub token formats may include punctuation. Reject header injection,
+    # and pass the header over stdin so it never appears in curl arguments.
+    [[ "$token" != *$'\n'* && "$token" != *$'\r'* ]] || return 4
+    printf 'Authorization: Bearer %s\n' "$token" | curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 120 -H @- -H "Accept: application/vnd.github+json" "${API_BASE}$1"
   else
     curl -q -fsSL --proto "=https" --proto-redir "=https" --connect-timeout 15 --max-time 120 -H "Accept: application/vnd.github+json" "${API_BASE}$1"
   fi
@@ -844,6 +846,9 @@ UNSUPPORTED
   fi
 
   prepare_tty
+  if [[ $TTY_OK -eq 0 && $ASSUME_YES -eq 0 && $DRY_RUN -eq 0 ]]; then
+    die 2 "Noninteractive run without --yes: nothing was installed. Run from a terminal to answer prompts."
+  fi
   if ! have_cmd python3; then
     if [[ $DRY_RUN -eq 1 ]]; then
       info "[dry-run] Python is required to validate release metadata; would offer pacman -S --needed python."
