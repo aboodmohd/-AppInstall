@@ -1,10 +1,9 @@
 # AppInstall Changelog
 
-## 1.0.0
+## 1.0.0 (published 2026-11-10 as [`v1.0.0`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.0.0))
 
-Release notes for the prepared Stable 1.0 source and package. This heading does
-**not** mean the Stable tag or GitHub release has been published; publication
-authorization remains separately tracked in [issue #14](https://github.com/aboodmohd/-AppInstall/issues/14).
+Release notes for the published Stable 1.0 source and package (`adf44eb`,
+approval chain in [issue #14](https://github.com/aboodmohd/-AppInstall/issues/14)).
 
 - Unified My Applications and Diagnostics interfaces, launch monitoring and
   repair flows for representative AppImage, Flatpak, DEB and RPM packages.
