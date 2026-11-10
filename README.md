@@ -10,6 +10,45 @@ Double-click a supported file, review its source and destination, confirm instal
 
 Managed applications now use monitored launchers. Startup failures show useful errors and logs; open **AppInstall → Application Diagnostics** or run `appinstall --diagnostics` for launch history and safe repair actions. See [Launch Diagnostics](LAUNCH_DIAGNOSTICS.md) for tested behavior and limits.
 
+## One-command installation (Arch Linux / CachyOS)
+
+On Arch Linux and CachyOS — the tested systems for this release — install the
+latest **stable** release with one command:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash
+```
+
+The installer:
+
+* detects your distribution, architecture, desktop environment and existing
+  installations;
+* resolves only the latest **stable** GitHub release (drafts and prereleases are
+  never used);
+* downloads the package and its `SHA256SUMS` manifest and verifies the checksum
+  before anything is touched;
+* installs via `sudo pacman -U` — that is the *only* step needing root, and the
+  app itself is never run as root;
+* offers to install missing optional backends (Flatpak, Podman, Distrobox,
+  squashfs-tools, fuse2, KDialog/Zenity, libnotify);
+* asks for one clear confirmation to make AppInstall the default handler for all
+  supported package formats (`.AppImage`, `.flatpak`, `.flatpakref`,
+  `.flatpakrepo`, `.deb`, `.rpm`); your previous per-user associations are
+  backed up and restorable at any time;
+* runs as idempotent by design: re-running it does nothing harmful.
+
+Flags (noninteractive environments): `--yes` answers install prompts,
+`--set-defaults` opts into the default-handler confirmation, `--no-defaults`
+skips association changes, `--dry-run` shows the plan without changing anything,
+and `--uninstall` removes AppInstall while preserving your application records,
+containers and settings.
+
+Other distributions (Debian/Ubuntu, Fedora, openSUSE and beyond) are not covered
+by this one-command installer yet — use the source-mode installer
+(`install-user.sh`) after reading its requirements in [INSTALL.md](INSTALL.md).
+The Arch `.pkg.tar.zst` release package must **never** be installed with another
+distribution's package manager.
+
 ## Setup
 
 ```sh
