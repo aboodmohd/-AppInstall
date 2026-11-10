@@ -10,55 +10,37 @@ Double-click a supported file, review its source and destination, confirm instal
 
 Managed applications now use monitored launchers. Startup failures show useful errors and logs; open **AppInstall → Application Diagnostics** or run `appinstall --diagnostics` for launch history and safe repair actions. See [Launch Diagnostics](LAUNCH_DIAGNOSTICS.md) for tested behavior and limits.
 
-## One-command installation (in development)
+## Install AppInstall (Arch Linux / CachyOS)
 
-The v1.1 installer is under review. The public `main/install.sh` command must
-not be used or advertised as working until this branch is merged and the
-merged script is validated. Stable v1.0.0 remains unchanged.
+**One-command installation** is available for tested **Arch Linux and CachyOS (x86_64)** desktops. Run this as your normal desktop user (not with `sudo`):
 
-To review this checkout without installing anything:
-
-```sh
-bash install.sh --dry-run
+```bash
+curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash
 ```
 
-Run as your regular desktop user with Bash, curl, coreutils, pacman and sudo.
-If Python is missing, setup asks to install it from your configured pacman
-repositories. Pacman installs required application dependencies, including
-PySide6. Optional backends are offered separately. Keep the system fully
-updated before installing packages; setup does not refresh databases alone.
+The installer script is **v1.1.0**, but it installs the latest *published Stable AppInstall package* (currently **v1.0.0-1**), not an unreleased application version. It selects stable releases only, downloads the release package and its `SHA256SUMS`, verifies the checksum, and installs through pacman. It prompts before installing; when AppInstall is already up to date, it does not reinstall it.
 
-The installer:
+The installer also checks required dependencies and offers missing optional backends such as Flatpak, rootless Podman, Distrobox, squashfs-tools, fuse2, KDialog/Zenity and libnotify. It will **ask before changing your default file handlers** for AppImage, Flatpak, DEB and RPM (nine MIME types). That choice is optional, per-user only, and the previous defaults are backed up with a restoration script. It does not create Distrobox containers during setup.
 
-* detects your distribution, architecture, desktop environment and existing
-  installations;
-* resolves only the latest **stable** GitHub release (drafts and prereleases are
-  never used);
-* downloads the package and its `SHA256SUMS` manifest and verifies the checksum
-  before package installation;
-* installs via `sudo pacman -U` — optional backend installation also uses sudo, and the
-  app itself is never run as root;
-* offers to install missing optional backends (Flatpak, Podman, Distrobox,
-  squashfs-tools, fuse2, KDialog/Zenity, libnotify);
-* asks for one clear confirmation to make AppInstall the default handler for all
-  supported package formats (`.AppImage`, `.flatpak`, `.flatpakref`,
-  `.flatpakrepo`, `.deb`, `.rpm`); your previous per-user associations are
-  backed up and restorable at any time;
-* runs as idempotent by design: re-running it does nothing harmful.
+Verify the installation or open the application manager:
 
-Flags (noninteractive environments): `--yes` answers install and optional backend prompts, but never changes defaults without `--set-defaults`;
-`--set-defaults` opts into the default-handler confirmation, `--no-defaults`
-skips association changes, `--dry-run` shows the plan without changing anything,
-and `--uninstall` removes AppInstall while preserving your application records,
-containers and settings.
+```bash
+appinstall --version
+appinstall --manage
+```
 
-Other distributions (Debian/Ubuntu, Fedora, openSUSE and beyond) are not covered
-by this one-command installer yet — use the source-mode installer
-(`install-user.sh`) after reading its requirements in [INSTALL.md](INSTALL.md).
-The Arch `.pkg.tar.zst` release package must **never** be installed with another
-distribution's package manager.
+To **uninstall the AppInstall package** and optionally restore previous file associations (your managed applications, containers and user data are preserved), run:
 
-## Setup
+```bash
+curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash -s -- --uninstall
+```
+
+For a no-changes plan, run `curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash -s -- --dry-run`. The `--yes` flag allows unattended installation, but does **not** automatically change file defaults; use `--set-defaults` to opt in, or `--no-defaults` to leave them unchanged. See [INSTALL.md](INSTALL.md) for all flags and installation details.
+
+Only Arch Linux and CachyOS are supported by this one-command package installer today. Other distributions (Debian/Ubuntu, Fedora, openSUSE and others) should use the [source installation instructions](INSTALL.md) instead; never install an Arch `.pkg.tar.zst` on another distribution. DEB/RPM support within the AppInstall application uses Distrobox and is separate from the installer’s supported host distributions.
+
+## Install from source (alternative)
+
 
 ```sh
 git clone https://github.com/aboodmohd/-AppInstall.git appinstall
@@ -102,7 +84,9 @@ AppImages with the same embedded application name replace the previous AppInstal
 
 ## Uninstall and recovery
 
-Run `~/.local/bin/appinstall-uninstall` to remove user registration and restore prior associations if AppInstall still owns them. Installed applications are kept. `appinstall --remove NAME` removes an AppInstall-managed AppImage; use Flatpak or your software center to remove Flatpak apps.
+For installs using the **one-command pacman installer**, use the `curl ... | bash -s -- --uninstall` command in [Install AppInstall](#install-appinstall-arch-linux--cachyos). It removes the system package and offers to restore your previous MIME defaults without deleting managed applications, containers or user data.
+
+For **source installs** using `./install-user.sh`, run `~/.local/bin/appinstall-uninstall` to remove user registration and restore prior associations if AppInstall still owns them. Installed applications are kept. `appinstall --remove NAME` removes an AppInstall-managed AppImage; use Flatpak or your software center to remove Flatpak apps.
 
 If your file manager opens AppImages directly, use **Open With → AppInstall**, then choose it as the default. Executable handling varies by file manager. After installing Flatpak for the first time, logging out and back in may be needed for its applications to appear in menus.
 
