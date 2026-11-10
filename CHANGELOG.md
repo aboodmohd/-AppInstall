@@ -1,19 +1,25 @@
 # AppInstall Changelog
 
-## 1.0.0 (stable build — DRAFT / NOT PUBLISHED)
+## 1.0.0
 
-- Prepare final stable CLI and Arch package version identities.
-- Retain AppInstall's passive AppImage metadata inspection, injection/symlink
-  protection, original AppImageLauncher files, and unrelated themed icons.
-- Source registration uses staged/fsynced files and a restart recovery journal.
-- Add genuine disposable tmpfs disk-full and SIGKILL recovery CI.
-- Verify clean Arch pacman install/remove without changing a separate
-  user's MIME defaults, registry or AppImage data.
-- Package the project's MIT notice in /usr/share/licenses/appinstall/.
-- Verify final build's exact package contents, SHA-256, and version ordering.
-- **Release remains blocked:** spare-system KDE acceptance, asset provenance,
-  dependency/license sign-off, and explicit publication authorization.
+Release notes for the prepared Stable 1.0 source and package. This heading does
+**not** mean the Stable tag or GitHub release has been published; publication
+authorization remains separately tracked in [issue #14](https://github.com/aboodmohd/-AppInstall/issues/14).
 
+- Unified My Applications and Diagnostics interfaces, launch monitoring and
+  repair flows for representative AppImage, Flatpak, DEB and RPM packages.
+- Passive AppImage inspection, desktop-entry sanitation and source update
+  recovery against isolated ENOSPC and SIGKILL faults.
+- Retained original AppImageLauncher payloads, unrelated icons, application
+  records and user MIME defaults during the tested operations.
+- Real fresh CachyOS KDE Wayland acceptance on 2026-11-10: owner-reported
+  44/44 representative four-format lifecycle checks, plus verified Pacman
+  package removal/reinstallation and user settings preservation.
+- Current Arch packaging includes the MIT notice and separate declared
+  dependencies. Third-party technical findings and remaining human
+  licensing scope are recorded in DEPENDENCY_LICENSE_AUDIT.md.
+- Final rebuilt release artifacts and checksums, CI and owner approval are
+  release-time gates; this changelog does not certify arbitrary compatibility.
 
 ## 1.0.0-rc.1 (release candidate — NOT PUBLISHED)
 
