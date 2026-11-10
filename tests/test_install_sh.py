@@ -625,7 +625,7 @@ class PipedEntrypointTests(unittest.TestCase):
         # bash -s reads install.sh from stdin, just like curl ... | bash.
         # --help and --version are network-free and must execute the entrypoint.
         for flag, expected in (
-            ("--help", "AppInstall installer"),
+            ("--help", "AppInstall one-command installer"),
             ("--version", "appinstall-installer"),
         ):
             with self.subTest(flag=flag), tempfile.TemporaryDirectory() as home:
