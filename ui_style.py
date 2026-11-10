@@ -79,3 +79,154 @@ def ghost_button_stylesheet(widget):
     QPushButton#ghost:hover { border-color: palette(highlight); }
     QPlainTextEdit#hidden-logs { font-family: monospace; }
     """
+
+
+def manager_stylesheet(widget):
+    """Manager-only visual system, with dark/light colors from the system theme.
+
+    The other dialogs keep their existing native palette. Named selectors avoid
+    unexpectedly restyling confirmation and diagnostics windows.
+    """
+    dark = widget.palette().color(QPalette.ColorRole.Window).lightness() < 125
+    if dark:
+        bg, surface, elevated = '#15191e', '#1e252c', '#242d36'
+        border, muted, text = '#35404b', '#aab6c2', '#f5f8fb'
+        subtle, accent_bg, accent_text = '#182c3d', '#204960', '#91dbff'
+        success, attention = '#76dab5', '#ffb86b'
+    else:
+        bg, surface, elevated = '#f4f7fa', '#ffffff', '#f0f4f8'
+        border, muted, text = '#dce5ed', '#647487', '#172636'
+        subtle, accent_bg, accent_text = '#ecf5fc', '#dceffe', '#156494'
+        success, attention = '#167f5f', '#ab5815'
+    return f"""
+    QWidget#managerRoot {{
+        background-color: {bg};
+        color: {text};
+    }}
+    QLabel#brandMark {{
+        color: {accent_text};
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 1px;
+    }}
+    QLabel#overline, QLabel#sectionCaption {{
+        color: {muted};
+        font-size: 11px;
+        font-weight: 600;
+    }}
+    QLabel#heroTitle {{
+        color: {text};
+        font-size: 27px;
+        font-weight: 750;
+    }}
+    QLabel#heroSubtitle {{
+        color: {muted};
+        font-size: 13px;
+    }}
+    QFrame#heroPanel {{
+        background-color: {surface};
+        border: 1px solid {border};
+        border-radius: 16px;
+    }}
+    QFrame#metricCard {{
+        background-color: {surface};
+        border: 1px solid {border};
+        border-radius: 13px;
+    }}
+    QLabel#metricValue {{
+        color: {text};
+        font-size: 25px;
+        font-weight: 750;
+    }}
+    QLabel#metricValueReady {{ color: {success}; font-size: 25px; font-weight: 750; }}
+    QLabel#metricValueAttention {{ color: {attention}; font-size: 25px; font-weight: 750; }}
+    QLabel#metricTitle {{
+        color: {muted};
+        font-size: 12px;
+        font-weight: 600;
+    }}
+    QLabel#sectionTitle {{
+        color: {text};
+        font-size: 17px;
+        font-weight: 750;
+    }}
+    QLineEdit#managerSearch {{
+        background-color: {surface};
+        color: {text};
+        border: 1px solid {border};
+        border-radius: 10px;
+        padding: 10px 13px;
+        selection-background-color: {accent_bg};
+        min-height: 18px;
+    }}
+    QLineEdit#managerSearch:focus {{ border-color: {accent_text}; }}
+    QPushButton#refreshButton {{
+        background-color: {surface};
+        color: {text};
+        border: 1px solid {border};
+        border-radius: 10px;
+        padding: 10px 16px;
+        font-weight: 600;
+    }}
+    QPushButton#refreshButton:hover {{ background-color: {elevated}; border-color: {accent_text}; }}
+    QPushButton#filterChip {{
+        background-color: {surface};
+        color: {muted};
+        border: 1px solid {border};
+        border-radius: 10px;
+        padding: 8px 15px;
+        font-size: 12px;
+        font-weight: 600;
+    }}
+    QPushButton#filterChip:hover {{ color: {text}; border-color: {accent_text}; }}
+    QPushButton#filterChip:checked {{
+        background-color: {accent_bg};
+        border-color: {accent_text};
+        color: {accent_text};
+    }}
+    QListWidget#appList {{
+        background: transparent;
+        border: none;
+        outline: none;
+    }}
+    QListWidget#appList::item {{
+        background: transparent;
+        border: none;
+        padding: 0;
+        margin: 0;
+    }}
+    QFrame#appCard {{
+        background-color: {surface};
+        border: 1px solid {border};
+        border-radius: 14px;
+    }}
+    QFrame#appCard:hover {{ border-color: {accent_text}; background-color: {elevated}; }}
+    QLabel#appName {{ color: {text}; font-size: 16px; font-weight: 700; }}
+    QLabel#appMeta {{ color: {muted}; font-size: 12px; }}
+    QLabel#appStatus {{
+        color: {success};
+        font-size: 12px;
+        font-weight: 650;
+    }}
+    QLabel#appStatus[attention="true"] {{ color: {attention}; }}
+    QLabel#appWarning {{ color: {attention}; font-size: 11px; }}
+    QLabel#managerFooter, QLabel#managerEmpty {{
+        color: {muted};
+        font-size: 12px;
+    }}
+    QLabel#managerEmpty {{
+        background-color: {surface};
+        border: 1px dashed {border};
+        border-radius: 14px;
+        padding: 36px;
+        font-size: 14px;
+    }}
+    QFrame#appCard QPushButton#primary {{
+        min-width: 64px;
+        padding: 10px 17px;
+    }}
+    QFrame#appCard QPushButton#ghost {{
+        min-width: 54px;
+        padding: 9px 14px;
+    }}
+    """
