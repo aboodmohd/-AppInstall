@@ -705,7 +705,11 @@ uninstall_flow() {
   if [[ ! -e "$APP_BIN" ]] && [[ -z "$(installed_version)" ]]; then
     info "AppInstall does not appear to be installed via pacman; nothing to remove."
   else
-    run_root pacman -R "appinstall" || die 5 "pacman -R failed; see pacman's output above."
+    if [[ $ASSUME_YES -eq 1 ]]; then
+      run_root pacman -R --noconfirm "appinstall" || die 5 "pacman -R failed; see pacman's output above."
+    else
+      run_root pacman -R "appinstall" || die 5 "pacman -R failed; see pacman's output above."
+    fi
     info "Package removed."
   fi
   if [[ -f "$STATE_BACKUP_TSV" ]] && ask "Restore your previous file associations (defaults that were active before AppInstall)?" n; then
