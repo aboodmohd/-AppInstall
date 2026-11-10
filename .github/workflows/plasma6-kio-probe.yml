@@ -1,0 +1,47 @@
+name: Experimental Plasma 6 Wayland KIO probe (not CachyOS acceptance)
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/plasma6-kio-probe.yml'
+      - 'tools/ci_plasma6_kio_probe.sh'
+      - 'appinstall-appimage-review.desktop'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kde6-dolphin-probe:
+    name: KDE6 Dolphin and isolated service-menu probe
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out read-only probe sources
+        uses: actions/checkout@v5
+
+      - name: Run disposable Wayland Plasma 6 image without network
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/appinstall-plasma6-probe"
+          # Experimental third-party container, no tokens/secrets/privileges,
+          # repository mounted read-only; network access denied in container.
+          docker run --rm --pull=always \
+            --network none \
+            --security-opt no-new-privileges \
+            --cap-drop ALL \
+            --shm-size=512m \
+            --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/workspace,readonly" \
+            --mount "type=bind,src=$RUNNER_TEMP/appinstall-plasma6-probe,dst=/out" \
+            --entrypoint /bin/bash \
+            ghcr.io/waymux/waymux-ci-plasma:latest \
+            /workspace/tools/ci_plasma6_kio_probe.sh
+
+      - name: Preserve screenshot, logs, and runtime results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: experimental-kde6-kio-probe
+          path: ${{ runner.temp }}/appinstall-plasma6-probe/
+          if-no-files-found: warn
+          retention-days: 7
