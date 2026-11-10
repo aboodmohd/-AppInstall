@@ -10,14 +10,23 @@ Double-click a supported file, review its source and destination, confirm instal
 
 Managed applications now use monitored launchers. Startup failures show useful errors and logs; open **AppInstall → Application Diagnostics** or run `appinstall --diagnostics` for launch history and safe repair actions. See [Launch Diagnostics](LAUNCH_DIAGNOSTICS.md) for tested behavior and limits.
 
-## One-command installation (Arch Linux / CachyOS)
+## One-command installation (in development)
 
-On Arch Linux and CachyOS — the tested systems for this release — install the
-latest **stable** release with one command:
+The v1.1 installer is under review. The public `main/install.sh` command must
+not be used or advertised as working until this branch is merged and the
+merged script is validated. Stable v1.0.0 remains unchanged.
+
+To review this checkout without installing anything:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash
+bash install.sh --dry-run
 ```
+
+Run as your regular desktop user with Bash, curl, coreutils, pacman and sudo.
+If Python is missing, setup asks to install it from your configured pacman
+repositories. Pacman installs required application dependencies, including
+PySide6. Optional backends are offered separately. Keep the system fully
+updated before installing packages; setup does not refresh databases alone.
 
 The installer:
 
@@ -26,8 +35,8 @@ The installer:
 * resolves only the latest **stable** GitHub release (drafts and prereleases are
   never used);
 * downloads the package and its `SHA256SUMS` manifest and verifies the checksum
-  before anything is touched;
-* installs via `sudo pacman -U` — that is the *only* step needing root, and the
+  before package installation;
+* installs via `sudo pacman -U` — optional backend installation also uses sudo, and the
   app itself is never run as root;
 * offers to install missing optional backends (Flatpak, Podman, Distrobox,
   squashfs-tools, fuse2, KDialog/Zenity, libnotify);
@@ -37,7 +46,7 @@ The installer:
   backed up and restorable at any time;
 * runs as idempotent by design: re-running it does nothing harmful.
 
-Flags (noninteractive environments): `--yes` answers install prompts,
+Flags (noninteractive environments): `--yes` answers install and optional backend prompts, but never changes defaults without `--set-defaults`;
 `--set-defaults` opts into the default-handler confirmation, `--no-defaults`
 skips association changes, `--dry-run` shows the plan without changing anything,
 and `--uninstall` removes AppInstall while preserving your application records,

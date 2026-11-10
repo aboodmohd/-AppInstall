@@ -160,6 +160,23 @@ class ReleaseResolutionTests(unittest.TestCase):
         rc, _, _ = self.resolve(data)
         self.assertNotEqual(rc, 0)
 
+    def test_rejects_unstable_or_untrusted_assets(self):
+        import copy
+        for mutation in ("draft", "prerelease", "url", "duplicate", "tag"):
+            data = copy.deepcopy(self.RELEASE_JSON)
+            if mutation in ("draft", "prerelease"):
+                data[mutation] = True
+            elif mutation == "url":
+                data["assets"][0]["browser_download_url"] = "https://example.com/package"
+            elif mutation == "duplicate":
+                data["assets"].append(data["assets"][0])
+            else:
+                data["tag_name"] = "v1|injected"
+            with self.subTest(mutation=mutation):
+                rc, _, _ = self.resolve(data)
+                self.assertEqual(rc, 4)
+
+
 
 class ChecksumVerificationTests(unittest.TestCase):
     PKG_NAME = "appinstall-1.0.0-1-any.pkg.tar.zst"
@@ -204,6 +221,14 @@ class ChecksumVerificationTests(unittest.TestCase):
         (Path(tmp) / "SHA256SUMS").write_text(self.sums_line(raw) * 2)
         rc, _, _ = run_sourced(f"verify_checksums '{tmp}' '{self.PKG_NAME}'")
         self.assertEqual(rc, 3)
+
+    def test_manifest_with_other_release_assets_passes(self):
+        tmp, raw = self.make_dir()
+        (Path(tmp) / "SHA256SUMS").write_text(
+            self.sums_line(raw) + "0" * 64 + "  unavailable-source.tar.gz\n")
+        rc, _, _ = run_sourced(f"verify_checksums '{tmp}' '{self.PKG_NAME}'")
+        self.assertEqual(rc, 0)
+
 
 
 class PackageVersionTests(unittest.TestCase):
@@ -466,6 +491,54 @@ else:
             "user-made change after installation must be preserved"
         )
 
+    def test_restore_preserves_changed_handler_with_previous_default(self):
+        self.seed_previous_defaults({"application/x-deb": "old.desktop"})
+        rc, _, err = self.run_snippet(
+            'backup_mime_defaults >/dev/null; write_restore_script; '
+            'set_mime_defaults >/dev/null; '
+            'xdg-mime default new.desktop application/x-deb; '
+            '"$STATE_RESTORE_SCRIPT"')
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(self.query("application/x-deb"), "new.desktop")
+
+    def test_yes_does_not_set_defaults(self):
+        self.seed_previous_defaults({"application/x-deb": "old.desktop"})
+        rc, _, err = self.run_snippet(
+            'detect_family() { echo arch; }; ASSUME_YES=1; maybe_set_defaults')
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(self.query("application/x-deb"), "old.desktop")
+        self.assertFalse((self.home / ".local/share/appinstall/installer").exists())
+
+    def test_dry_run_with_explicit_flags_has_no_side_effects(self):
+        self.seed_previous_defaults({"application/x-deb": "old.desktop"})
+        original = self.mimeapps.read_bytes()
+        rc, _, err = self.run_snippet(
+            'DRY_RUN=1; SET_DEFAULTS=1; WITH_OPTIONAL=1; '
+            'run_root() { exit 99; }; podman() { exit 98; }; '
+            'maybe_set_defaults; audit_optional_backends; rootless_podman_report; '
+            'uninstall_flow')
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(self.mimeapps.read_bytes(), original)
+        self.assertFalse((self.home / ".local/share/appinstall/installer").exists())
+
+    def test_restore_removes_added_associations_and_keeps_other_sections(self):
+        self.seed_previous_defaults({"application/x-deb": "old.desktop"})
+        rc, _, err = self.run_snippet(
+            'backup_mime_defaults >/dev/null; write_restore_script; '
+            'set_mime_defaults >/dev/null')
+        self.assertEqual(rc, 0, err)
+        with self.mimeapps.open("a") as stream:
+            stream.write("[Added Associations]\napplication/x-deb=appinstall.desktop;other.desktop;\n"
+                         "[Removed Associations]\napplication/x-deb=blocked.desktop;\n")
+        rc, _, err = self.run_snippet('"$STATE_RESTORE_SCRIPT"')
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(self.query("application/x-deb"), "old.desktop")
+        text = self.mimeapps.read_text()
+        self.assertIn("application/x-deb=other.desktop;", text)
+        self.assertIn("application/x-deb=blocked.desktop;", text)
+        self.assertNotIn("appinstall.desktop", text)
+
+
 
 class ShadowConflictTests(unittest.TestCase):
     """check_shadow_conflicts must never let --yes alone authorize removal
@@ -506,6 +579,29 @@ class ShadowConflictTests(unittest.TestCase):
         # gracefully but consent was granted (no exit-2 refusal).
         rc, _, err = run_sourced("check_shadow_conflicts", env_extra=env, home=home)
         self.assertNotEqual(rc, 2, "--remove-source-install must consent to removal")
+
+
+class InstallerConsentTests(unittest.TestCase):
+    def test_yes_requires_live_source_removal_confirmation(self):
+        with tempfile.TemporaryDirectory() as home:
+            ShadowConflictTests().setup_shadow(home)
+            rc, _, _ = run_sourced(
+                'ASSUME_YES=1; TTY_OK=1; tty_read_line() { echo n; }; '
+                'check_shadow_conflicts', home=home)
+            self.assertEqual(rc, 2)
+            self.assertTrue((Path(home) / '.local/bin/appinstall').exists())
+
+    def test_optional_packages_are_explicit_and_noninteractive_with_yes(self):
+        rc, out, err = run_sourced(
+            'ASSUME_YES=1; WITH_OPTIONAL=1; '
+            'missing_optional_pkgs() { printf "flatpak\\npodman\\n"; }; '
+            'run_root() { printf "ARG:%s\\n" "$@"; }; '
+            'audit_optional_backends')
+        self.assertEqual(rc, 0, err)
+        self.assertIn('ARG:--noconfirm', out)
+        self.assertIn('ARG:flatpak', out)
+        self.assertIn('ARG:podman', out)
+        self.assertNotIn('ARG:--asdeps', out)
 
 
 if __name__ == "__main__":

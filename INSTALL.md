@@ -2,18 +2,29 @@
 
 AppInstall 1.0.0 (Stable) is published as
 [`v1.0.0`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.0.0).
-Everything below is for that release.
+The manual package instructions below apply to that release; the v1.1 installer is separate development work.
 
-## One-command installation (Arch Linux / CachyOS)
+## One-command installation (in development)
 
-Arch Linux and CachyOS are tested for this release. Install from one command:
+The v1.1 installer is under review. The public `main/install.sh` command must
+not be used or advertised as working until this branch is merged and the
+merged script is validated. Stable v1.0.0 remains unchanged.
+
+To review this checkout without installing anything:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash
+bash install.sh --dry-run
 ```
 
-This downloads and verifies the package plus `SHA256SUMS`, installs through
-`sudo pacman -U` (root is used only for the single package installation; the
+Run as your regular desktop user with Bash, curl, coreutils, pacman and sudo.
+If Python is missing, setup asks to install it from your configured pacman
+repositories. Pacman installs required application dependencies, including
+PySide6. Optional backends are offered separately. Keep the system fully
+updated before installing packages; setup does not refresh databases alone.
+
+When run without `--dry-run`, the proposed installer downloads and verifies
+the package plus `SHA256SUMS`, installs through
+`sudo pacman -U` (package installation and optional backend installation use root; the
 app itself never runs as root), offers missing optional backends, and asks for
 one clear confirmation before making AppInstall the default handler for
 supported package formats. Your previous per-user associations are backed up
@@ -50,7 +61,7 @@ sha256sum -c SHA256SUMS   # must print: appinstall-1.0.0-1-any.pkg.tar.zst: OK
 sudo pacman -U appinstall-1.0.0-1-any.pkg.tar.zst
 ```
 
-Or use the one-command installer above, which does download + verification +
+The proposed v1.1 installer performs download + verification +
 installation automatically.
 
 The package installs `appinstall` to `/usr/bin/appinstall` and registers `/usr/share/applications/appinstall.desktop` as an *available* file handler. It does **not** change your existing default file associations. For a file that opens in another application, right-click it in Dolphin and select **Open With → AppInstall**, then choose AppInstall as the default only if you want to. Some file managers may prefer executable AppImage handling over a MIME default.

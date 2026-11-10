@@ -2,7 +2,7 @@
 #
 # AppInstall — one-command installer (stable releases, Arch/CachyOS first).
 #
-# One-command use:
+# Planned public command (available only after merge and validation):
 #   curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash
 #
 # What this script does:
@@ -12,7 +12,7 @@
 #   3. Downloads the package and its SHA256SUMS manifest and verifies the
 #      checksum before anything else happens.
 #   4. Installs with the native package manager (pacman). The script runs as
-#      the invoking user; only the single pacman command is elevated, with its
+#      the invoking user; only package-manager commands are elevated, with their
 #      stdin handed back to the terminal so `curl | bash` keeps working.
 #   5. Offers to install missing optional backends via pacman.
 #   6. Offers ONE clear confirmation to make AppInstall the default handler
@@ -62,7 +62,7 @@ SUPPORTED_IDS="arch cachyos"
 # Optional backends offered after core installation (pacman package names).
 OPTIONAL_PKGS=(flatpak podman distrobox squashfs-tools fuse2 kdialog zenity libnotify)
 
-INSTALLER_VERSION="1.0.0"
+INSTALLER_VERSION="1.1.0"
 
 # ---------------------------------------------------------------------------
 # Flags / state. Defaults respect pre-existing environment values so the test
@@ -98,7 +98,7 @@ bad()  { printf 'ERROR: %s\n' "$*" >&2; }
 die()  { local code="$1"; shift; bad "$*"; exit "$code"; }
 
 log_write() {
-  if [[ -n "$LOG_FILE" ]]; then
+  if [[ $DRY_RUN -eq 0 && -n "$LOG_FILE" ]]; then
     printf '%s %s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" "$*" >>"$LOG_FILE" 2>/dev/null || true
   fi
 }
@@ -230,7 +230,8 @@ ask() {
     answer="$(tty_read_line "$1 [y/N] ")" || answer="n"
   fi
   case "$answer" in
-    [Yy]|[Yy][Ee][Ss]*) return 0 ;;
+    [Yy]|[Yy][Ee][Ss]) return 0 ;;
+    "") [[ "$2" == "y" ]] && return 0; return 1 ;;
     *) return 1 ;;
   esac
 }
@@ -273,51 +274,74 @@ api_get() { # path -> stdout
     return 0
   fi
   if [[ -n "$token" ]]; then
-    curl -fsSL -H "Accept: application/vnd.github+json" -H "Authorization: Bearer $token" "${API_BASE}$1"
+    [[ "$token" =~ ^[A-Za-z0-9_]+$ ]] || return 4
+    printf 'header = "Authorization: Bearer %s"\n' "$token" | curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 120 --config - -H "Accept: application/vnd.github+json" "${API_BASE}$1"
   else
-    curl -fsSL -H "Accept: application/vnd.github+json" "${API_BASE}$1"
+    curl -q -fsSL --proto "=https" --proto-redir "=https" --connect-timeout 15 --max-time 120 -H "Accept: application/vnd.github+json" "${API_BASE}$1"
   fi
 }
 
 # resolve_release -> "tag|pkg_url|sums_url|pkg_name"
 resolve_release() {
-  local json tag u
+  local json
   json="$(api_get "/repos/${REPO_SLUG}/releases/latest")" || return 4
-  # grep -oE prints every URL as its own line regardless of how the JSON is
-  # formatted (grep -o is per-match, so greedy .* cannot collapse matches).
-  tag="$(printf '%s' "$json" | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"[^"]*"' \
-    | head -n1 | sed 's/.*: *"//; s/"$//')"
-  [[ -n "$tag" ]] || return 4
-  local pkg_url="" sums_url="" pkg_name=""
-  while IFS= read -r u; do
-    [[ -z "$u" ]] && continue
-    u="${u#*: \"}"
-    u="${u%\"}"
-    # Match against the basename so both https:// and file:// URLs work.
-    local base="${u##*/}"
-    case "$base" in
-      appinstall-*.pkg.tar.zst) pkg_url="$u"; pkg_name="$base" ;;
-      SHA256SUMS)              sums_url="$u" ;;
-    esac
-  done < <(printf '%s' "$json" | grep -oE '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]*"')
-  [[ -n "$pkg_url" && -n "$sums_url" && -n "$pkg_name" ]] || return 4
-  printf '%s|%s|%s|%s\n' "$tag" "$pkg_url" "$sums_url" "$pkg_name"
+  python3 -c '
+import json, re, sys
+from urllib.parse import urlparse
+try:
+    data = json.load(sys.stdin)
+    tag = data["tag_name"]
+    if data.get("draft") is not False or data.get("prerelease") is not False:
+        raise ValueError("not a stable release")
+    if not re.fullmatch(r"v[0-9][A-Za-z0-9.+_-]*", tag):
+        raise ValueError("invalid tag")
+    found = {}
+    for asset in data["assets"]:
+        name, url = asset["name"], asset["browser_download_url"]
+        if name == "SHA256SUMS" or re.fullmatch(r"appinstall-[0-9][A-Za-z0-9.+_-]*-any\.pkg\.tar\.zst", name):
+            expected = "https://github.com/aboodmohd/-AppInstall/releases/download/" + tag + "/" + name
+            local_fixture = bool(sys.argv[1]) and urlparse(url).scheme == "file" and url.endswith("/" + name)
+            if url != expected and not local_fixture:
+                raise ValueError("unexpected asset URL")
+            key = "sums" if name == "SHA256SUMS" else "pkg"
+            if key in found:
+                raise ValueError("ambiguous release assets")
+            found[key] = (name, url)
+    pkg, sums = found["pkg"], found["sums"]
+    print("|".join((tag, pkg[1], sums[1], pkg[0])))
+except (ValueError, KeyError, TypeError):
+    sys.exit(4)
+' "$TEST_RELEASES_JSON" <<<"$json" || return 4
 }
 
 # ---------------------------------------------------------------------------
 # Download + checksum verification
 # ---------------------------------------------------------------------------
 download_to() { # url dest
-  curl -fsSL --retry 2 -o "$2" "$1" || { rm -f -- "$2"; return 4; }
+  local protocols='=https'
+  [[ -n "$TEST_RELEASES_JSON" && "$1" == file://* ]] && protocols='=file'
+  curl -q -fsSL --proto "$protocols" --proto-redir '=https' --connect-timeout 15 --max-time 600 --retry 2 -o "$2" -- "$1" || { rm -f -- "$2"; return 4; }
   chmod 0644 "$2" 2>/dev/null || true
 }
 
 # verify_checksums dir pkg_name — exactly one matching line must validate.
 verify_checksums() {
-  local dir="$1" pkg="$2" count
-  count="$(awk -v f="$pkg" '$NF == f { n++ } END { print n+0 }' "$dir/SHA256SUMS")"
-  ((count == 1)) || return 3
-  (cd "$dir" && sha256sum --check --strict SHA256SUMS >/dev/null 2>&1) || return 3
+  local dir="$1" pkg="$2" line
+  # Release manifests can list other assets. Validate only the selected
+  # basename, without letting manifest paths cause reads outside the temp dir.
+  line="$(python3 - "$dir/SHA256SUMS" "$pkg" <<'CHECKSUM'
+import re, sys
+lines = []
+for line in open(sys.argv[1], encoding="utf-8"):
+    match = re.fullmatch(r"([0-9a-fA-F]{64}) [ *](.+)\n?", line)
+    if match and match[2].rstrip("\n") == sys.argv[2]:
+        lines.append(match[1] + "  " + sys.argv[2])
+if len(lines) != 1:
+    sys.exit(3)
+print(lines[0])
+CHECKSUM
+)" || return 3
+  (cd "$dir" && printf '%s\n' "$line" | sha256sum --check --strict - >/dev/null 2>&1) || return 3
   return 0
 }
 
@@ -363,7 +387,7 @@ check_shadow_conflicts() {
     # Interactive terminal only. --yes / ASSUME_YES does NOT authorize source
     # removal: removing an existing installation is a destructive decision that
     # always needs either --remove-source-install or a live confirmation.
-    ask "Remove the conflicting user-local AppInstall now (runs its uninstaller; your records, containers and settings are preserved)?" n && consented=1
+    ASSUME_YES=0 ask "Remove the conflicting user-local AppInstall now (runs its uninstaller; your records, containers and settings are preserved)?" n && consented=1
   fi
   if ((consented == 0)); then
     bad "Refusing to continue while a user-local AppInstall shadows the package. See INSTALL.md."
@@ -371,7 +395,7 @@ check_shadow_conflicts() {
     exit 2
   fi
   if [[ -e "$APP_LOCAL_BIN" && -x "$HOME/.local/bin/appinstall-uninstall" ]]; then
-    "$HOME/.local/bin/appinstall-uninstall" || warn "User-uninstall script exited nonzero; continuing — re-run it manually if problems remain."
+    "$HOME/.local/bin/appinstall-uninstall" || die 2 "Source uninstaller failed; resolve it manually before continuing."
   fi
   [[ ! -e "$APP_LOCAL_BIN" ]] || { rm -f -- "$APP_LOCAL_BIN"; warn "Leftover $APP_LOCAL_BIN removed."; }
   if [[ -e "/usr/local/bin/appinstall" ]]; then
@@ -401,11 +425,13 @@ backup_mime_defaults() { # idempotent: first backup wins; returns backup path
     printf '%s\n' "$STATE_BACKUP_TSV"
     return 0
   fi
-  local mime prev
+  local mime prev staging
+  staging="$(mktemp "$STATE_DIR/.mime-backup-XXXXXX")"
   for mime in "${MIME_TYPES[@]}"; do
     prev="$(xdg_query_default "$mime")"
-    printf '%s\t%s\n' "$mime" "$prev" >>"$STATE_BACKUP_TSV"
+    printf '%s\t%s\n' "$mime" "$prev" >>"$staging"
   done
+  mv -- "$staging" "$STATE_BACKUP_TSV"
   if [[ -f "$(mimeapps_path)" ]]; then
     cp -p -- "$(mimeapps_path)" "${STATE_DIR}/previous-mimeapps.list.bak" || true
   fi
@@ -421,7 +447,7 @@ write_restore_script() {
 # Restores the per-user MIME defaults that were active before AppInstall was
 # made the default handler for supported package formats. Written by install.sh.
 # Per-user only; never touches system-wide settings; safe to run repeatedly.
-set -u
+set -euo pipefail
 TSV="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/installer/previous-mime-defaults.tsv"
 MIMEAPPS="${XDG_CONFIG_HOME:-$HOME/.config}/mimeapps.list"
 if [[ ! -r "$TSV" ]]; then
@@ -455,79 +481,43 @@ for raw in open(tsv_path, encoding="utf-8"):
         prev[mime] = val.strip()
 
 
-def current_default(mime):
-    """Read the current default handler for a MIME type from mimeapps.list."""
-    if not os.path.exists(mimeapps_path):
-        return ""
-    insec = False
-    for line in open(mimeapps_path, encoding="utf-8"):
-        s = line.strip()
-        if s.startswith("[") and s.endswith("]"):
-            insec = s == "[Default Applications]"
-            continue
-        if insec and "=" in s:
-            key, val = s.split("=", 1)
-            if key.strip() == mime:
-                return val.strip().rstrip(";").strip()
-    return ""
-
-
 try:
     text = open(mimeapps_path, encoding="utf-8").read()
 except FileNotFoundError:
     text = ""
-# Snapshot what is currently set for each installer-managed MIME *before* we
-# rewrite the section, so user changes made after installation are preserved.
-current = {}
-for mime in ours:
-    current[mime] = current_default(mime)
-lines = text.splitlines()
 out = []
 section = None
-for ln in lines:
-    s = ln.strip()
-    if s.startswith("[") and s.endswith("]"):
-        section = s[1:-1]
-        out.append(ln)
-        continue
-    if section == "Default Applications" and "=" in s:
-        key = s.split("=", 1)[0].strip()
-        if key in ours:
-            continue  # drop installer defaults; re-applied below per rules
-    out.append(ln)
-if not any(s.strip() == "[Default Applications]" for s in out):
-    out.append("[Default Applications]")
-idx = next(i for i, s in enumerate(out) if s.strip() == "[Default Applications]")
-inserted = 0
-for mime in ours:
-    cur = current[mime]
-    if cur == DESKTOP_ID:
-        # AppInstall is still the default: revert to the pre-install value
-        # (or remove the entry if it was unset before installation).
-        # If the previous value was also AppInstall, there is nothing to
-        # restore — remove the entry since AppInstall is being uninstalled.
-        val = prev.get(mime)
-        if val is None or val == DESKTOP_ID:
-            continue
-        entry = val
-    else:
-        # The user (or another tool) changed this default after installation.
-        # Preserve their current choice.
-        entry = cur
-    if any(s.split("=", 1)[0].strip() == mime for s in out[idx + 1:] if "=" in s):
-        continue
-    out.insert(idx + 1 + inserted, f"{mime}={entry}")
-    inserted += 1
-open(mimeapps_path, "w", encoding="utf-8").write("\n".join(out) + "\n")
-print(f"Restored defaults where AppInstall is still set; user-made changes after installation were preserved.")
+for line in text.splitlines(keepends=True):
+    stripped = line.strip()
+    if stripped.startswith("[") and stripped.endswith("]"):
+        section = stripped[1:-1]
+    if section in ("Default Applications", "Added Associations") and "=" in stripped:
+        key, value = stripped.split("=", 1)
+        mime = key.strip()
+        handlers = [item for item in value.split(";") if item]
+        if mime in ours and DESKTOP_ID in handlers:
+            if section == "Default Applications" and handlers[0] == DESKTOP_ID:
+                saved = prev.get(mime, "")
+                handlers = [item for item in saved.split(";") if item and item != DESKTOP_ID]
+            else:
+                handlers = [item for item in handlers if item != DESKTOP_ID]
+            if not handlers:
+                continue
+            line = mime + "=" + ";".join(handlers) + ";\n"
+    out.append(line)
+# Replace atomically so a failed write leaves the original configuration intact.
+import tempfile
+fd, staging = tempfile.mkstemp(prefix=".appinstall-mime-", dir=os.path.dirname(mimeapps_path))
+try:
+    with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        stream.writelines(out)
+    os.chmod(staging, os.stat(mimeapps_path).st_mode & 0o777)
+    os.replace(staging, mimeapps_path)
+finally:
+    if os.path.exists(staging):
+        os.unlink(staging)
+print("Restored AppInstall defaults; later user choices were preserved.")
 PY
-if command -v xdg-mime >/dev/null 2>&1; then
-  while IFS=$'\t' read -r mime p; do
-    # Only restore non-AppInstall defaults — never re-add AppInstall itself
-    # during uninstall (it is being removed).
-    [[ -n "$p" && "$p" != "$DESKTOP_ID" ]] && xdg-mime default "$p" "$mime" >/dev/null 2>&1 || true
-  done <"$TSV"
-fi
 if command -v kbuildsycoca6 >/dev/null 2>&1; then
   kbuildsycoca6 --noincremental >/dev/null 2>&1 || true
 fi
@@ -566,6 +556,10 @@ set_mime_defaults() {
 }
 
 maybe_set_defaults() {
+  if [[ $DRY_RUN -eq 1 ]]; then
+    info "[dry-run] would offer per-user MIME defaults; no associations changed."
+    return 0
+  fi
   if [[ $NO_DEFAULTS -eq 1 ]]; then
     info "Skipping file-association changes (--no-defaults)."
     return 0
@@ -585,7 +579,7 @@ maybe_set_defaults() {
   elif [[ $DRY_RUN -eq 1 ]]; then
     printf '[dry-run] would ask: make AppInstall the default handler for AppImage/Flatpak/DEB/RPM files (9 MIME types)?\n'
     return 0
-  elif ask "Make AppInstall the default application for AppImage, Flatpak, DEB and RPM files (all 9 advertised MIME types)? Your previous per-user defaults are backed up and can be restored." n; then
+  elif [[ $ASSUME_YES -eq 0 ]] && ask "Make AppInstall the default application for AppImage, Flatpak, DEB and RPM files (all 9 advertised MIME types)? Your previous per-user defaults are backed up and can be restored." n; then
     want=1
   fi
   if ((want == 0)); then
@@ -611,6 +605,10 @@ missing_optional_pkgs() { # prints missing, one per line
 }
 
 audit_optional_backends() {
+  if [[ $DRY_RUN -eq 1 ]]; then
+    info "[dry-run] would audit optional backends; no packages installed."
+    return 0
+  fi
   local missing
   missing="$(missing_optional_pkgs)"
   if [[ -z "$missing" ]]; then
@@ -630,12 +628,14 @@ audit_optional_backends() {
     printf '[dry-run] would ask to install optional backends\n'
   fi
   if ((want == 0)); then
-    info "Skipping optional backends. Add later with: sudo pacman -S --needed --asdeps flatpak podman distrobox squashfs-tools fuse2"
+    info "Skipping optional backends. Add later with: sudo pacman -S --needed flatpak podman distrobox squashfs-tools fuse2"
     return 0
   fi
   mapfile -t to_install <<<"$missing"
   info "Installing optional backends: ${to_install[*]}"
-  if ! run_root pacman -S --needed --asdeps "${to_install[@]}"; then
+  local pacman_flags=(--needed)
+  [[ $ASSUME_YES -eq 1 ]] && pacman_flags+=(--noconfirm)
+  if ! run_root pacman -S "${pacman_flags[@]}" -- "${to_install[@]}"; then
     warn "Optional backend installation had errors — AppInstall core still works; review pacman's output."
     return 0
   fi
@@ -643,6 +643,10 @@ audit_optional_backends() {
 }
 
 rootless_podman_report() {
+  if [[ $DRY_RUN -eq 1 ]]; then
+    info "[dry-run] skipping Podman runtime probe."
+    return 0
+  fi
   if ! have_cmd podman; then
     info "Podman not present — DEB/RPM via Distrobox stays unavailable until installed."
     return 0
@@ -683,7 +687,7 @@ pkg_installed_state_hint() { # installed_version target_version -> words for dry
 
 install_package_file() { # verified pkg path
   local pkg="$1"
-  info "Installing package (the only sudo step): pacman -U $(basename "$pkg")"
+  info "Installing package: pacman -U $(basename "$pkg")"
   if [[ $TTY_OK -eq 1 ]]; then
     run_root pacman -U --needed -- "$pkg" || die 5 "pacman reported an error and the package was not installed. Review pacman's message; nothing else was changed by this script."
   else
@@ -701,6 +705,10 @@ install_package_file() { # verified pkg path
 # Uninstall path (--uninstall)
 # ---------------------------------------------------------------------------
 uninstall_flow() {
+  if [[ $DRY_RUN -eq 1 ]]; then
+    info "[dry-run] would offer package removal and association restoration."
+    return 0
+  fi
   info "Removing AppInstall package and optionally restoring previous file associations."
   info "Your application records, containers, launchers, logs and settings under ~ are always preserved."
   if ! ask "Remove the system package now (pacman -R appinstall)? AppInstall windows should be closed first." n; then
@@ -735,7 +743,9 @@ usage() {
   cat <<HELP
 AppInstall one-command installer (stable releases only; Arch Linux + CachyOS tested).
 
-  curl -fsSL $RAW_URL | bash
+  bash install.sh [flags]
+
+Public curl command is pending merge and validation.
 
 Flags:
   --yes, -y                answer yes to installer prompts (install, upgrade, optional backends; NOT defaults)
@@ -826,13 +836,31 @@ UNSUPPORTED
 
   # --- 3. working tools (after the gate, so unsupported systems still get
   #        a helpful refusal even if a tool is missing) -------------------
+  if ((EUID == 0)); then
+    die 2 "Run as your regular desktop user; only package-manager commands use sudo."
+  fi
   if ! need_cmds curl sha256sum pacman; then
     exit 2
   fi
 
+  prepare_tty
+  if ! have_cmd python3; then
+    if [[ $DRY_RUN -eq 1 ]]; then
+      info "[dry-run] Python is required to validate release metadata; would offer pacman -S --needed python."
+      return 0
+    fi
+    ask "Install Python from the configured pacman repositories to validate release metadata?" n || die 2 "Python is required; nothing was installed."
+    local python_flags=(--needed)
+    [[ $ASSUME_YES -eq 1 ]] && python_flags+=(--noconfirm)
+    run_root pacman -S "${python_flags[@]}" -- python || die 5 "Python dependency installation failed."
+    have_cmd python3 || die 5 "Python is still unavailable after dependency installation."
+  fi
+
   # --- 4. state cleanup (first-run hygiene) ----------------------------
-  mkdir -p "$STATE_DIR"
-  LOG_FILE="${STATE_DIR}/install-log.txt"
+  if [[ $DRY_RUN -eq 0 ]]; then
+    mkdir -p "$STATE_DIR"
+    LOG_FILE="${STATE_DIR}/install-log.txt"
+  fi
   log_write "start family=${family} id=${distro_id} arch=${arch} de=${de} dry_run=${DRY_RUN} assume_yes=${ASSUME_YES} set_defaults=${SET_DEFAULTS} no_defaults=${NO_DEFAULTS} with_optional=${WITH_OPTIONAL} no_optional=${NO_OPTIONAL} allow_arch_like=${ALLOW_ARCH_LIKE}"
 
   # --- 5. uninstall path ----------------------------------------------
@@ -890,7 +918,7 @@ UNSUPPORTED
           info "Upgrading: ${installed_rel} → ${pkg_ver}."
         else
           info "Keeping existing version ${installed_rel}; nothing was changed."
-          already_current=1
+          return 0
         fi
         ;;
     esac
