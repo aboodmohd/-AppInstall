@@ -198,7 +198,10 @@ jobs:
           # The container user had NO previous defaults: after restore nothing
           # may point at AppInstall.
           if grep -q 'appinstall' /home/appuser/.config/mimeapps.list 2>/dev/null; then
-            echo '::error::restore left AppInstall in user defaults'; exit 1
+            echo '::error::restore left AppInstall in user defaults'
+            echo '::debug::mimeapps.list contents:'; cat /home/appuser/.config/mimeapps.list 2>/dev/null || true
+            echo '::debug::backup TSV contents:'; cat /home/appuser/.local/share/appinstall/installer/previous-mime-defaults.tsv 2>/dev/null || true
+            exit 1
           fi
           ! pacman -Q appinstall 2>/dev/null || {
             echo '::error::uninstall did not remove the package'; exit 1
