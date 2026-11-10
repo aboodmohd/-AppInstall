@@ -436,6 +436,7 @@ if ! touch "$MIMEAPPS" 2>/dev/null; then
   echo "Cannot write $MIMEAPPS" >&2
   exit 1
 fi
+DESKTOP_ID="appinstall.desktop"
 python3 - "$TSV" "$MIMEAPPS" <<'PY'
 import os
 import sys
