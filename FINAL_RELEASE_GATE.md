@@ -1,4 +1,14 @@
-# Release preparation status — 2026-11-10
+# Stable v1.0.0 publication record — 2026-11-10
+
+**Published as [`v1.0.0`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.0.0)**
+from the final reviewed commit `adf44ebd44eb6c6b002c419befdcbecb754984d0`
+with the owner's explicit approvals recorded in
+[issue #14](https://github.com/aboodmohd/-AppInstall/issues/14).
+`v1.0.0-beta.1` remains unchanged.
+
+---
+
+# Release preparation status — 2026-11-10 (historical, superseded by the record above)
 
 **Stable 1.0: HOLD / NO-GO.** The independent candidate artifact
 verification and native fresh-CachyOS acceptance are recorded in issue #14,

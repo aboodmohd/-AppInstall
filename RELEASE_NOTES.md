@@ -1,9 +1,11 @@
 # AppInstall 1.0.0 — Release Notes
 
-**Publication:** These notes describe the prepared AppInstall 1.0.0 build.
-They do not claim a Stable release or tag is already published. The final
-tag/publication requires separate owner approval under issue #14;
-the existing public beta remains unchanged.
+**Publication:** AppInstall 1.0.0 was published as the Stable release
+[`v1.0.0`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.0.0) on
+2026-11-10 from the final reviewed commit `adf44eb` after explicit owner
+approvals recorded in [issue #14](https://github.com/aboodmohd/-AppInstall/issues/14).
+The earlier public beta [`v1.0.0-beta.1`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.0.0-beta.1)
+remains unchanged. This does not certify arbitrary compatibility.
 
 AppInstall integrates AppImage, Flatpak, DEB and RPM installation with the
 Linux desktop. The primary tested desktop is **CachyOS KDE Plasma Wayland**.
@@ -38,18 +40,20 @@ Support for every third-party package or Linux distribution is not guaranteed.
 | .deb | Distrobox Debian container | Not all packages work; drivers/services unsupported |
 | .rpm | Distrobox Fedora container | Not all packages work; drivers/services unsupported |
 
-## Arch Linux / CachyOS candidate package
+## Arch Linux / CachyOS stable package
 
-The **not-yet-published** Arch package, once the final build passes, is named:
+The published Stable package for the final reviewed commit is named:
 
 `appinstall-1.0.0-1-any.pkg.tar.zst`
 
-The exact file must be obtained from the verified GitHub Actions run for
-the **final reviewed commit**, not from a previous RC/beta package. Compare
-its `SHA256SUMS` manifest with the downloaded package using `sha256sum -c`,
-and check its contents before installing in a **disposable or backed-up**
-environment. `PACKAGE_CHECKSUM.md` describes a *historical beta package*
-and must **never** be treated as the hash of this stable build.
+Only the exact asset from the published
+[`v1.0.0` release](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.0.0)
+matches its published `SHA256SUMS` manifest (verified independently before
+publication); earlier RC/beta packages have different bytes. Compare the
+downloaded file with `sha256sum -c`, and inspect it with `pacman -Qip`
+before installing in a **disposable or backed-up** environment.
+`PACKAGE_CHECKSUM.md` describes a *historical beta package* and must
+**never** be treated as the hash of this stable build.
 
 The system package registers AppInstall as an **available** MIME handler; it
 does not set all user file-type defaults. Source registration does set
@@ -75,7 +79,10 @@ an all-in-one binary would require a separate licensing review.
 
 On an actual newly installed CachyOS KDE Wayland system, the owner successfully built and installed the 1.0.0-1 candidate from commit `9cf51696f574dd80f7adf9336c33adff79ed30f3`. Source regression: 190 tests (one skipped after installation, zero failures); both graphical windows launched; real AppImage (Hayase), Flatpak (Stremio), DEB (Mousepad), and RPM (OpenCode) lifecycle checks were **owner-reported** successful (44/44). Package remove/reinstall, retained settings/MIME/container names, benign invalid-input rejection, packaged MIT license, and launchers were also verified by terminal checks. See [fresh-system acceptance report](FRESH_CACHYOS_ACCEPTANCE_2026-11-10.md) and [issue #14](https://github.com/aboodmohd/-AppInstall/issues/14).
 
-These checks concern a **locally built and tested candidate**, not the exact future release upload. They do not establish arbitrary application compatibility or an independent copyright/security certification. Stable publication remains blocked pending remaining reviews, final asset/CI checks, and owner's explicit permission.
+These checks concern a locally built and tested candidate built from the
+same source as the released artifact; 44/44 lifecycle checks are
+**owner-reported**. They do not establish arbitrary application
+compatibility or an independent copyright/security certification.
 
 ## Evidence recorded before this preflight
 
@@ -94,20 +101,26 @@ These checks concern a **locally built and tested candidate**, not the exact fut
 The final `v1.0.0` source/package must be rebuilt and re-tested before
 these results can be attributed to the final artifact.
 
-## Before Stable 1.0 publication
+## Before Stable 1.0 publication (all completed 2026-11-10)
 
 - [x] Record owner-reported fresh CachyOS/KDE Wayland clean-install,
       Dolphin and real four-format install/launch/reinstall/removal acceptance
       and Pacman package lifecycle evidence (see 2026-11-10 report)
-- [ ] Decide whether additional missing-dependency/network-failure and
-      source-registration fault recovery manual tests are required
+- [x] Decide whether additional missing-dependency/network-failure and
+      source-registration fault recovery manual tests are required — decision:
+      confined CI fault-recovery coverage plus owner-recorded invalid-input
+      behavior is accepted for v1.0.0; extension tracked without blocking
 - [x] Record owner's original-source and eight-screenshot permissions declaration
       in issue #14 (already completed)
-- [ ] Confirm no additional externally sourced snippets/assets need attribution,
-      or document their permission and required notices
-- [ ] Review unresolved issues, security boundaries and dependency provenance
-- [ ] Check final GitHub CI runs and inspect the exact package and manifest
-- [ ] Obtain explicit approval for merge, then separately for tag/publication
+- [x] Confirm no additional externally sourced snippets/assets need attribution,
+      or document their permission and required notices (owner confirmation, issue #14 2026-11-10)
+- [x] Review unresolved issues, security boundaries and dependency provenance
+      (no open issues besides #14; single-author provenance recorded; DEPENDENCY_LICENSE_AUDIT.md updated)
+- [x] Check final GitHub CI runs and inspect the exact package and manifest
+      (7/7 on `adf44eb`; package + manifest re-verified independently)
+- [x] Obtain explicit approval for merge, then separately for tag/publication
+      (both granted 2026-11-10, recorded in issue #14)
 
-Until publication is separately approved, this remains release-preparation
-material. The last confirmed public release is `v1.0.0-beta.1`.
+Published on 2026-11-10 as
+[`v1.0.0`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.0.0).
+The earlier public release remains `v1.0.0-beta.1`, unchanged.
