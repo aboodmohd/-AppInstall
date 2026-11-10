@@ -522,7 +522,9 @@ print(f"Restored defaults where AppInstall is still set; user-made changes after
 PY
 if command -v xdg-mime >/dev/null 2>&1; then
   while IFS=$'\t' read -r mime p; do
-    [[ -n "$p" ]] && xdg-mime default "$p" "$mime" >/dev/null 2>&1 || true
+    # Only restore non-AppInstall defaults — never re-add AppInstall itself
+    # during uninstall (it is being removed).
+    [[ -n "$p" && "$p" != "$DESKTOP_ID" ]] && xdg-mime default "$p" "$mime" >/dev/null 2>&1 || true
   done <"$TSV"
 fi
 if command -v kbuildsycoca6 >/dev/null 2>&1; then
