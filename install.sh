@@ -293,9 +293,11 @@ resolve_release() {
     [[ -z "$u" ]] && continue
     u="${u#*: \"}"
     u="${u%\"}"
-    case "$u" in
-      *appinstall-*.pkg.tar.zst) pkg_url="$u"; pkg_name="${u##*/}" ;;
-      */SHA256SUMS)              sums_url="$u" ;;
+    # Match against the basename so both https:// and file:// URLs work.
+    local base="${u##*/}"
+    case "$base" in
+      appinstall-*.pkg.tar.zst) pkg_url="$u"; pkg_name="$base" ;;
+      SHA256SUMS)              sums_url="$u" ;;
     esac
   done < <(printf '%s' "$json" | grep -oE '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]*"')
   [[ -n "$pkg_url" && -n "$sums_url" && -n "$pkg_name" ]] || return 4
