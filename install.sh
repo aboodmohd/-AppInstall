@@ -980,7 +980,9 @@ UNSUPPORTED
   return 0
 }
 
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+# When piped into `bash`, BASH_SOURCE[0] is unset under `set -u`.
+# Treat stdin execution like direct file execution, but not like `source`.
+if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
   parse_flags "$@"
   if [[ $SET_DEFAULTS -eq 1 && $NO_DEFAULTS -eq 1 ]]; then
     bad "--set-defaults and --no-defaults are mutually exclusive."

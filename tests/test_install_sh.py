@@ -617,5 +617,34 @@ class InstallerConsentTests(unittest.TestCase):
         self.assertNotIn('ARG:--asdeps', out)
 
 
+
+class PipedEntrypointTests(unittest.TestCase):
+    """The advertised curl | bash invocation must not crash under set -u."""
+
+    def test_bash_stdin_executes_entrypoint_without_unbound_bash_source(self):
+        # bash -s reads install.sh from stdin, just like curl ... | bash.
+        # --help and --version are network-free and must execute the entrypoint.
+        for flag, expected in (
+            ("--help", "AppInstall one-command installer"),
+            ("--version", "appinstall-installer"),
+        ):
+            with self.subTest(flag=flag), tempfile.TemporaryDirectory() as home:
+                env = os.environ.copy()
+                env["HOME"] = home
+                env["XDG_DATA_HOME"] = str(Path(home) / ".local/share")
+                env["XDG_CONFIG_HOME"] = str(Path(home) / ".config")
+                proc = subprocess.run(
+                    ["bash", "-s", "--", flag],
+                    input=SCRIPT.read_text(encoding="utf-8"),
+                    capture_output=True,
+                    text=True,
+                    env=env,
+                    timeout=15,
+                )
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertIn(expected, proc.stdout)
+                self.assertNotIn("unbound variable", proc.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()
