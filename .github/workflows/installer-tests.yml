@@ -102,6 +102,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
+          # Ensure a clean container state: the previous step installed
+          # appinstall, so remove it before verifying the tamper test
+          # installs nothing.
+          pacman -R --noconfirm appinstall 2>/dev/null || true
           # Fully local tamper test: no network dependency. Create a fake
           # package and a manifest whose hash does NOT match it, then point
           # the installer at file:// URLs so the full download → verify path
