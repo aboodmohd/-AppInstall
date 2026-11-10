@@ -503,8 +503,10 @@ for mime in ours:
     if cur == DESKTOP_ID:
         # AppInstall is still the default: revert to the pre-install value
         # (or remove the entry if it was unset before installation).
+        # If the previous value was also AppInstall, there is nothing to
+        # restore — remove the entry since AppInstall is being uninstalled.
         val = prev.get(mime)
-        if val is None:
+        if val is None or val == DESKTOP_ID:
             continue
         entry = val
     else:
