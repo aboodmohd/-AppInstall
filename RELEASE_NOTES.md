@@ -70,6 +70,12 @@ The package installs AppInstall's MIT notice under
 separate upstream licenses. Repackaging Qt/PySide6 or other libraries into
 an all-in-one binary would require a separate licensing review.
 
+## Fresh CachyOS/KDE Wayland acceptance — 2026-11-10
+
+On an actual newly installed CachyOS KDE Wayland system, the owner successfully built and installed the 1.0.0-1 candidate from commit `9cf51696f574dd80f7adf9336c33adff79ed30f3`. Source regression: 190 tests (one skipped after installation, zero failures); both graphical windows launched; real AppImage (Hayase), Flatpak (Stremio), DEB (Mousepad), and RPM (OpenCode) lifecycle checks were **owner-reported** successful (44/44). Package remove/reinstall, retained settings/MIME/container names, benign invalid-input rejection, packaged MIT license, and launchers were also verified by terminal checks. See [fresh-system acceptance report](FRESH_CACHYOS_ACCEPTANCE_2026-11-10.md) and [issue #14](https://github.com/aboodmohd/-AppInstall/issues/14).
+
+These checks concern a **locally built and tested candidate**, not the exact future release upload. They do not establish arbitrary application compatibility or an independent copyright/security certification. Stable publication remains blocked pending remaining reviews, final asset/CI checks, and owner's explicit permission.
+
 ## Evidence recorded before this preflight
 
 - **CachyOS host:** 144 Python tests passed in the previous RC1 checkout,
@@ -89,8 +95,11 @@ these results can be attributed to the final artifact.
 
 ## Before Stable 1.0 publication
 
-- [ ] Obtain real spare-system CachyOS/KDE clean install, double-click,
-      UI/launch, source upgrade, uninstall and recovery acceptance evidence
+- [x] Record owner-reported fresh CachyOS/KDE Wayland clean-install,
+      Dolphin and real four-format install/launch/reinstall/removal acceptance
+      and Pacman package lifecycle evidence (see 2026-11-10 report)
+- [ ] Decide whether additional missing-dependency/network-failure and
+      source-registration fault recovery manual tests are required
 - [ ] Confirm contributor and screenshot/source-asset redistribution rights
 - [ ] Review unresolved issues, security boundaries and dependency provenance
 - [ ] Check final GitHub CI runs and inspect the exact package and manifest
