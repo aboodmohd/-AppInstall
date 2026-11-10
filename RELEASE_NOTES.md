@@ -1,8 +1,9 @@
-# AppInstall 1.0.0 — Stable Release Notes (DRAFT, NOT PUBLISHED)
+# AppInstall 1.0.0 — Release Notes
 
-**Release status: BLOCKED pending final human acceptance and publication approval.**
-This file describes the intended final `v1.0.0` build, not an already
-published release. Do not create a tag, release, or overwrite the beta.
+**Publication:** These notes describe the prepared AppInstall 1.0.0 build.
+They do not claim a Stable release or tag is already published. The final
+tag/publication requires separate owner approval under issue #14;
+the existing public beta remains unchanged.
 
 AppInstall integrates AppImage, Flatpak, DEB and RPM installation with the
 Linux desktop. The primary tested desktop is **CachyOS KDE Plasma Wayland**.
@@ -100,10 +101,13 @@ these results can be attributed to the final artifact.
       and Pacman package lifecycle evidence (see 2026-11-10 report)
 - [ ] Decide whether additional missing-dependency/network-failure and
       source-registration fault recovery manual tests are required
-- [ ] Confirm contributor and screenshot/source-asset redistribution rights
+- [x] Record owner's original-source and eight-screenshot permissions declaration
+      in issue #14 (already completed)
+- [ ] Confirm no additional externally sourced snippets/assets need attribution,
+      or document their permission and required notices
 - [ ] Review unresolved issues, security boundaries and dependency provenance
 - [ ] Check final GitHub CI runs and inspect the exact package and manifest
 - [ ] Obtain explicit approval for merge, then separately for tag/publication
 
-Until then, this is **a draft stable build only**. The public release remains
-`v1.0.0-beta.1`.
+Until publication is separately approved, this remains release-preparation
+material. The last confirmed public release is `v1.0.0-beta.1`.

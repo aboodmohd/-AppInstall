@@ -1,4 +1,46 @@
-# AppInstall dependency and license audit — 2026-11-04
+# AppInstall dependency and license audit
+
+## Targeted technical review — 2026-11-10
+
+**Repository commit examined:** `8b99a0c06de473ec04d56495ef58d44ff93512f1`.
+
+The primary Bash CLI, AppImage/Flatpak and container backends, user
+interfaces, manager, diagnostics, monitor, source transaction, user installer,
+desktop integration, screenshot tool and `PKGBUILD` were inspected for obvious
+copied/vendored components and assets. No specific third-party executable,
+vendored library, copied third-party source or proprietary bundled art was
+identified in that limited technical inspection. **This is not independent
+legal certification or proof of originality.**
+
+- PySide6 imports use QtCore, QtGui and QtWidgets; Qt for Python is offered
+  under LGPLv3/GPLv3 or commercial licensing. No Qt GPL-only add-on import was
+  identified in the examined modules. Comply with the actual Qt/PySide6 terms.
+- Flatpak (LGPL-2.1), Distrobox (GPL-3.0-only), Podman and other platform tools
+  are separate host-installed dependencies, not source/binaries included in
+  this Arch package. The project does not relicense those dependencies.
+- The Arch package contains the project's MIT notice, code, desktop/KIO files
+  and documents, without repository screenshots or bundled Qt dependencies.
+- Screenshots are still in the public source repository. Owner declarations
+  for original AppInstall source and all eight owner-authorized screenshots
+  already exist in [issue #14](https://github.com/aboodmohd/-AppInstall/issues/14#issuecomment-6656840134).
+  No repeated declaration is needed merely because older checkboxes exist.
+- The screenshot tool's test icon is a generated dummy fixture, not a
+  vendored external artwork file. Runtime icons may be supplied by installed
+  apps or desktop themes and are not bundled by AppInstall here.
+
+**Open human review:** Identify any externally copied snippets/artwork not
+apparent in the inventory, document any required notice or permission,
+and record reviewer/date/scope in issue #14. This is not an unlimited
+copyright warranty. Future self-contained bundles require a new audit.
+
+**Primary sources:** https://doc.qt.io/qtforpython-6/ ;
+https://doc.qt.io/qt-6/licensing.html ;
+https://github.com/flatpak/flatpak ;
+https://github.com/89luca89/distrobox
+
+---
+
+## Historical review — 2026-11-04
 
 **Status:** Repository/source packaging review in progress. **Not legal advice**
 and not a certification that every third-party component or asset is clear
