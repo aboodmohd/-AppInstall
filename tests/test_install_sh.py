@@ -646,5 +646,25 @@ class PipedEntrypointTests(unittest.TestCase):
                 self.assertNotIn("unbound variable", proc.stderr)
 
 
+
+class UninstallHintTests(unittest.TestCase):
+    def test_uninstall_hint_is_a_valid_curl_to_bash_command(self):
+        # The installer runs with $0 == "bash" when piped via curl; an
+        # instruction saying "bash --uninstall" would be incorrect.
+        source = SCRIPT.read_text(encoding="utf-8")
+        lines = [
+            line.strip() for line in source.splitlines()
+            if 'info "To remove AppInstall entirely' in line
+        ]
+        self.assertEqual(len(lines), 1)
+        self.assertIn(
+            "curl -fsSL https://raw.githubusercontent.com/"
+            "aboodmohd/-AppInstall/main/install.sh"
+            " | bash -s -- --uninstall",
+            lines[0],
+        )
+        self.assertNotIn("$0 --uninstall", lines[0])
+
+
 if __name__ == "__main__":
     unittest.main()

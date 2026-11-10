@@ -975,7 +975,7 @@ UNSUPPORTED
   info "Open a supported file (.AppImage, .flatpak, .flatpakref, .flatpakrepo, .deb, .rpm) to preview it."
   info "Executable .AppImage files: some file managers may run them directly instead of opening the preview; right-click → 'Open With → AppInstall' when in doubt."
   info "To undo file-association changes at any time: $STATE_RESTORE_SCRIPT"
-  info "To remove AppInstall entirely (records, containers and settings preserved): $0 --uninstall"
+  info "To remove AppInstall entirely (records, containers and settings preserved): curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash -s -- --uninstall"
   log_write "done"
   return 0
 }
