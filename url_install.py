@@ -117,6 +117,23 @@ def _is_blocked_address(host):
     return False
 
 
+def _peer_address_is_blocked(response):
+    """Return True if the actual socket peer address of ``response`` is blocked.
+
+    This is the definitive DNS-rebinding guard: it inspects the real IP the
+    HTTP client connected to, not just what a prior DNS lookup returned. If the
+    peer address cannot be determined, returns False and relies on the earlier
+    DNS validation instead.
+    """
+    try:
+        sock = getattr(response.fp, "raw", None) or response.fp
+        peername = sock.getpeername()
+    except (AttributeError, OSError):
+        return False
+    host = peername[0]
+    return _is_blocked_address(host)
+
+
 def _host_blocked(hostname):
     """Resolve a hostname and report whether any address is unsafe to contact.
 
@@ -276,6 +293,17 @@ def download_url(url, expected_checksum=None, max_size=MAX_DOWNLOAD_SIZE,
         raise DownloadError("Could not connect to " + parsed.hostname + ": " + str(reason))
     except Exception as error:  # noqa: BLE001 - network failures are fatal here
         raise DownloadError("Could not connect to " + parsed.hostname + ": " + str(error))
+
+    # Definitive DNS-rebinding guard: verify the actual connection destination
+    # (peer address) is not blocked, even if an earlier DNS lookup returned a
+    # safe address. This catches the case where DNS changes between validation
+    # and connection.
+    if _peer_address_is_blocked(response):
+        try:
+            response.close()
+        except Exception:
+            pass
+        raise DownloadError("Connection to blocked address: " + parsed.hostname)
 
     temp_dir = None
     target = None

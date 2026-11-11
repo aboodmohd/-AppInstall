@@ -36,7 +36,8 @@ class FakeResponse:
     """Minimal fake urllib response: headers, geturl, chunked read, close."""
 
     def __init__(self, chunks, url="https://example.com/file.AppImage",
-                 content_length=None, content_type="application/octet-stream"):
+                 content_length=None, content_type="application/octet-stream",
+                 peer_address=None):
         self._chunks = list(chunks)
         self._url = url
         self._headers = MagicMock()
@@ -47,6 +48,10 @@ class FakeResponse:
             "Content-Type": content_type,
         }.get(key, default)
         self.closed = False
+        # Simulated socket peer address: None means "not determinable".
+        self.peer_address = peer_address
+        if peer_address is not None:
+            self.fp = _FakeSocketFile(peer_address)
 
     def geturl(self):
         return self._url
@@ -58,6 +63,21 @@ class FakeResponse:
 
     def close(self):
         self.closed = True
+
+
+class _FakeSocketFile:
+    """Fake socket file whose raw socket reports a given peer address."""
+
+    def __init__(self, peer_address):
+        self.raw = _FakeSocket(peer_address)
+
+
+class _FakeSocket:
+    def __init__(self, peer_address):
+        self._peer = peer_address
+
+    def getpeername(self):
+        return (self._peer, 443)
 
 
 class FakeOpener:
@@ -169,6 +189,38 @@ class DnsRebindingTests(unittest.TestCase):
         with patch.object(u.socket, "getaddrinfo", fake_getaddrinfo):
             parsed = u.validate_url("https://example.com/x")
             self.assertEqual(parsed.hostname, "example.com")
+
+    def test_dns_rebinding_private_peer_after_safe_lookup(self):
+        """DNS answer changes between validation and connection: public at
+        validate_url, private at actual connect. Must be rejected."""
+        # validate_url resolves to a public address and passes.
+        def fake_getaddrinfo(host, port, *args, **kwargs):
+            return [("AF_INET", None, None, None, ("93.184.216.34", 0))]
+        with patch.object(u.socket, "getaddrinfo", fake_getaddrinfo):
+            # The actual connection goes to a private address (rebinding).
+            response = FakeResponse([], peer_address="10.0.0.1")
+            with self.assertRaises(u.DownloadError):
+                self._download_with_response(response)
+
+    def test_dns_rebinding_public_peer_passes(self):
+        """DNS answer stays public: public at validate_url and at connect."""
+        def fake_getaddrinfo(host, port, *args, **kwargs):
+            return [("AF_INET", None, None, None, ("93.184.216.34", 0))]
+        with patch.object(u.socket, "getaddrinfo", fake_getaddrinfo):
+            data = b"\x7fELF" + b"\x00" * 4 + b"AI" + b"\x00" * 40
+            response = FakeResponse([data],
+                                    peer_address="93.184.216.34",
+                                    content_length=str(len(data)))
+            result = self._download_with_response(response)
+            self.assertEqual(result.detected_format, "appimage")
+
+    def _download_with_response(self, response, **kwargs):
+        with patch.object(u.socket, "getaddrinfo",
+                          return_value=[("AF_INET", None, None, None,
+                                         ("93.184.216.34", 0))]), \
+             patch.object(u, "build_opener",
+                          lambda handler: FakeOpener(response)):
+            return u.download_url("https://example.com/file.AppImage", **kwargs)
 
 
 class RedirectProtectionTests(unittest.TestCase):
