@@ -30,6 +30,7 @@ appinstall $VERSION — double-click installer for flatpak/AppImage
 
 Usage: appinstall [options] FILE [FILE...]
        appinstall --list | --remove APP [APP...] | --detect FILE
+       appinstall --install-url URL [--yes]
 
 Options:
   --diagnostics         open Application Diagnostics
@@ -38,12 +39,14 @@ Options:
   --container-remove ID  confirm removal of a container package
   --container-launch ID  open a container package
   --dir DIR     AppImage target folder (default: ~/Applications)
+  --install-url URL  download and install a package from a direct HTTPS URL
   --yes         bypass installation confirmation (scripts only)
   --nolaunch    suppress the Open prompt after installation
   -h, --help    show this help
   -V, --version print version
 
 Supported: .deb .rpm .flatpak .flatpakref .flatpakrepo .AppImage
+Direct HTTPS URLs are supported with --install-url.
 AppImages land in: $INSTALL_DIR (override: --dir or \$APPINSTALL_APPIMAGES)
 EOF
 }
@@ -285,6 +288,19 @@ add_flatpak_repo_pkg() { # file (.flatpakrepo)
   return 0
 }
 
+# ── Install from URL ────────────────────────────────────────────────────────
+install_url() { # url — download, validate, preview, install via existing backends
+  local url=$1 helper rc
+  [ -n "$url" ] || { error_dialog "A URL is required."; return 2; }
+  helper="$(dirname -- "$(realpath -- "$0")")/url_install.py"
+  [ -f "$helper" ] || helper="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/url_install.py"
+  [ -f "$helper" ] || { error_dialog 'The URL installer module is missing. Reinstall AppInstall to repair it.'; return 2; }
+  local -a args=(--install-url "$url")
+  [ "$ASSUME_YES" = 1 ] && args+=(--yes)
+  python3 "$helper" "${args[@]}"
+  return $?
+}
+
 # ── AppImage handler ─────────────────────────────────────────────────────────
 esc_exec() { # path — desktop Exec value, whole path quoted, specials escaped
   local p=$1
@@ -517,6 +533,7 @@ main() {
       --nolaunch)   NO_OPEN=1 ;;
       --dir)        [ $# -ge 2 ] || { usage >&2; exit 2; }; INSTALL_DIR=$2; shift ;;
       --detect)     [ $# -ge 2 ] || { usage >&2; exit 2; }; detect_type "$2"; exit 0 ;;
+      --install-url) [ $# -ge 2 ] || { usage >&2; exit 2; }; install_url "$2"; exit $? ;;
       --remove)     shift; [ $# -gt 0 ] || { usage >&2; exit 2; }; do_remove "$@"; exit $? ;;
       --)           shift; break ;;
       -*)           error_dialog "Unknown option: $1"; exit 2 ;;

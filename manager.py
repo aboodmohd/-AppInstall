@@ -439,6 +439,8 @@ from PySide6.QtWidgets import (
 
 import ui_style
 
+from url_dialog import UrlInstallDialog
+
 
 class InventoryLoader(QThread):
     """Background worker that reads the registries without blocking the GUI."""
@@ -880,6 +882,11 @@ class ManagerWindow(QMainWindow):
         heading = QLabel('My Applications')
         font = heading.font(); font.setPointSize(21); font.setBold(True); heading.setFont(font)
         header.addWidget(heading)
+        self.install_url_btn = QPushButton('Install from URL…')
+        self.install_url_btn.setObjectName('ghost')
+        self.install_url_btn.setCursor(Qt.PointingHandCursor)
+        self.install_url_btn.clicked.connect(self._install_from_url)
+        header.addWidget(self.install_url_btn)
         header.addStretch(1)
         self.search = QLineEdit()
         self.search.setPlaceholderText('Search applications…')
@@ -1082,6 +1089,11 @@ class ManagerWindow(QMainWindow):
         import subprocess, sys
         ui = Path(__file__).resolve().with_name('diagnostics_ui.py')
         subprocess.Popen([sys.executable, str(ui)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+    def _install_from_url(self):
+        dialog = UrlInstallDialog(self)
+        dialog.installed.connect(self.refresh)
+        dialog.exec()
 
 
 if __name__ == '__main__':
