@@ -83,7 +83,8 @@ class ChecksumMismatch(DownloadError):
 class DownloadResult:
     """Outcome of a successful download."""
 
-    def __init__(self, path, filename, size, sha256, content_type, detected_format, final_url):
+    def __init__(self, path, filename, size, sha256, content_type, detected_format, final_url,
+                 checksum_verified=None):
         self.path = Path(path)
         self.filename = filename
         self.size = size
@@ -91,6 +92,10 @@ class DownloadResult:
         self.content_type = content_type
         self.detected_format = detected_format
         self.final_url = final_url
+        # True if an expected checksum was supplied and matched, False if
+        # supplied but mismatched (mismatch raises before here), None if no
+        # expected checksum was provided.
+        self.checksum_verified = checksum_verified
 
     def __repr__(self):  # pragma: no cover - debugging aid
         return ("DownloadResult(filename=%r, size=%d, format=%r)"
@@ -113,7 +118,13 @@ def _is_blocked_address(host):
 
 
 def _host_blocked(hostname):
-    """Resolve a hostname and report whether every address is blocked."""
+    """Resolve a hostname and report whether any address is unsafe to contact.
+
+    Returns True if any resolved address is loopback, private, link-local,
+    multicast or reserved. Blocking on any unsafe address mitigates DNS
+    rebinding: a name that resolves to both a public and a private address
+    is refused, so the connection cannot be steered to an internal target.
+    """
     try:
         infos = socket.getaddrinfo(hostname, None, type=socket.SOCK_STREAM)
     except socket.gaierror:
@@ -125,7 +136,7 @@ def _host_blocked(hostname):
         addresses.add(addr)
         if _is_blocked_address(addr):
             blocked.add(addr)
-    return (len(addresses) > 0 and addresses <= blocked), blocked
+    return len(blocked) > 0, blocked
 
 
 def validate_url(url):
@@ -148,8 +159,8 @@ def validate_url(url):
         raise DownloadError("URL has no host.")
     if parsed.username or parsed.password:
         raise DownloadError("URLs must not contain embedded credentials.")
-    blocked_all, _blocked = _host_blocked(parsed.hostname)
-    if blocked_all:
+    blocked_any, _blocked = _host_blocked(parsed.hostname)
+    if blocked_any:
         raise DownloadError(
             "Refusing to connect to " + parsed.hostname +
             ": local or private network addresses are not allowed.")
@@ -226,7 +237,7 @@ def _add_extension(safe_name, detected_format):
     if not ext:
         return safe_name
     stem, dot, existing = safe_name.rpartition(".")
-    if dot and existing.lower() == ext.lstrip("."):
+    if dot and existing.lower() == ext.lstrip(".").lower():
         return safe_name
     return safe_name + ext
 
@@ -334,7 +345,8 @@ def download_url(url, expected_checksum=None, max_size=MAX_DOWNLOAD_SIZE,
             raise ChecksumMismatch(digest, expected)
 
     return DownloadResult(target, final_name, downloaded, digest, content_type,
-                          detected, final_url)
+                          detected, final_url,
+                          checksum_verified=(True if expected_checksum is not None else None))
 
 
 # The format detector lives in this same module so ``from . import detect_format``
@@ -495,10 +507,17 @@ def run_cli(argv):
 
     kind = result.detected_format
     if not assume_yes and kind in ("appimage", "flatpak", "flatpakref", "flatpakrepo"):
+        checksum_note = ""
+        if result.checksum_verified is True:
+            checksum_note = "\nSHA-256 verified against expected checksum: yes"
+        elif result.checksum_verified is False:
+            checksum_note = "\nSHA-256 verified against expected checksum: no (mismatch)"
+        elif result.checksum_verified is None:
+            checksum_note = "\nSHA-256 verified against expected checksum: not provided"
         details = ("Source: " + result.final_url + "\n"
                    "Format: " + kind + "\n"
                    "Size: " + human_size(result.size) + "\n"
-                   "SHA-256: " + result.sha256 + "\n"
+                   "SHA-256: " + result.sha256 + checksum_note + "\n"
                    "Downloaded file: " + str(result.path))
         ui = _locate_sibling("confirm.py")
         if not ui:

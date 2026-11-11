@@ -154,7 +154,13 @@ class InstallerTests(unittest.TestCase):
         required = ['ui_style', 'result_ui', 'container_ui', 'confirm',
                     'package_meta', 'appimage_backend', 'native_backend',
                     'container_backend', 'launch_monitor', 'runtime_probe',
-                    'diagnostics_core', 'diagnostics_ui', 'manager']
+                    'diagnostics_core', 'diagnostics_ui', 'manager',
+                    'url_install', 'url_dialog']
+        # A state directory without any module copies means the per-user
+        # integration deployment has never run here (pacman-managed installs
+        # keep the modules in /usr/bin instead). Nothing to verify.
+        if not any((state / f'{name}.py').is_file() for name in required):
+            self.skipTest('Per-user module deployment not present')
         import importlib.util
         for modname in required:
             modfile = state / f'{modname}.py'

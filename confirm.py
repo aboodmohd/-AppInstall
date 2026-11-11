@@ -79,7 +79,7 @@ def main():
 
     name = ref['name']
     description = ref['description'] or {
-        'appimage': 'Add this application to your application menu. Your downloaded file will be kept.',
+        'appimage': 'Add this application to your application menu.',
         'flatpakref': 'Install this application and its required runtime.',
         'flatpak': 'Install this application from a local Flatpak bundle.',
         'flatpakrepo': 'Add this software repository for your account.',

@@ -284,6 +284,10 @@ class UrlInstallDialog(QDialog):
         self.cp_format.setText("Format: " + result.detected_format.upper())
         self.cp_size.setText("Size: " + url_install.human_size(result.size))
         self.cp_sha.setText("SHA-256: " + result.sha256)
+        if result.checksum_verified is True:
+            self.cp_sha.setText(self.cp_sha.text() + "  ✓ expected checksum verified")
+        elif result.checksum_verified is False:
+            self.cp_sha.setText(self.cp_sha.text() + "  ✗ expected checksum did NOT match")
         self.review_btn.setEnabled(True)
 
     def _download_failed(self, message):
@@ -308,10 +312,17 @@ class UrlInstallDialog(QDialog):
         # kinds use confirm.py; DEB/RPM use container_ui.py which has its own
         # preview, mirroring install_one() in the appinstall entry point.
         if kind in CONFIRM_KINDS_WITH_PREVIEW:
+            checksum_note = ""
+            if result.checksum_verified is True:
+                checksum_note = "\nSHA-256 verified against expected checksum: yes"
+            elif result.checksum_verified is False:
+                checksum_note = "\nSHA-256 verified against expected checksum: no (mismatch)"
+            elif result.checksum_verified is None:
+                checksum_note = "\nSHA-256 verified against expected checksum: not provided"
             details = ("Source: " + result.final_url + "\n"
                        "Format: " + kind + "\n"
                        "Size: " + url_install.human_size(result.size) + "\n"
-                       "SHA-256: " + result.sha256 + "\n"
+                       "SHA-256: " + result.sha256 + checksum_note + "\n"
                        "Downloaded file: " + str(result.path))
             ui = self._locate("confirm.py")
             if not ui:
@@ -332,9 +343,9 @@ class UrlInstallDialog(QDialog):
 
         # Hand the downloaded file to the existing installation dispatch, which
         # routes each format to its normal backend (AppImage, Flatpak, DEB/RPM).
-        self._install_file(result.path)
+        self._install_file(result.path, Path(result.path).parent)
 
-    def _install_file(self, path):
+    def _install_file(self, path, temp_dir=None):
         appinstall = self._locate("appinstall")
         if not appinstall:
             QMessageBox.warning(self, "AppInstall", "The AppInstall entry point is missing.")
@@ -345,6 +356,10 @@ class UrlInstallDialog(QDialog):
         except Exception as error:  # noqa: BLE001
             QMessageBox.warning(self, "AppInstall", "Installation could not start: " + str(error))
             return
+        # Clean up the temporary download once the backend has consumed it.
+        if temp_dir is not None:
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
         if rc.returncode == 0:
             QMessageBox.information(self, "AppInstall", "Installation completed successfully.")
             self.installed.emit()

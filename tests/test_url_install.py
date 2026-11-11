@@ -143,6 +143,76 @@ class BlockedAddressTests(unittest.TestCase):
         self.assertTrue(u._is_blocked_address("::ffff:127.0.0.1"))
 
 
+class DnsRebindingTests(unittest.TestCase):
+    """DNS rebinding: a host resolving to any unsafe address is refused."""
+
+    def test_mixed_public_and_private_addresses_blocked(self):
+        def fake_getaddrinfo(host, port, *args, **kwargs):
+            return [("AF_INET", None, None, None, ("93.184.216.34", 0)),
+                    ("AF_INET", None, None, None, ("10.0.0.1", 0))]
+        with patch.object(u.socket, "getaddrinfo", fake_getaddrinfo):
+            with self.assertRaises(u.DownloadError):
+                u.validate_url("https://rebinding.example.com/x")
+
+    def test_mixed_public_and_linklocal_addresses_blocked(self):
+        def fake_getaddrinfo(host, port, *args, **kwargs):
+            return [("AF_INET", None, None, None, ("93.184.216.34", 0)),
+                    ("AF_INET", None, None, None, ("169.254.169.254", 0))]
+        with patch.object(u.socket, "getaddrinfo", fake_getaddrinfo):
+            with self.assertRaises(u.DownloadError):
+                u.validate_url("https://rebinding.example.com/x")
+
+    def test_all_public_addresses_allowed(self):
+        def fake_getaddrinfo(host, port, *args, **kwargs):
+            return [("AF_INET", None, None, None, ("93.184.216.34", 0)),
+                    ("AF_INET6", None, None, None, ("2606:2800:220:1::", 0))]
+        with patch.object(u.socket, "getaddrinfo", fake_getaddrinfo):
+            parsed = u.validate_url("https://example.com/x")
+            self.assertEqual(parsed.hostname, "example.com")
+
+
+class RedirectProtectionTests(unittest.TestCase):
+    """Redirect destinations are re-validated like the original URL."""
+
+    def _download_with_response(self, response, **kwargs):
+        with patch.object(u.socket, "getaddrinfo",
+                          return_value=[("AF_INET", None, None, None,
+                                         ("93.184.216.34", 0))]), \
+             patch.object(u, "build_opener",
+                          lambda handler: FakeOpener(response)):
+            return u.download_url("https://example.com/file.AppImage", **kwargs)
+
+    def test_redirect_to_blocked_url_is_rejected(self):
+        response = FakeResponse([], url="https://localhost/evil.AppImage")
+        with self.assertRaises(u.DownloadError):
+            self._download_with_response(response)
+
+    def test_redirect_to_private_address_is_rejected(self):
+        response = FakeResponse([], url="https://10.0.0.1/evil.AppImage")
+        with self.assertRaises(u.DownloadError):
+            self._download_with_response(response)
+
+    def test_redirect_to_linklocal_metadata_is_rejected(self):
+        response = FakeResponse([], url="https://169.254.169.254/evil.AppImage")
+        with self.assertRaises(u.DownloadError):
+            self._download_with_response(response)
+
+    def test_too_many_redirects_is_rejected(self):
+        with patch.object(u.socket, "getaddrinfo",
+                          return_value=[("AF_INET", None, None, None,
+                                         ("93.184.216.34", 0))]):
+            handler = u._SafeRedirectHandler()
+            fake_req = type('FakeReq', (), {'header_items': lambda self: [],
+                                            'method': 'GET'})()
+            # MAX_REDIRECTS redirects are allowed; the next one is rejected.
+            for i in range(u.MAX_REDIRECTS):
+                handler.redirect_request(fake_req, None, 302, "Moved",
+                                         {}, "https://example.com/next")
+            with self.assertRaises(u.DownloadError):
+                handler.redirect_request(fake_req, None, 302, "Moved",
+                                         {}, "https://example.com/next")
+
+
 # ── Filename sanitization ──────────────────────────────────────────────
 
 class SanitizeTests(unittest.TestCase):

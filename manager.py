@@ -434,7 +434,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QPushButton, QLineEdit, QListWidget, QListWidgetItem, QFrame, QSizePolicy,
     QMessageBox, QDialog, QDialogButtonBox, QScrollArea, QGridLayout,
-    QSpacerItem, QMenu
+    QSpacerItem, QMenu, QStackedLayout
 )
 
 import ui_style
@@ -916,7 +916,18 @@ class ManagerWindow(QMainWindow):
         self.list = QListWidget()
         self.list.setSpacing(10)
         self.list.setUniformItemSizes(False)
-        root.addWidget(self.list, 1)
+
+        # Empty state (stacked behind the list, shown when nothing matches).
+        self.empty = QLabel('No AppInstall-managed applications found. Install a file to begin.')
+        self.empty.setAlignment(Qt.AlignCenter)
+        self.empty.setStyleSheet('color: palette(text); font-size: 14px;')
+
+        self.content_stack = QStackedLayout()
+        self.content_stack.addWidget(self.list)     # index 0: list
+        self.content_stack.addWidget(self.empty)    # index 1: empty message
+        content_widget = QWidget()
+        content_widget.setLayout(self.content_stack)
+        root.addWidget(content_widget, 1)
 
         # Status bar.
         self.status = QLabel('Loading…')
@@ -965,7 +976,12 @@ class ManagerWindow(QMainWindow):
         self.inventory = inventory
         self.filtered = list(inventory)
         self._refilter()
-        self.status.setText(f'{len(self.filtered)} application(s) managed by AppInstall')
+        self._set_status_count()
+
+    def _set_status_count(self):
+        count = len(self.filtered)
+        noun = 'application' if count == 1 else 'applications'
+        self.status.setText(f'{count} {noun} managed by AppInstall')
 
     def _load_failed(self, message):
         self.status.setText('Could not load inventory: '+message)
@@ -988,7 +1004,7 @@ class ManagerWindow(QMainWindow):
             result.append(app)
         self.filtered = result
         self._rebuild()
-        self.status.setText(f'{len(self.filtered)} application(s)')
+        self._set_status_count()
 
     def _rebuild(self):
         self.list.clear()
@@ -1008,7 +1024,9 @@ class ManagerWindow(QMainWindow):
             self.list.addItem(item)
             self.list.setItemWidget(item, card)
             self.cards[app['key']] = card
-        self.empty.setVisible(len(self.filtered) == 0 and not (self.loader and self.loader.isRunning()))
+        loading = self.loader is not None and self.loader.isRunning()
+        self.content_stack.setCurrentIndex(
+            1 if (len(self.filtered) == 0 and not loading) else 0)
 
     # ── actions ──────────────────────────────────────────────────────────
 
