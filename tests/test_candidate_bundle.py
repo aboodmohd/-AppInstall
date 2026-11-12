@@ -90,11 +90,15 @@ class CandidateBundleTests(unittest.TestCase):
             "workflow_url": "https://github.com/aboodmohd/-AppInstall/actions/runs/123",
             "package_filename": self.package.name,
             "sha256": self.digest,
-            "package_version": "1.0.0-1",
+            "package_version": "1.1.0-1",
             "generated_utc": "2026-11-04T12:00:00+00:00",
         }
         report = bundle.build_report(evidence)
         self.assertIn("NO-GO", report)
+        self.assertIn("# AppInstall 1.1.0 — disposable release candidate evidence", report)
+        self.assertIn("Stable 1.1.0 publication approval", report)
+        self.assertIn("Install from URL", report)
+        self.assertNotIn("# AppInstall 1.0 —", report)
         self.assertIn("CachyOS", report)
         self.assertIn("PENDING", report)
         self.assertIn("publication approval", report)
