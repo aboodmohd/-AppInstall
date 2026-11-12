@@ -533,7 +533,21 @@ main() {
       --nolaunch)   NO_OPEN=1 ;;
       --dir)        [ $# -ge 2 ] || { usage >&2; exit 2; }; INSTALL_DIR=$2; shift ;;
       --detect)     [ $# -ge 2 ] || { usage >&2; exit 2; }; detect_type "$2"; exit 0 ;;
-      --install-url) [ $# -ge 2 ] || { usage >&2; exit 2; }; install_url "$2"; exit $? ;;
+      --install-url)
+        [ $# -ge 2 ] || { usage >&2; exit 2; }
+        local url=$2
+        shift 2
+        # Absorb the flags documented after the URL (--install-url URL [--yes]).
+        while [ $# -gt 0 ]; do
+          case "$1" in
+            --yes) ASSUME_YES=1 ;;
+            --nolaunch) NO_OPEN=1 ;;
+            -*) error_dialog "Unknown option: $1"; exit 2 ;;
+            *)  break ;;
+          esac
+          shift
+        done
+        install_url "$url"; exit $? ;;
       --remove)     shift; [ $# -gt 0 ] || { usage >&2; exit 2; }; do_remove "$@"; exit $? ;;
       --)           shift; break ;;
       -*)           error_dialog "Unknown option: $1"; exit 2 ;;

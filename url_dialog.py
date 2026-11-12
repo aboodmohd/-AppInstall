@@ -335,9 +335,21 @@ class UrlInstallDialog(QDialog):
                 QMessageBox.warning(self, "AppInstall",
                                     "Could not open the package review: " + str(error))
                 return
-            if rc.returncode == 1:
+            if rc.returncode == 0:
+                pass  # approved in the graphical review
+            elif rc.returncode == 1:
                 return  # user cancelled the review
-            if rc.returncode not in (0, 3):
+            elif rc.returncode == 3:
+                # The review window could not open (usually PySide6 missing).
+                # Fail closed: installation never proceeds without explicit
+                # user approval.
+                QMessageBox.warning(
+                    self, "AppInstall",
+                    "The package review window could not open, so installation "
+                    "was cancelled. Install PySide6 to review packages "
+                    "graphically.")
+                return
+            else:
                 QMessageBox.warning(self, "AppInstall", "The package review did not complete.")
                 return
 

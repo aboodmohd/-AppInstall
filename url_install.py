@@ -11,12 +11,19 @@ Security model
 Transport: HTTPS only, with certificate verification via Python's default SSL
 context (the system trust store). TLS verification is never disabled.
 
-Destination safety: the resolved server IP addresses are checked against
-localhost, loopback, private (RFC 1918 / RFC 4193), link-local, multicast and
-reserved ranges. Connections to cloud metadata endpoints (e.g. 169.254.169.254)
-are blocked because they fall inside the link-local range. Every HTTP redirect
-destination is re-validated, and redirects are capped, which mitigates DNS
-rebinding and server-side-request-forgery (SSRF).
+Destination safety: the destination of every connection is validated at
+connection time. Before any socket is opened, the target hostname is resolved
+and every returned address is checked against localhost, loopback, private
+(RFC 1918 / RFC 4193), link-local, multicast and reserved ranges; if any
+address is unsafe the download is refused, and if resolution is impossible the
+download fails closed. The HTTP client then opens TCP sockets only to those
+pre-validated addresses (connection pinning), so a DNS answer that changes
+between validation and connection cannot steer the request to an internal
+target (DNS rebinding), and TLS keeps verifying the original hostname (SNI and
+certificate checks are unaffected by pinning). Ambient proxy settings are
+ignored so a proxy cannot bypass destination validation. Every HTTP redirect
+destination is re-validated with the same policy, and redirects are capped,
+which additionally mitigates server-side-request-forgery (SSRF) via redirects.
 
 Downloads: streamed to a private temporary directory (mode 0700, file mode 0600)
 with a sanitized filename. Size is enforced even when the server omits or lies
@@ -31,6 +38,7 @@ untrusted source as the download is never automatically trusted.
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import ipaddress
 import os
@@ -43,10 +51,12 @@ import sys
 import tempfile
 import threading
 import time
+from http.client import HTTPSConnection
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
-from urllib.request import HTTPRedirectHandler, Request, build_opener
+from urllib.request import (HTTPHandler, HTTPRedirectHandler, HTTPSHandler,
+                            ProxyHandler, Request, build_opener)
 
 # Default limits. Callers may tighten max_size.
 MAX_DOWNLOAD_SIZE = 2 * 1024 * 1024 * 1024  # 2 GiB
@@ -117,51 +127,50 @@ def _is_blocked_address(host):
     return False
 
 
-def _peer_address_is_blocked(response):
-    """Return True if the actual socket peer address of ``response`` is blocked.
+def _resolve_public_addresses(hostname):
+    """Resolve ``hostname`` and return the addresses the client may contact.
 
-    This is the definitive DNS-rebinding guard: it inspects the real IP the
-    HTTP client connected to, not just what a prior DNS lookup returned. If the
-    peer address cannot be determined, returns False and relies on the earlier
-    DNS validation instead.
-    """
-    try:
-        sock = getattr(response.fp, "raw", None) or response.fp
-        peername = sock.getpeername()
-    except (AttributeError, OSError):
-        return False
-    host = peername[0]
-    return _is_blocked_address(host)
+    This is the single source of truth for connection destinations. Every
+    returned address is public: loopback, private, link-local, multicast and
+    reserved addresses are rejected (including IPv4-mapped IPv6 forms, e.g.
+    ::ffff:127.0.0.1, and cloud metadata endpoints such as 169.254.169.254).
 
-
-def _host_blocked(hostname):
-    """Resolve a hostname and report whether any address is unsafe to contact.
-
-    Returns True if any resolved address is loopback, private, link-local,
-    multicast or reserved. Blocking on any unsafe address mitigates DNS
-    rebinding: a name that resolves to both a public and a private address
-    is refused, so the connection cannot be steered to an internal target.
+    The call fails closed: if resolution fails or returns nothing, or if ANY
+    returned address is unsafe, a DownloadError is raised. Refusing hosts with
+    mixed public and unsafe answers is the DNS-rebinding mitigation — a name
+    that alternates between a public and a private address is never contacted.
     """
     try:
         infos = socket.getaddrinfo(hostname, None, type=socket.SOCK_STREAM)
-    except socket.gaierror:
-        return True, set()
-    addresses = set()
-    blocked = set()
-    for family, _socktype, _proto, _canonname, sockaddr in infos:
+    except (OSError, UnicodeError) as error:
+        raise DownloadError(
+            "Could not resolve " + hostname + ": " + str(error))
+    allowed = []
+    blocked = []
+    for _family, _socktype, _proto, _canonname, sockaddr in infos:
         addr = sockaddr[0]
-        addresses.add(addr)
         if _is_blocked_address(addr):
-            blocked.add(addr)
-    return len(blocked) > 0, blocked
+            if addr not in blocked:
+                blocked.append(addr)
+        elif addr not in allowed:
+            allowed.append(addr)
+    if blocked:
+        raise DownloadError(
+            "Refusing to connect to " + hostname +
+            ": local or private network addresses are not allowed ("
+            + ", ".join(blocked) + ").")
+    if not allowed:
+        raise DownloadError("Could not resolve " + hostname + " to any address.")
+    return tuple(allowed)
 
 
 def validate_url(url):
     """Validate and return a parsed HTTPS URL, or raise DownloadError.
 
     Rejects non-HTTPS schemes, missing hosts, embedded credentials and hosts
-    whose addresses are all local/private. Performs a DNS lookup so that
-    literal and DNS names are handled uniformly.
+    that resolve to any local/private address. The DNS lookup here is a fast
+    pre-check; the authoritative validation happens again at connection time
+    (see _resolve_public_addresses and _PinnedHTTPSConnection).
     """
     try:
         parsed = urlparse(url)
@@ -176,11 +185,7 @@ def validate_url(url):
         raise DownloadError("URL has no host.")
     if parsed.username or parsed.password:
         raise DownloadError("URLs must not contain embedded credentials.")
-    blocked_any, _blocked = _host_blocked(parsed.hostname)
-    if blocked_any:
-        raise DownloadError(
-            "Refusing to connect to " + parsed.hostname +
-            ": local or private network addresses are not allowed.")
+    _resolve_public_addresses(parsed.hostname)
     return parsed
 
 
@@ -199,7 +204,84 @@ class _SafeRedirectHandler(HTTPRedirectHandler):
         validate_url(newurl)
         new_headers = dict(req.header_items())
         new_headers.pop("Host", None)
-        return Request(newurl, headers=new_headers, method=req.method)
+        return Request(newurl, headers=new_headers, method=req.get_method())
+
+
+class _PinnedHTTPSConnection(HTTPSConnection):
+    """HTTPS connection that only ever dials pre-validated addresses.
+
+    The TCP socket is opened exclusively to one of ``allowed_addresses`` — an
+    explicit, validated resolution of the target host performed at connection
+    time. A DNS answer that changes between validation and connection therefore
+    cannot steer the socket to a private or local address (DNS rebinding).
+
+    TLS is left untouched: ``HTTPSConnection.connect()`` wraps the socket with
+    ``server_hostname=self.host``, so SNI and certificate verification keep
+    using the original hostname rather than the pinned IP.
+    """
+
+    def __init__(self, *args, allowed_addresses=(), **kwargs):
+        super().__init__(*args, **kwargs)
+        self._allowed_addresses = tuple(allowed_addresses)
+        # http.client stores socket.create_connection in this instance
+        # attribute and calls it from connect() precisely so that callers can
+        # replace it. Our replacement refuses to dial anything but a
+        # validated address, and fails closed when none is available.
+        self._create_connection = self._create_validated_connection
+
+    def _create_validated_connection(self, address, timeout=None,
+                                     source_address=None):
+        if not self._allowed_addresses:
+            raise DownloadError(
+                "No validated address available for " + str(self.host) + "; "
+                "connection refused.")
+        _host, port = address
+        last_error = None
+        for addr in self._allowed_addresses:
+            try:
+                # ``addr`` is an IP literal from our own resolution, so this
+                # lookup cannot return a different address (no rebinding).
+                return socket.create_connection((addr, port), timeout,
+                                                source_address)
+            except OSError as error:
+                last_error = error
+        raise DownloadError(
+            "Could not connect to a validated address for " + str(self.host)
+            + ": " + str(last_error))
+
+
+class _HTTPSOnlyHTTPHandler(HTTPHandler):
+    """Refuse plain HTTP at the handler level (defense in depth).
+
+    validate_url already rejects http:// URLs, and every redirect destination
+    is re-validated, but a handler-level block guarantees no request is ever
+    dispatched over plain HTTP even if a future code path forgets to validate.
+    """
+
+    def http_open(self, req):
+        raise DownloadError(
+            "Only HTTPS downloads are supported (http is not allowed).")
+
+
+class _ValidatedHTTPSHandler(HTTPSHandler):
+    """HTTPS handler that validates and pins the destination of every request.
+
+    ``https_open`` runs for the original request and for every redirect hop,
+    so each connection is resolved, policy-checked and pinned at the moment
+    it is made. If validation cannot be completed, the handler fails closed.
+    """
+
+    def https_open(self, req):
+        # req.host may carry the port ("host:port"); resolve the bare hostname.
+        hostname = urlparse(req.full_url).hostname
+        if not hostname:
+            raise DownloadError("Request has no destination host.")
+        addresses = _resolve_public_addresses(hostname)
+        return self.do_open(
+            functools.partial(_PinnedHTTPSConnection, allowed_addresses=addresses),
+            req, context=self._context)
+
+    # https_request is inherited from HTTPSHandler.
 
 
 def _suggest_filename(parsed, headers):
@@ -266,16 +348,28 @@ def _remove_tree(temp_dir):
 
 
 def download_url(url, expected_checksum=None, max_size=MAX_DOWNLOAD_SIZE,
-                 cancel=None, progress=None, temp_root=None):
+                 cancel=None, progress=None, temp_root=None, ssl_context=None):
     """Stream-download ``url`` to a secure temporary file.
 
     ``cancel`` is a threading.Event; when set the transfer aborts and the partial
     file is removed. ``progress`` is called with a dict of
     {bytes_downloaded, total_size, percent, bytes_per_second} after each chunk.
+    ``ssl_context`` optionally supplies the TLS context (e.g. a test trust
+    store); the default context always verifies certificates and hostnames.
+    The temporary directory is removed on every failure — unsupported or
+    malformed files, rename errors, checksum mismatch, cancellation and any
+    other post-download exception.
     Returns a DownloadResult or raises DownloadError.
     """
     parsed = validate_url(url)
-    opener = build_opener(_SafeRedirectHandler())
+    # ProxyHandler({}) disables ambient proxy settings (http_proxy/https_proxy
+    # environment variables and system proxies): the connection must be pinned
+    # to the validated destination, and a proxy would silently change it.
+    # _ValidatedHTTPSHandler replaces the stock HTTPSHandler and pins every
+    # connection (including redirects) to a validated public address.
+    opener = build_opener(ProxyHandler({}), _HTTPSOnlyHTTPHandler(),
+                          _SafeRedirectHandler(),
+                          _ValidatedHTTPSHandler(context=ssl_context))
     request = Request(url, headers={"User-Agent": USER_AGENT})
 
     try:
@@ -294,20 +388,10 @@ def download_url(url, expected_checksum=None, max_size=MAX_DOWNLOAD_SIZE,
     except Exception as error:  # noqa: BLE001 - network failures are fatal here
         raise DownloadError("Could not connect to " + parsed.hostname + ": " + str(error))
 
-    # Definitive DNS-rebinding guard: verify the actual connection destination
-    # (peer address) is not blocked, even if an earlier DNS lookup returned a
-    # safe address. This catches the case where DNS changes between validation
-    # and connection.
-    if _peer_address_is_blocked(response):
-        try:
-            response.close()
-        except Exception:
-            pass
-        raise DownloadError("Connection to blocked address: " + parsed.hostname)
-
+    # Everything after the connection is cleanup-protected: any failure (web
+    # page instead of a package, unsupported format, rename error, checksum
+    # mismatch, cancellation, a crash) removes the temporary directory.
     temp_dir = None
-    target = None
-    digest = None
     try:
         # Re-validate the final destination after any redirects.
         final_url = response.geturl()
@@ -350,6 +434,22 @@ def download_url(url, expected_checksum=None, max_size=MAX_DOWNLOAD_SIZE,
                         "bytes_per_second": downloaded / elapsed,
                     })
         digest = sha.hexdigest()
+
+        detected = detect_format(target, url_hint=url)
+        final_name = _add_extension(filename, detected)
+        final_path = temp_dir / final_name
+        if final_path != target:
+            os.rename(target, final_path)
+        target = final_path
+
+        if expected_checksum is not None:
+            expected = str(expected_checksum).strip().lower()
+            if digest.lower() != expected:
+                raise ChecksumMismatch(digest, expected)
+
+        return DownloadResult(target, final_name, downloaded, digest, content_type,
+                              detected, final_url,
+                              checksum_verified=(True if expected_checksum is not None else None))
     except BaseException:
         _remove_tree(temp_dir)
         raise
@@ -358,23 +458,6 @@ def download_url(url, expected_checksum=None, max_size=MAX_DOWNLOAD_SIZE,
             response.close()
         except Exception:
             pass
-
-    detected = detect_format(target, url_hint=url)
-    final_name = _add_extension(filename, detected)
-    final_path = temp_dir / final_name
-    if final_path != target:
-        os.rename(target, final_path)
-    target = final_path
-
-    if expected_checksum is not None:
-        expected = str(expected_checksum).strip().lower()
-        if digest.lower() != expected:
-            _remove_tree(temp_dir)
-            raise ChecksumMismatch(digest, expected)
-
-    return DownloadResult(target, final_name, downloaded, digest, content_type,
-                          detected, final_url,
-                          checksum_verified=(True if expected_checksum is not None else None))
 
 
 # The format detector lives in this same module so ``from . import detect_format``
@@ -404,14 +487,18 @@ def _looks_like_html(text):
 
 
 def _extension_hint(url):
+    """Weak URL-extension hint, used only where magic bytes cannot decide.
+
+    Only the Flatpak bundle format has no dependable signature, so only the
+    ``.flatpak`` extension is trusted as a hint. Every other format must be
+    identified by its file contents; an unknown file that merely carries an
+    ``.AppImage``/``.deb``/``.rpm`` URL is rejected instead of being handed to
+    the wrong installer (misleading-extension protection).
+    """
     if not url:
         return None
-    lower = url.lower()
-    for ext, fmt in ((".flatpakrepo", "flatpakrepo"), (".flatpakref", "flatpakref"),
-                     (".appimage", "appimage"), (".deb", "deb"), (".rpm", "rpm"),
-                     (".flatpak", "flatpak")):
-        if lower.endswith(ext):
-            return fmt
+    if url.lower().endswith(".flatpak"):
+        return "flatpak"
     return None
 
 
@@ -477,13 +564,29 @@ def human_size(value):
 
 def _cli_progress(info):
     """Print compact terminal progress to stderr."""
-    parts = [url_install.human_size(info["bytes_downloaded"])]
+    parts = [human_size(info["bytes_downloaded"])]
     if info["total_size"]:
         parts.append("of " + human_size(info["total_size"]))
     if info["percent"] is not None:
         parts.append("(" + f"{info['percent']:.0f}%" + ")")
     parts.append("@ " + human_size(int(info["bytes_per_second"])) + "/s")
     print("\r  " + " ".join(parts), end="", file=sys.stderr)
+
+
+def _terminal_confirm(prompt):
+    """Ask for explicit approval in the terminal. False means not approved.
+
+    Used only as a fallback when the graphical package review cannot open
+    (confirm.py exit code 3). If no interactive terminal is attached, the
+    answer is "no": a download is never installed without explicit approval.
+    """
+    try:
+        if not sys.stdin.isatty():
+            return False
+        answer = input(prompt).strip().lower()
+    except (EOFError, KeyboardInterrupt, OSError):
+        return False
+    return answer in ("y", "yes")
 
 
 def run_cli(argv):
@@ -559,12 +662,27 @@ def run_cli(argv):
             print("Could not open package review: " + str(error), file=sys.stderr)
             _remove_tree(Path(result.path).parent)
             return 2
-        if rc.returncode == 1:
+        if rc.returncode == 0:
+            pass  # approved in the graphical review
+        elif rc.returncode == 1:
             print("Installation cancelled.", file=sys.stderr)
             _remove_tree(Path(result.path).parent)
             return 1
-        if rc.returncode not in (0, 3):
-            print("Package review did not complete.", file=sys.stderr)
+        elif rc.returncode == 3:
+            # The graphical review could not open (usually PySide6 missing).
+            # Never install without explicit approval: fall back to a terminal
+            # confirmation, or stop when no interactive terminal is available.
+            prompt = ("Install " + result.filename + " (" + kind + ")? [y/N]: ")
+            if not _terminal_confirm(prompt):
+                print("The package review could not open and installation was "
+                      "cancelled. Install PySide6 for the graphical review, or "
+                      "answer the terminal prompt.",
+                      file=sys.stderr)
+                _remove_tree(Path(result.path).parent)
+                return 1
+        else:
+            print("Package review did not complete (exit code "
+                  + str(rc.returncode) + ").", file=sys.stderr)
             _remove_tree(Path(result.path).parent)
             return 1
 

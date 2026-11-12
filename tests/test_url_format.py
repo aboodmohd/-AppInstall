@@ -63,6 +63,30 @@ class MisleadingExtensionTests(unittest.TestCase):
             u.detect_format(self._write("r.xyz", b"\x00\x01\x02\x03"),
                             url_hint="https://example.com/r.xyz")
 
+    def test_unknown_content_with_appimage_url_is_rejected(self):
+        # The .AppImage extension alone is not evidence: garbage must not be
+        # handed to the AppImage backend (misleading-extension protection).
+        with self.assertRaises(u.DownloadError):
+            u.detect_format(self._write("s.bin", b"\x00\x01\x02\x03\x04"),
+                            url_hint="https://example.com/s.AppImage")
+
+    def test_unknown_content_with_deb_url_is_rejected(self):
+        with self.assertRaises(u.DownloadError):
+            u.detect_format(self._write("t.bin", b"\x00\x01\x02\x03\x04"),
+                            url_hint="https://example.com/t.deb")
+
+    def test_unknown_content_with_rpm_url_is_rejected(self):
+        with self.assertRaises(u.DownloadError):
+            u.detect_format(self._write("u.bin", b"\x00\x01\x02\x03\x04"),
+                            url_hint="https://example.com/u.rpm")
+
+    def test_unknown_content_with_flatpak_url_uses_extension_hint(self):
+        # Only the Flatpak bundle lacks reliable magic; its extension is the
+        # one and only trusted hint.
+        self.assertEqual(u.detect_format(self._write("v.bin", b"\x00\x01\x02\x03\x04"),
+                                         url_hint="https://example.com/v.flatpak"),
+                         "flatpak")
+
 
 if __name__ == "__main__":
     unittest.main()
