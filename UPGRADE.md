@@ -1,6 +1,27 @@
 # AppInstall Upgrade Guide
 
-> **Stable 1.0.0 preflight:** the version in this branch is a
+> **v1.1.0 is a release candidate, NOT a published stable version.**
+> The latest public stable release remains v1.0.0. Do not install this
+> candidate on your active machine without explicit approval.
+
+## Preparing v1.0.0 → v1.1.0 upgrade acceptance
+
+1. Save the published v1.0.0 package and back up your existing AppInstall
+   application state, launchers and MIME defaults.
+2. Build the version-bumped 1.1.0-1 package from this reviewed candidate.
+3. Verify its independently computed SHA-256 and inspect with `pacman -Qip`.
+4. On a **disposable** Arch/CachyOS installation, test clean install, upgrade,
+   `appinstall --version`, the original UI, Install from URL, inventory,
+   associated handlers, and rollback to the saved v1.0.0 package.
+5. Do not tag, publish, or alter the active installed AppInstall until the
+   owner explicitly approves the release.
+
+The separate `install.sh` script is v1.1.0 and always fetches the latest
+**published stable** package, not this candidate.
+
+## Historical upgrade guidance (older releases)
+
+> **Historical note (written before Stable v1.0.0):** the version in this branch is a
 > not-yet-published test build. The published release remains
 > v1.0.0-beta.1. Do not install over an existing source/user deployment
 > before a backed-up spare-system acceptance run and explicit approval.
