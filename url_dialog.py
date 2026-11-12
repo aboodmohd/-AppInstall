@@ -13,7 +13,9 @@ A single dialog transitions through three pages:
 
 The GUI thread is never blocked: the network transfer runs in a QThread and
 reports progress through Qt signals. Cancellation closes the response and removes
-the partial temporary file.
+the partial temporary file. A completed download that is never installed is
+discarded — with its per-download temporary directory — whenever the dialog is
+closed, cancelled or returned to the URL entry page.
 """
 
 from __future__ import annotations
@@ -83,6 +85,7 @@ class UrlInstallDialog(QDialog):
         self.setMinimumWidth(620)
         self.resize(700, 520)
         self._download_result = None
+        self._closing = False
         self.worker = None
         self.cancel = threading.Event()
         self._build_ui()
@@ -245,6 +248,8 @@ class UrlInstallDialog(QDialog):
             self.url_error.show()
             return
         self.cancel.clear()
+        self.pg_cancel.setEnabled(True)
+        self.pg_cancel.setText("&Cancel Download")
         self.worker = DownloadWorker(url, checksum, self.cancel)
         self.worker.progress.connect(self._on_progress)
         self.worker.finished.connect(self._download_finished)
@@ -278,6 +283,15 @@ class UrlInstallDialog(QDialog):
         self.pg_cancel.setText("Cancelling…")
 
     def _download_finished(self, result):
+        if self._closing or self.cancel.is_set():
+            # The dialog was already closed or rejected while the worker was
+            # finishing: discard the completed download together with its
+            # temporary files instead of showing the review page.
+            self._download_result = result
+            self._discard_download()
+            if not self._closing:
+                self._reset_to_url_page()
+            return
         self._download_result = result
         self.progress_page.hide()
         self.complete_page.show()
@@ -291,10 +305,14 @@ class UrlInstallDialog(QDialog):
         self.review_btn.setEnabled(True)
 
     def _download_failed(self, message):
+        if self._closing:
+            # The dialog is already closing (close was requested during the
+            # download); the close-recheck timer completes the close, so only
+            # reset the dialog state and leave the pages untouched.
+            return
         self.progress_page.hide()
         self.url_page.show()
         self.cancel.clear()
-        self.worker = None
         # Show the failure as a URL-level error so the user can correct and retry.
         self.url_error.setText(message)
         self.url_error.show()
@@ -327,6 +345,7 @@ class UrlInstallDialog(QDialog):
             ui = self._locate("confirm.py")
             if not ui:
                 QMessageBox.warning(self, "AppInstall", "The package review module is missing.")
+                self._reset_to_url_page()
                 return
             try:
                 rc = subprocess.run([sys.executable, str(ui), str(result.path), kind, details],
@@ -334,11 +353,15 @@ class UrlInstallDialog(QDialog):
             except Exception as error:  # noqa: BLE001
                 QMessageBox.warning(self, "AppInstall",
                                     "Could not open the package review: " + str(error))
+                self._reset_to_url_page()
                 return
             if rc.returncode == 0:
                 pass  # approved in the graphical review
             elif rc.returncode == 1:
-                return  # user cancelled the review
+                # User cancelled the review: drop the downloaded file together
+                # with its per-download temp directory and start over.
+                self._reset_to_url_page()
+                return
             elif rc.returncode == 3:
                 # The review window could not open (usually PySide6 missing).
                 # Fail closed: installation never proceeds without explicit
@@ -348,9 +371,11 @@ class UrlInstallDialog(QDialog):
                     "The package review window could not open, so installation "
                     "was cancelled. Install PySide6 to review packages "
                     "graphically.")
+                self._reset_to_url_page()
                 return
             else:
                 QMessageBox.warning(self, "AppInstall", "The package review did not complete.")
+                self._reset_to_url_page()
                 return
 
         # Hand the downloaded file to the existing installation dispatch, which
@@ -361,18 +386,19 @@ class UrlInstallDialog(QDialog):
         appinstall = self._locate("appinstall")
         if not appinstall:
             QMessageBox.warning(self, "AppInstall", "The AppInstall entry point is missing.")
+            self._remove_temp_dir(temp_dir)
             return
         try:
             rc = subprocess.run([str(appinstall), "--yes", str(path)],
                                 capture_output=True, text=True)
         except Exception as error:  # noqa: BLE001
             QMessageBox.warning(self, "AppInstall", "Installation could not start: " + str(error))
+            self._remove_temp_dir(temp_dir)
             return
         # Clean up the temporary download once the backend has consumed it.
         # Only per-download directories (prefix ``appinstall-url-``) may be
         # removed — never a broader parent such as the system temp root.
-        if temp_dir is not None:
-            url_install.remove_download_dir(temp_dir)
+        self._remove_temp_dir(temp_dir)
         if rc.returncode == 0:
             QMessageBox.information(self, "AppInstall", "Installation completed successfully.")
             self.installed.emit()
@@ -394,14 +420,53 @@ class UrlInstallDialog(QDialog):
             return deployed
         return None
 
+    # ── temporary download lifecycle ──────────────────────────────────
+
+    def _discard_download(self):
+        """Delete a completed download that was never installed.
+
+        Removes the file's per-download temporary directory through
+        ``url_install.remove_download_dir`` (which never touches anything
+        outside an ``appinstall-url-*`` directory). Idempotent: a no-op
+        when there is no uninstalled download left. Callers must ensure no
+        download worker or install process is still using the file.
+        """
+        result = self._download_result
+        if result is None:
+            return
+        self._download_result = None
+        url_install.remove_download_dir(Path(result.path).parent)
+
+    def _remove_temp_dir(self, temp_dir):
+        """Delete a per-download temp directory after its file was consumed."""
+        if temp_dir is not None:
+            url_install.remove_download_dir(temp_dir)
+        self._reset_to_url_page()
+
+    def _reset_to_url_page(self):
+        """Discard the downloaded file and return to the URL entry page.
+
+        Keeps the URL (and checksum) text so the user can correct anything
+        and re-download.
+        """
+        self._discard_download()
+        self.progress_page.hide()
+        self.complete_page.hide()
+        self.url_page.show()
+        self.review_btn.setEnabled(False)
+
     # ── window closure ─────────────────────────────────────────────────
 
     def closeEvent(self, event):
+        self._closing = True
         if self.worker is not None and self.worker.isRunning():
+            # A download is running: ask it to stop and keep the dialog (and
+            # the file it is writing) until the worker thread has finished.
             self.cancel.set()
             event.ignore()
             QTimer.singleShot(100, self._recheck_close)
         else:
+            self._discard_download()
             event.accept()
 
     def _recheck_close(self):
@@ -413,8 +478,13 @@ class UrlInstallDialog(QDialog):
 
     def reject(self):
         if self.worker is not None and self.worker.isRunning():
-            self._cancel_download()
+            # Keep the dialog open while the worker stops; the worker removes
+            # its own partial file, and the completed download is discarded
+            # later if it managed to finish despite the cancel request.
+            self.close()
             return
+        self._closing = True
+        self._discard_download()
         super().reject()
 
 

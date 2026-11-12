@@ -20,8 +20,9 @@ except ImportError:
     url_dialog = None
 
 
-@unittest.skipIf(url_dialog is None, "PySide6 is optional")
-class UrlDialogTests(unittest.TestCase):
+class _DialogTestBase:
+    """Shared fixture: an offscreen dialog plus a fake per-download temp dir."""
+
     @classmethod
     def setUpClass(cls):
         cls.app = QApplication.instance() or QApplication([])
@@ -40,6 +41,10 @@ class UrlDialogTests(unittest.TestCase):
     def tearDown(self):
         self.dialog.close()
         self.app.processEvents()
+
+
+@unittest.skipIf(url_dialog is None, "PySide6 is optional")
+class UrlDialogTests(_DialogTestBase, unittest.TestCase):
 
     def test_dialog_opens_on_url_page(self):
         self.assertTrue(self.dialog.url_page.isVisible())
@@ -129,6 +134,233 @@ class UrlDialogTests(unittest.TestCase):
         self.dialog._cancel_download()
         self.assertFalse(self.dialog.pg_cancel.isEnabled())
         self.assertEqual(self.dialog.pg_cancel.text(), "Cancelling…")
+
+
+@unittest.skipIf(url_dialog is None, "PySide6 is optional")
+class DownloadCleanupTests(_DialogTestBase, unittest.TestCase):
+    """Regression tests: a download that is never installed leaves no temp files.
+
+    Completed downloads must be discarded (with their per-download
+    ``appinstall-url-*`` directory) when the dialog is closed, rejected,
+    returned from an unsuccessful review, or when installation fails —
+    but files must stay untouched while a download worker is active.
+    """
+
+    def _fake_result(self, name="downloaded.AppImage", kind="appimage"):
+        result = MagicMock()
+        result.detected_format = kind
+        result.final_url = "https://example.com/" + name
+        result.size = 12345
+        result.sha256 = "abcd1234"
+        result.checksum_verified = None
+        result.path = self.tempdir / name
+        return result
+
+    def _complete_download(self, **kwargs):
+        """Put the dialog on the download-complete page with a real temp file."""
+        result = self._fake_result(**kwargs)
+        Path(result.path).write_bytes(b"package-bytes")
+        self.dialog._download_finished(result)
+        self.app.processEvents()
+        return result
+
+    # ── closing / rejecting after a completed download ────────────────
+
+    def test_close_after_download_removes_temp_dir(self):
+        self._complete_download()
+        self.assertTrue(self.dialog.complete_page.isVisible())
+        self.dialog.close()
+        self.assertFalse(self.tempdir.exists())
+        self.assertIsNone(self.dialog._download_result)
+        self.assertFalse(self.dialog.isVisible())
+
+    def test_reject_after_download_removes_temp_dir(self):
+        self._complete_download()
+        self.dialog.reject()
+        self.assertFalse(self.tempdir.exists())
+        self.assertIsNone(self.dialog._download_result)
+        self.assertEqual(self.dialog.result(), url_dialog.QDialog.Rejected)
+
+    def test_discard_is_idempotent(self):
+        result = self._complete_download()
+        self.dialog._discard_download()
+        self.dialog._discard_download()  # second call must be a no-op
+        self.assertFalse(self.tempdir.exists())
+        self.assertIsNone(self.dialog._download_result)
+        self.assertFalse(Path(result.path).exists())
+
+    # ── unsuccessful review paths ─────────────────────────────────────
+
+    def _review_with_returncode(self, code):
+        fake_rc = MagicMock()
+        fake_rc.returncode = code
+        with patch.object(url_dialog.subprocess, "run", return_value=fake_rc), \
+             patch.object(url_dialog.QMessageBox, "warning", return_value=0) as warn, \
+             patch.object(url_dialog.QMessageBox, "information", return_value=0):
+            self.dialog._review_and_install()
+        return warn
+
+    def test_cancel_at_preview_removes_dir_and_returns_to_url_page(self):
+        self.dialog.url_edit.setText("https://example.com/app.AppImage")
+        self._complete_download()
+        warn = self._review_with_returncode(1)
+        warn.assert_not_called()
+        self.assertFalse(self.tempdir.exists())
+        self.assertIsNone(self.dialog._download_result)
+        self.assertTrue(self.dialog.url_page.isVisible())
+        self.assertFalse(self.dialog.complete_page.isVisible())
+        self.assertFalse(self.dialog.review_btn.isEnabled())
+        self.assertEqual(self.dialog.url_edit.text(), "https://example.com/app.AppImage")
+
+    def test_review_window_failure_cleans_up(self):
+        self._complete_download()
+        warn = self._review_with_returncode(3)
+        warn.assert_called_once()
+        self.assertFalse(self.tempdir.exists())
+        self.assertTrue(self.dialog.url_page.isVisible())
+        self.assertFalse(self.dialog.complete_page.isVisible())
+
+    def test_review_other_failure_cleans_up(self):
+        self._complete_download()
+        warn = self._review_with_returncode(2)
+        warn.assert_called_once()
+        self.assertFalse(self.tempdir.exists())
+        self.assertTrue(self.dialog.url_page.isVisible())
+
+    def test_missing_review_module_cleans_up(self):
+        self._complete_download()
+        with patch.object(self.dialog, "_locate", return_value=None) as locate, \
+             patch.object(url_dialog.QMessageBox, "warning", return_value=0):
+            self.dialog._review_and_install()
+        locate.assert_called_once_with("confirm.py")
+        self.assertFalse(self.tempdir.exists())
+        self.assertTrue(self.dialog.url_page.isVisible())
+
+    def test_review_start_failure_cleans_up(self):
+        self._complete_download()
+        with patch.object(url_dialog.subprocess, "run", side_effect=OSError("boom")), \
+             patch.object(url_dialog.QMessageBox, "warning", return_value=0) as warn:
+            self.dialog._review_and_install()
+        warn.assert_called_once()
+        self.assertFalse(self.tempdir.exists())
+        self.assertTrue(self.dialog.url_page.isVisible())
+
+    # ── installation errors ───────────────────────────────────────────
+
+    def test_failed_install_removes_temp_dir(self):
+        # "deb" skips the graphical review and goes straight to the backend.
+        self._complete_download(kind="deb")
+        warn = self._review_with_returncode(1)
+        warn.assert_called_once()
+        self.assertFalse(self.tempdir.exists())
+        self.assertIsNone(self.dialog._download_result)
+        self.assertFalse(self.dialog.review_btn.isEnabled())
+        self.assertTrue(self.dialog.url_page.isVisible())
+        self.assertFalse(self.dialog.complete_page.isVisible())
+        self.assertFalse(self.dialog.progress_page.isVisible())
+
+    def test_install_start_failure_cleans_up(self):
+        self._complete_download(kind="deb")
+        with patch.object(url_dialog.subprocess, "run", side_effect=OSError("no backend")), \
+             patch.object(url_dialog.QMessageBox, "warning", return_value=0) as warn:
+            self.dialog._review_and_install()
+        warn.assert_called_once()
+        self.assertFalse(self.tempdir.exists())
+
+    def test_missing_entry_point_cleans_up(self):
+        result = self._complete_download(kind="deb")
+        with patch.object(self.dialog, "_locate", return_value=None) as locate, \
+             patch.object(url_dialog.QMessageBox, "warning", return_value=0):
+            self.dialog._install_file(result.path, self.tempdir)
+        locate.assert_called_once_with("appinstall")
+        self.assertFalse(self.tempdir.exists())
+
+    # ── active downloads are preserved ────────────────────────────────
+
+    def test_reject_during_download_preserves_active_file(self):
+        worker = MagicMock()
+        worker.isRunning.return_value = True
+        self.dialog.worker = worker
+        partial = self.tempdir / "partial.AppImage"
+        partial.write_bytes(b"partial")
+        self.dialog.reject()
+        self.assertTrue(self.dialog.cancel.is_set())
+        self.assertTrue(partial.exists())
+        self.assertTrue(self.dialog.isVisible())
+        # Once the worker has stopped, closing discards nothing extra: the
+        # worker already removed its own partial file on cancellation.
+        worker.isRunning.return_value = False
+        self.dialog.reject()
+        self.assertFalse(self.dialog.isVisible())
+
+    def test_close_during_download_preserves_active_file(self):
+        worker = MagicMock()
+        worker.isRunning.return_value = True
+        self.dialog.worker = worker
+        partial = self.tempdir / "partial.AppImage"
+        partial.write_bytes(b"partial")
+        captured = []
+        with patch.object(url_dialog.QTimer, "singleShot",
+                          lambda ms, fn=None: captured.append(fn) if fn is not None else None):
+            self.dialog.close()
+        self.assertTrue(self.dialog.cancel.is_set())
+        self.assertTrue(self.dialog.isVisible())  # close ignored while working
+        self.assertTrue(partial.exists())         # active file preserved
+        self.assertTrue(self.tempdir.exists())
+        # The worker thread finishes and the recheck timer completes the close.
+        worker.isRunning.return_value = False
+        for fn in captured:
+            fn()
+        self.assertFalse(self.dialog.isVisible())
+
+    def test_download_completing_after_close_is_discarded(self):
+        worker = MagicMock()
+        worker.isRunning.return_value = True
+        self.dialog.worker = worker
+        captured = []
+        with patch.object(url_dialog.QTimer, "singleShot",
+                          lambda ms, fn=None: captured.append(fn) if fn is not None else None):
+            self.dialog.close()
+        result = self._fake_result()
+        Path(result.path).write_bytes(b"package-bytes")
+        # The completion signal is delivered after the close was requested.
+        self.dialog._download_finished(result)
+        self.assertFalse(self.tempdir.exists())
+        self.assertIsNone(self.dialog._download_result)
+        self.assertFalse(self.dialog.complete_page.isVisible())
+        worker.isRunning.return_value = False
+        for fn in captured:
+            fn()
+        self.assertFalse(self.dialog.isVisible())
+
+    def test_download_completing_after_cancel_is_discarded(self):
+        self.dialog._cancel_download()
+        self._complete_download()
+        self.assertFalse(self.tempdir.exists())
+        self.assertIsNone(self.dialog._download_result)
+        self.assertFalse(self.dialog.complete_page.isVisible())
+
+    def test_download_completing_after_reject_is_discarded(self):
+        worker = MagicMock()
+        worker.isRunning.return_value = True
+        self.dialog.worker = worker
+        with patch.object(url_dialog.QTimer, "singleShot"):
+            self.dialog.reject()
+        self._complete_download()
+        self.assertFalse(self.tempdir.exists())
+        worker.isRunning.return_value = False
+        self.dialog._recheck_close()
+        self.assertFalse(self.dialog.isVisible())
+
+    def test_install_keeps_file_until_backend_returns(self):
+        result = self._complete_download(kind="deb")
+        def backend(*args, **kwargs):
+            self.assertTrue(result.path.exists())
+            return MagicMock(returncode=1)
+        with patch.object(url_dialog.subprocess, "run", side_effect=backend), \
+             patch.object(url_dialog.QMessageBox, "warning", return_value=0):
+            self.dialog._review_and_install()
+        self.assertFalse(self.tempdir.exists())
 
 
 if __name__ == "__main__":
