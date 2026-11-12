@@ -1,26 +1,33 @@
 # AppInstall Changelog
 
-## 1.1.0 (release candidate — NOT PUBLISHED)
+## 1.1.1 (release candidate — NOT PUBLISHED)
 
-### Added
-- **Install from URL** in the original My Applications window: download
-  AppImage, Flatpak, flatpakref/flatpakrepo, DEB and RPM packages from direct
-  HTTPS URLs with progress, cancellation and preview before installation.
-- CLI: `appinstall --install-url URL` with optional expected SHA-256 verification.
+### Branding
+- Integrate the approved AppInstall blue-folder/download/checkmark icon in
+  eight freedesktop hicolor PNG sizes for Arch/CachyOS packages and source installs.
+- Configure AppInstall-owned KDE launchers and native PySide6 windows to use the
+  appinstall icon theme name while preserving third-party managed application icons.
+- Enforce an explicit allowlist of the eight icons in release evidence checks.
 
-### Security and reliability
-- TLS and hostname validation, public-IP connection pinning and redirect
-  validation to mitigate DNS rebinding, and rejection of private destinations.
-- Streamed size-limited downloads, integrity reporting and temporary-file
-  cleanup after errors, cancellation, abandoned reviews and failed installs.
-- Existing local-file installation backends preserved; DEB/RPM use Distrobox.
+### Release preparation
+- Propose a `1.1.1-1` package without changing the separate `install.sh` version.
+- Require final package checksums, upgrade/rollback, icon display validation,
+  artwork redistribution sign-off and separate publication authorization.
+- The published v1.1.0 package and release assets remain unchanged.
 
-### Release status
-- PR #41 merged into `main` at `60fe4dc`.
-- The version-bumped package has **not yet been built, acceptance-tested
-  or approved for publication**. No `v1.1.0` release exists.
-- The one-command `install.sh` script has its own version, `1.1.0`, and
-  installs the latest **published stable package**, not this candidate.
+## 1.1.0 (published 2026-11-12 as [`v1.1.0`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.1.0))
+
+- Added secure Install from URL with HTTPS progress, cancellation, package
+  review, content-format detection and optional SHA-256 integrity comparison.
+- Added CLI `appinstall --install-url URL`; existing AppImage, Flatpak and
+  Distrobox DEB/RPM installation and management workflows were preserved.
+- Added TLS/hostname validation, public-IP pinning, private-address and unsafe
+  redirect blocking, size limits and temporary-download cleanup.
+- Released from `f93ccd9c9f2cd9f4a473f92fe2323e248fd8ddda`; 8/8 post-merge CI.
+  Full CachyOS KDE desktop end-to-end acceptance remained an explicitly
+  documented owner-accepted exception.
+- The separate `install.sh` is also numbered 1.1.0 but independently versioned
+  and installs the latest *published stable* application package.
 
 ## 1.0.0 (published 2026-11-10 as [`v1.0.0`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.0.0))
 

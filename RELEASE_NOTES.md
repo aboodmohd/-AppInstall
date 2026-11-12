@@ -1,41 +1,61 @@
-# AppInstall v1.1.0 — Release Candidate (NOT PUBLISHED)
+# AppInstall v1.1.1 — Release Candidate (NOT PUBLISHED)
 
-**Preparation only.** No `v1.1.0` tag, release assets or published download
-exist. The latest public stable release remains
-[`v1.0.0`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.0.0).
+**Preparation only.** AppInstall v1.1.1 is not tagged or published. The
+latest publicly available stable release remains
+[v1.1.0](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.1.0).
 
-## What's new: Install from URL
+## What's new — official AppInstall icon
 
-- In the original **My Applications** window, choose **Install from URL…**,
-  paste a direct HTTPS package link and watch download progress.
-- Review the detected format, source and SHA-256 digest; optionally provide an
-  expected checksum. Installation requires a separate confirmation.
-- Supported formats: AppImage, Flatpak bundle/reference/repository, DEB and RPM.
-  The existing local-file backends remain unchanged.
-- CLI: `appinstall --install-url https://example.com/app.AppImage`.
-  `--yes` is available for deliberate scripted noninteractive use.
+- Ships the owner's selected blue-folder / white-download-arrow / green-checkmark
+  logo in eight transparent PNG sizes: 16, 24, 32, 48, 64, 128, 256 and 512.
+- KDE application launcher, AppInstall-owned desktop actions and native
+  PySide6 windows request `Icon=appinstall` from the theme.
+- Arch/CachyOS packages install icons in system hicolor directories; source
+  installs track per-user icon files in the existing recovery/uninstall journal.
+- No change to third-party managed application icons. All existing AppImage,
+  Flatpak, DEB/RPM, Install from URL and diagnostics functionality is retained.
 
-## Security and limitations
+## Packaging, acceptance and limitations
 
-- HTTPS certificates and hostnames are verified. Download connections use
-  public-IP validation and connection pinning for every redirect.
-- Private addresses, unsafe redirects and ambient proxies are blocked/bypassed.
-  Downloads have size limits, private temporary files, SHA-256 digests and
-  cleanup after cancellation, failure or closing the dialog.
-- HTTPS and a calculated SHA-256 do not prove an application is trustworthy.
-  Only install packages from trusted sources.
-- DEB/RPM still use rootless Distrobox; containers are not security sandboxes
-  and package installation transactions are not atomic.
+Proposed Arch/CachyOS candidate: `appinstall-1.1.1-1-any.pkg.tar.zst`.
+The separate one-command installer `install.sh` remains version 1.1.0 and
+continues to select only the latest **published stable** application release.
+The published v1.1.0 package must not be replaced or overwritten.
 
-## Candidate packaging
+The eight official hicolor PNGs are the only permitted packaged PNG assets;
+both release evidence gates reject unapproved images and screenshot evidence.
+Rights to redistribute the approved artwork require explicit owner sign-off.
+Automated CI and disposable package testing do not substitute for an actual
+CachyOS KDE Plasma Wayland visual/functional acceptance check.
 
-Arch/CachyOS candidate version: `1.1.0-1`. The separate one-command installer
-script is already v1.1.0, but installs only the latest **published stable**
-AppInstall package.
+**Release gates:** verify the final source commit, build and inspect the exact
+candidate package, independently generate its SHA-256 manifest, complete
+KDE/app icon and upgrade/rollback acceptance, review rights and obtain separate
+explicit owner approval before tagging or publishing v1.1.1.
+No release artifact or checksum is claimed in this draft.
 
-**Pending:** Build and inspect the candidate, verify its actual package
-SHA-256 manifest, run release-branch CI and isolated upgrade/rollback tests,
-and obtain explicit approval before tagging or publishing.
+---
+
+# AppInstall v1.1.0 — Release Notes (published November 12, 2026)
+
+[v1.1.0](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.1.0)
+introduced secure **Install from URL** through My Applications and the CLI.
+It supports AppImage, Flatpak bundles/references/repositories, DEB and RPM,
+with HTTPS download progress, cancellation, package preview, optional SHA-256
+comparison, and separate installation confirmation.
+
+Downloads validate TLS hostnames, public-IP connections and redirects; they
+block private destinations and enforce size limits with temporary-file cleanup.
+The downloader's SHA-256 is a transfer checksum, not proof of publisher trust.
+DEB/RPM depend on rootless Distrobox, which is not a security sandbox.
+
+The published Arch/CachyOS asset is
+`appinstall-1.1.0-1-any.pkg.tar.zst`, with its own SHA256SUMS at the
+[v1.1.0 release](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.1.0).
+The source commit was `f93ccd9c9f2cd9f4a473f92fe2323e248fd8ddda`,
+with 8/8 post-merge CI checks passing. Full physical/disposable CachyOS KDE
+desktop end-to-end acceptance was not verified and was explicitly waived.
+Only the published exact package matches its published checksum.
 
 ---
 
