@@ -23,10 +23,21 @@ sha256sum -c SHA256SUMS
 tmp="$(mktemp -d /tmp/appinstall-upgrade-rollback-XXXXXXXX)"
 test -d "$tmp"
 cleanup() {
+  # Preserve the tested command's status and reveal cleanup failures.
+  local status=$?
+  trap - EXIT
   if pacman -Q appinstall >/dev/null 2>&1; then
-    pacman -R --noconfirm appinstall || true
+    if ! pacman -R --noconfirm appinstall; then
+      echo "CI cleanup failed to remove test package." >&2
+      status=1
+    fi
   fi
-  rm -rf -- "$tmp"
+  if ! rm -rf -- "$tmp"; then
+    echo "CI cleanup failed to delete disposable temporary files." >&2
+    status=1
+  fi
+  echo "CI rollback script exit status: $status"
+  exit "$status"
 }
 trap cleanup EXIT
 
