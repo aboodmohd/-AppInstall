@@ -1,9 +1,9 @@
 # AppInstall Installation Guide
 
-AppInstall 1.0.0 remains the latest **published stable** application release:
-[`v1.0.0`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.0.0).
-Version 1.1.0 is being prepared but is not published. The manual package
-download URLs below still refer to the published v1.0.0.
+AppInstall 1.1.0 is the latest **published stable** application release:
+[`v1.1.0`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.1.0).
+Version 1.1.1 is being prepared but is **not** published. The manual package
+download URLs below still refer to the published v1.1.0.
 
 ## One-command installation (Arch/CachyOS)
 
@@ -57,13 +57,13 @@ another distribution's package manager.
 
 ## Install from package (Arch/CachyOS)
 
-Download from the [`v1.0.0` release](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.0.0):
+Download from the [`v1.1.0` release](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.1.0):
 
 ```sh
-curl -LO https://github.com/aboodmohd/-AppInstall/releases/download/v1.0.0/appinstall-1.0.0-1-any.pkg.tar.zst
-curl -LO https://github.com/aboodmohd/-AppInstall/releases/download/v1.0.0/SHA256SUMS
-sha256sum -c SHA256SUMS   # must print: appinstall-1.0.0-1-any.pkg.tar.zst: OK
-sudo pacman -U appinstall-1.0.0-1-any.pkg.tar.zst
+curl -LO https://github.com/aboodmohd/-AppInstall/releases/download/v1.1.0/appinstall-1.1.0-1-any.pkg.tar.zst
+curl -LO https://github.com/aboodmohd/-AppInstall/releases/download/v1.1.0/SHA256SUMS
+sha256sum -c SHA256SUMS   # must print: appinstall-1.1.0-1-any.pkg.tar.zst: OK
+sudo pacman -U appinstall-1.1.0-1-any.pkg.tar.zst
 ```
 
 The one-command installer performs download + verification +
