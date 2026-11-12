@@ -1,16 +1,42 @@
 # AppInstall Installation Guide
 
-> **v1.0.0 final preflight branch:** source and package version have been
-> staged as 1.0.0 for isolated release validation only. The public release
-> is still v1.0.0-beta.1. No stable tag, public release, or authorized
-> update to an existing installation has happened. Install the candidate
-> only on a backed-up/disposable system, after independently verifying
-> the package and its SHA256SUMS file.
+AppInstall 1.0.0 (Stable) is published as
+[`v1.0.0`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.0.0).
+The manual package instructions below apply to that release; the v1.1 installer is separate development work.
 
+## One-command installation (in development)
 
-> **Release candidate branch:** Version 1.0.0-rc.1 is for testing on a
-> disposable system. The published 1.0.0-beta.1 package shown below is
-> historical; it is not the candidate package. Stable 1.0.0 is not released.
+The v1.1 installer is under review. The public `main/install.sh` command must
+not be used or advertised as working until this branch is merged and the
+merged script is validated. Stable v1.0.0 remains unchanged.
+
+To review this checkout without installing anything:
+
+```sh
+bash install.sh --dry-run
+```
+
+Run as your regular desktop user with Bash, curl, coreutils, pacman and sudo.
+If Python is missing, setup asks to install it from your configured pacman
+repositories. Pacman installs required application dependencies, including
+PySide6. Optional backends are offered separately. Keep the system fully
+updated before installing packages; setup does not refresh databases alone.
+
+When run without `--dry-run`, the proposed installer downloads and verifies
+the package plus `SHA256SUMS`, installs through
+`sudo pacman -U` (package installation and optional backend installation use root; the
+app itself never runs as root), offers missing optional backends, and asks for
+one clear confirmation before making AppInstall the default handler for
+supported package formats. Your previous per-user associations are backed up
+and restorable (`~/.local/share/appinstall/installer/restore-mime-defaults.sh`).
+
+Installer flags: `--yes` (answer install prompts), `--set-defaults` (opt into
+default handler changes noninteractively), `--no-defaults`, `--dry-run` (plan
+without changes), `--uninstall`. Re-running is safe and idempotent.
+
+Other distributions are not covered by this one-command installer yet — see
+"Install from source" below. Do not install the Arch `.pkg.tar.zst` package with
+another distribution's package manager.
 
 ## System requirements
 
@@ -26,9 +52,17 @@
 
 ## Install from package (Arch/CachyOS)
 
+Download from the [`v1.0.0` release](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.0.0):
+
 ```sh
-sudo pacman -U appinstall-1.0.0beta1-1-any.pkg.tar.zst
+curl -LO https://github.com/aboodmohd/-AppInstall/releases/download/v1.0.0/appinstall-1.0.0-1-any.pkg.tar.zst
+curl -LO https://github.com/aboodmohd/-AppInstall/releases/download/v1.0.0/SHA256SUMS
+sha256sum -c SHA256SUMS   # must print: appinstall-1.0.0-1-any.pkg.tar.zst: OK
+sudo pacman -U appinstall-1.0.0-1-any.pkg.tar.zst
 ```
+
+The proposed v1.1 installer performs download + verification +
+installation automatically.
 
 The package installs `appinstall` to `/usr/bin/appinstall` and registers `/usr/share/applications/appinstall.desktop` as an *available* file handler. It does **not** change your existing default file associations. For a file that opens in another application, right-click it in Dolphin and select **Open With → AppInstall**, then choose AppInstall as the default only if you want to. Some file managers may prefer executable AppImage handling over a MIME default.
 

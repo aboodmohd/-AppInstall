@@ -1,0 +1,223 @@
+name: One-command installer tests (install.sh)
+
+on:
+  pull_request:
+    paths:
+      - "install.sh"
+      - "tests/test_install_sh.py"
+      - ".github/workflows/installer-tests.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "install.sh"
+      - "tests/test_install_sh.py"
+      - ".github/workflows/installer-tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  lint:
+    name: Installer shell lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Validate Bash syntax
+        run: bash -n install.sh
+
+      - name: ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+          shellcheck --severity=error install.sh
+
+      - name: Installer unit tests (no network)
+        run: python3 -m unittest tests.test_install_sh -v
+
+  arch-integration:
+    name: Arch container integration (install.sh real download + pacman)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: archlinux:base-devel
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Provision curl, xdg-utils and a disposable user with NOPASSWD sudo
+        run: |
+          set -eu
+          pacman -Syu --noconfirm
+          pacman -S --needed --noconfirm curl xdg-utils python pyside6 sudo
+          useradd --create-home --shell /bin/bash appuser
+          echo 'appuser ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/appuser
+          chmod 0440 /etc/sudoers.d/appuser
+          chown -R appuser:appuser "$GITHUB_WORKSPACE"
+
+      - name: Refuse unsupported distribution with a clear message
+        env:
+          APPINSTALL_TEST_OS_RELEASE: /tmp/fake-ubuntu-os-release
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          printf 'NAME=Ubuntu\nID=ubuntu\nID_LIKE=debian\n' > "$APPINSTALL_TEST_OS_RELEASE"
+          runuser -u appuser -- env HOME=/home/appuser \
+            APPINSTALL_TEST_OS_RELEASE="$APPINSTALL_TEST_OS_RELEASE" \
+            bash -c "cd '$GITHUB_WORKSPACE' && ./install.sh --dry-run" \
+            > /tmp/refusal.out 2>/tmp/refusal.err && rc=0 || rc=$?
+          if [ "$rc" -ne 2 ]; then
+            cat /tmp/refusal.out /tmp/refusal.err >&2
+            echo "::error::expected unsupported-distro exit 2, got $rc"; exit 1
+          fi
+          grep -q "family 'debian'" /tmp/refusal.out /tmp/refusal.err
+          grep -q "install-user.sh" /tmp/refusal.out /tmp/refusal.err
+          if pacman -Q appinstall 2>/dev/null; then
+            echo '::error::an unsupported distro must never install a package'; exit 1
+          fi
+
+      - name: Refuse to install without consent when noninteractive
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          runuser -u appuser -- env HOME=/home/appuser GITHUB_TOKEN="$GITHUB_TOKEN" \
+            bash -c "cd '$GITHUB_WORKSPACE' && ./install.sh < /dev/null" \
+            >/tmp/nonint.out 2>/tmp/nonint.err && rc=0 || rc=$?
+          if [ "$rc" -ne 2 ]; then
+            cat /tmp/nonint.out /tmp/nonint.err >&2
+            echo "::error::expected exit 2 without consent in noninteractive run, got $rc"
+            exit 1
+          fi
+          ! pacman -Q appinstall 2>/dev/null || {
+            echo '::error::noninteractive run without --yes must not install'; exit 1
+          }
+
+      - name: Refuse tampered checksums end-to-end and install nothing
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          # Earlier refusal steps must leave the package absent.
+          ! pacman -Q appinstall 2>/dev/null
+          # Fully local tamper test: no network dependency. Create a fake
+          # package and a manifest whose hash does NOT match it, then point
+          # the installer at file:// URLs so the full download → verify path
+          # runs for real but cannot succeed.
+          printf 'fake-package-content-bytes' > "$GITHUB_WORKSPACE/appinstall-1.0.0-1-any.pkg.tar.zst"
+          printf '0000000000000000000000000000000000000000000000000000000000000000  appinstall-1.0.0-1-any.pkg.tar.zst\n' \
+            > "$GITHUB_WORKSPACE/SHA256SUMS"
+          {
+            printf '{ "tag_name": "v1.0.0", "draft": false, "prerelease": false, "assets": [\n'
+            printf '{ "name": "appinstall-1.0.0-1-any.pkg.tar.zst", "browser_download_url": "file://%s/appinstall-1.0.0-1-any.pkg.tar.zst" },\n' "$GITHUB_WORKSPACE"
+            printf '{ "name": "SHA256SUMS", "browser_download_url": "file://%s/SHA256SUMS" } ] }\n' "$GITHUB_WORKSPACE"
+          } > /tmp/releases-tamper.json
+          sudo -u appuser env HOME=/home/appuser GITHUB_TOKEN="$GITHUB_TOKEN" \
+            APPINSTALL_TEST_RELEASES_JSON=/tmp/releases-tamper.json \
+            bash -c "cd '$GITHUB_WORKSPACE' && ./install.sh --yes" \
+            > /tmp/tamper.out 2>/tmp/tamper.err && rc=0 || rc=$?
+          if [ "$rc" -ne 3 ]; then
+            cat /tmp/tamper.out /tmp/tamper.err >&2
+            echo "::error::expected checksum exit 3, got $rc"; exit 1
+          fi
+          grep -q "Checksum verification FAILED" /tmp/tamper.out /tmp/tamper.err
+          ! pacman -Q appinstall 2>/dev/null || {
+            echo '::error::tampered package was installed'; exit 1
+          }
+          rm -f "$GITHUB_WORKSPACE/appinstall-1.0.0-1-any.pkg.tar.zst" "$GITHUB_WORKSPACE/SHA256SUMS"
+
+      - name: Dry run with explicit flags leaves no state or packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          before="$(sha256sum /home/appuser/.local/share/appinstall/installer/install-log.txt)"
+          sudo -u appuser env HOME=/home/appuser GITHUB_TOKEN="$GITHUB_TOKEN" \
+            bash -c "cd '$GITHUB_WORKSPACE' && ./install.sh --dry-run --set-defaults --with-optional"
+          test ! -e /home/appuser/.config/mimeapps.list
+          test "$before" = "$(sha256sum /home/appuser/.local/share/appinstall/installer/install-log.txt)"
+          ! pacman -Q appinstall 2>/dev/null
+
+      - name: Install the verified stable release through the one-command flow
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          sudo -u appuser env HOME=/home/appuser GITHUB_TOKEN="$GITHUB_TOKEN" \
+            bash -c "cd '$GITHUB_WORKSPACE' && ./install.sh --yes --set-defaults --no-optional" \
+            > /tmp/install.out 2>/tmp/install.err || {
+              cat /tmp/install.out /tmp/install.err >&2
+              echo '::error::one-command installation failed'; exit 1
+            }
+          # Installed and registered where the package promises.
+          pacman -Q appinstall
+          test -x /usr/bin/appinstall
+          grep -Fxq 'Name=AppInstall' /usr/share/applications/appinstall.desktop
+          grep -Fxq 'Exec=/usr/bin/appinstall %F' /usr/share/applications/appinstall.desktop
+          grep -q 'application/x-quickdrop-appimage' /usr/share/applications/appinstall.desktop
+
+      - name: Verify default handler resolution for all advertised MIME types
+        run: |
+          set -eu
+          mimes=(
+            application/vnd.debian.binary-package application/x-deb
+            application/x-rpm application/vnd.flatpak application/vnd.flatpak.ref
+            application/vnd.flatpak.repo application/vnd.appimage
+            application/x-iso9660-appimage application/x-quickdrop-appimage
+          )
+          for m in "${mimes[@]}"; do
+            got="$(sudo -u appuser env HOME=/home/appuser xdg-mime query default "$m")"
+            if [ "$got" != "appinstall.desktop" ]; then
+              echo "::error::xdg-mime default for $m is '$got', expected appinstall.desktop"
+              exit 1
+            fi
+          done
+          # Backup + restore script must exist for the user that opted in.
+          test -f /home/appuser/.local/share/appinstall/installer/previous-mime-defaults.tsv
+          test -x /home/appuser/.local/share/appinstall/installer/restore-mime-defaults.sh
+
+      - name: Rerun is idempotent (already latest → nothing to install)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          sudo -u appuser env HOME=/home/appuser GITHUB_TOKEN="$GITHUB_TOKEN" \
+            bash -c "cd '$GITHUB_WORKSPACE' && ./install.sh --yes --set-defaults --no-optional" \
+            > /tmp/rerun.out 2>/tmp/rerun.err || {
+              cat /tmp/rerun.out /tmp/rerun.err >&2
+              echo '::error::installer is not idempotent'; exit 1
+            }
+          grep -q "already installed" /tmp/rerun.out /tmp/rerun.err
+          pacman -Q appinstall
+
+      - name: Uninstall removes the package and restores previous defaults
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          sudo -u appuser env HOME=/home/appuser GITHUB_TOKEN="$GITHUB_TOKEN" \
+            bash -c "cd '$GITHUB_WORKSPACE' && ./install.sh --uninstall --yes" \
+            >/tmp/uninstall.out 2>/tmp/uninstall.err && rc=0 || rc=$?
+          if [ "$rc" -ne 0 ]; then
+            cat /tmp/uninstall.out /tmp/uninstall.err >&2
+            echo "::error::uninstall path failed (rc=$rc)"
+            exit 1
+          fi
+          # The container user had NO previous defaults: after restore nothing
+          # may point at AppInstall.
+          if grep -q 'appinstall' /home/appuser/.config/mimeapps.list 2>/dev/null; then
+            echo '::error::restore left AppInstall in user defaults'
+            echo '::debug::mimeapps.list contents:'; cat /home/appuser/.config/mimeapps.list 2>/dev/null || true
+            echo '::debug::backup TSV contents:'; cat /home/appuser/.local/share/appinstall/installer/previous-mime-defaults.tsv 2>/dev/null || true
+            exit 1
+          fi
+          ! pacman -Q appinstall 2>/dev/null || {
+            echo '::error::uninstall did not remove the package'; exit 1
+          }

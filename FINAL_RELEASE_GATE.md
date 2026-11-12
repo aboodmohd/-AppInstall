@@ -1,3 +1,47 @@
+# Stable v1.0.0 publication record — 2026-11-10
+
+**Published as [`v1.0.0`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.0.0)**
+from the final reviewed commit `adf44ebd44eb6c6b002c419befdcbecb754984d0`
+with the owner's explicit approvals recorded in
+[issue #14](https://github.com/aboodmohd/-AppInstall/issues/14).
+`v1.0.0-beta.1` remains unchanged.
+
+---
+
+# Release preparation status — 2026-11-10 (historical, superseded by the record above)
+
+**Stable 1.0: HOLD / NO-GO.** The independent candidate artifact
+verification and native fresh-CachyOS acceptance are recorded in issue #14,
+but neither grants publication permission.
+
+Main after PR #34: `8b99a0c06de473ec04d56495ef58d44ff93512f1`
+with seven green CI jobs. Independently inspected candidate from
+[GitHub Actions run 42800326093](https://github.com/aboodmohd/-AppInstall/actions/runs/42800326093):
+ZIP SHA-256 `07bafdbfa3296f3a6460e14d76a18ed5184153710bc7513c52f5783472f0eeaf`;
+inner package SHA-256
+`d00489fcc668fbb6bcfa11a1a5f82e1ada450b8e7110c2c9ff8a8bcf4688d900`.
+Both match their corresponding metadata/manifest. This is a historical
+candidate hash, **not** the hash of a future rebuilt release.
+
+Technical third-party review is recorded in DEPENDENCY_LICENSE_AUDIT.md:
+no obvious bundled third-party executables/art was found in the inspected
+source package; this does not close the human permissions and notice check.
+Any prepared release-note edits require a new package and independent
+checksum verification. Separate owner approval is required before stable
+tagging/publication. No installed application is changed by this review.
+
+---
+
+# Fresh CachyOS acceptance addendum — 2026-11-10
+
+**Fresh installed-system acceptance was performed after the older HOLD addenda below.** The repository owner installed CachyOS KDE Wayland cleanly, verified the exact local candidate from source commit `9cf51696f574dd80f7adf9336c33adff79ed30f3`, reported 44/44 real-app checks across AppImage/Flatpak/DEB/RPM, and passed the local Pacman install/remove/reinstall, user-settings and MIME comparisons, invalid-input tests, and package payload/license inspection. Full detailed scope and limitations: [fresh-system acceptance report](FRESH_CACHYOS_ACCEPTANCE_2026-11-10.md); owner terminal results are logged under [issue #14](https://github.com/aboodmohd/-AppInstall/issues/14).
+
+**This supersedes the older claim below that a separate fresh CachyOS install had not been completed.** The fresh-host test confirms an important manual gate, but does not certify all applications, missing-dependency/network-failure behavior, physical power interruption or third-party rights. The owner-source and eight-screenshot ownership declarations have already been recorded; an independent third-party notice/asset review still needs sign-off.
+
+**Release decision remains HOLD / NO-GO.** Before tagging or publishing Stable v1.0.0, complete the remaining applicable security/license review, ensure final release notes and audit match actual coverage, verify fresh CI and exact uploaded artifacts against the **final reviewed commit**, and obtain the owner's explicit separate publication approval. The locally built test package SHA-256 is `14cab16fe1dc3cc63c11526184b948deca2755499272830dcde48fa993b2a5e3`; it must **not** be assumed to be the final published asset checksum.
+
+---
+
 # AppInstall 1.0.0 — final release GO / NO-GO evidence
 
 ## Current release-gate addendum — 2026-11-06
