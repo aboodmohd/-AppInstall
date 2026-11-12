@@ -369,9 +369,10 @@ class UrlInstallDialog(QDialog):
             QMessageBox.warning(self, "AppInstall", "Installation could not start: " + str(error))
             return
         # Clean up the temporary download once the backend has consumed it.
+        # Only per-download directories (prefix ``appinstall-url-``) may be
+        # removed — never a broader parent such as the system temp root.
         if temp_dir is not None:
-            import shutil
-            shutil.rmtree(temp_dir, ignore_errors=True)
+            url_install.remove_download_dir(temp_dir)
         if rc.returncode == 0:
             QMessageBox.information(self, "AppInstall", "Installation completed successfully.")
             self.installed.emit()

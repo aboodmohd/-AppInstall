@@ -804,5 +804,40 @@ sys.exit(0)
                          ["--install-url", "https://example.test/app.AppImage"])
 
 
+# ── Temp-directory removal guard ──────────────────────────────────────
+
+class RemoveDownloadDirTests(unittest.TestCase):
+    """Only per-download directories may ever be removed.
+
+    Regression: removal used to be ``shutil.rmtree(Path(path).parent)``,
+    which deleted the system temp root itself when a file lived directly
+    in it (this destroyed /tmp in a root-container CI run).
+    """
+
+    def test_removes_download_directory_of_file(self):
+        temp = Path(tempfile.mkdtemp(prefix="guardok-"))
+        self.addCleanup(lambda: __import__("shutil").rmtree(temp, ignore_errors=True))
+        download = temp / "appinstall-url-abc123"
+        download.mkdir()
+        target = download / "file.AppImage"
+        target.write_bytes(b"x")
+        u.remove_download_dir(target)
+        self.assertFalse(download.exists())
+
+    def test_leaves_other_directories_alone(self):
+        temp = Path(tempfile.mkdtemp(prefix="guardno-"))
+        self.addCleanup(lambda: __import__("shutil").rmtree(temp, ignore_errors=True))
+        (temp / "keep.txt").write_text("keep")
+        u.remove_download_dir(temp / "file.AppImage")  # parent is not a download dir
+        self.assertTrue(temp.is_dir())
+        self.assertTrue((temp / "keep.txt").exists())
+
+    def test_never_removes_system_temp_root(self):
+        root = Path(tempfile.gettempdir())
+        u.remove_download_dir(root)          # passing the root itself
+        u.remove_download_dir(root / "some.AppImage")  # or a file directly in it
+        self.assertTrue(root.is_dir())
+
+
 if __name__ == "__main__":
     unittest.main()

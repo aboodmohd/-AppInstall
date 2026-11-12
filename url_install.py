@@ -347,6 +347,22 @@ def _remove_tree(temp_dir):
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 
+def remove_download_dir(path):
+    """Remove the per-download temporary directory containing ``path``.
+
+    Public helper shared with url_dialog. ``path`` may be the downloaded
+    file itself or the directory; only directories created by download_url
+    (prefix ``appinstall-url-``) are ever removed, so a file that lives
+    anywhere else — including directly in the system temporary root — can
+    never trigger a broader deletion.
+    """
+    directory = Path(path)
+    if directory.is_file():
+        directory = directory.parent
+    if directory.name.startswith("appinstall-url-"):
+        _remove_tree(directory)
+
+
 def download_url(url, expected_checksum=None, max_size=MAX_DOWNLOAD_SIZE,
                  cancel=None, progress=None, temp_root=None, ssl_context=None):
     """Stream-download ``url`` to a secure temporary file.
@@ -653,20 +669,20 @@ def run_cli(argv):
         ui = _locate_sibling("confirm.py")
         if not ui:
             print("confirm.py is missing; cannot review package.", file=sys.stderr)
-            _remove_tree(Path(result.path).parent)
+            remove_download_dir(result.path)
             return 2
         try:
             rc = subprocess.run([sys.executable, str(ui), str(result.path), kind, details],
                                 capture_output=True, text=True)
         except Exception as error:  # noqa: BLE001
             print("Could not open package review: " + str(error), file=sys.stderr)
-            _remove_tree(Path(result.path).parent)
+            remove_download_dir(result.path)
             return 2
         if rc.returncode == 0:
             pass  # approved in the graphical review
         elif rc.returncode == 1:
             print("Installation cancelled.", file=sys.stderr)
-            _remove_tree(Path(result.path).parent)
+            remove_download_dir(result.path)
             return 1
         elif rc.returncode == 3:
             # The graphical review could not open (usually PySide6 missing).
@@ -678,27 +694,27 @@ def run_cli(argv):
                       "cancelled. Install PySide6 for the graphical review, or "
                       "answer the terminal prompt.",
                       file=sys.stderr)
-                _remove_tree(Path(result.path).parent)
+                remove_download_dir(result.path)
                 return 1
         else:
             print("Package review did not complete (exit code "
                   + str(rc.returncode) + ").", file=sys.stderr)
-            _remove_tree(Path(result.path).parent)
+            remove_download_dir(result.path)
             return 1
 
     appinstall = _locate_sibling("appinstall")
     if not appinstall:
         print("appinstall entry point is missing.", file=sys.stderr)
-        _remove_tree(Path(result.path).parent)
+        remove_download_dir(result.path)
         return 2
     try:
         rc = subprocess.run([str(appinstall), "--yes", str(result.path)],
                             capture_output=True, text=True)
     except Exception as error:  # noqa: BLE001
         print("Installation could not start: " + str(error), file=sys.stderr)
-        _remove_tree(Path(result.path).parent)
+        remove_download_dir(result.path)
         return 2
-    _remove_tree(Path(result.path).parent)
+    remove_download_dir(result.path)
     if rc.returncode == 0:
         print("Installation completed successfully.")
         return 0

@@ -27,6 +27,12 @@ class UrlDialogTests(unittest.TestCase):
         cls.app = QApplication.instance() or QApplication([])
 
     def setUp(self):
+        import tempfile
+        import shutil
+        # Fake downloads live in a private directory that mimics the real
+        # per-download temp dir; never directly in the system temp root.
+        self.tempdir = Path(tempfile.mkdtemp(prefix="appinstall-url-test-"))
+        self.addCleanup(shutil.rmtree, self.tempdir, ignore_errors=True)
         self.dialog = url_dialog.UrlInstallDialog()
         self.dialog.show()
         self.app.processEvents()
@@ -76,7 +82,7 @@ class UrlDialogTests(unittest.TestCase):
         fake_result.size = 12345
         fake_result.sha256 = "abcd1234"
         fake_result.final_url = "https://example.com/app.AppImage"
-        fake_result.path = Path("/tmp/fake.AppImage")
+        fake_result.path = self.tempdir / "fake.AppImage"
         fake_worker = MagicMock()
         fake_worker.result = fake_result
         with patch.object(url_install.socket, "getaddrinfo",
@@ -106,7 +112,7 @@ class UrlDialogTests(unittest.TestCase):
         self.dialog._download_result.final_url = "https://example.com/x.AppImage"
         self.dialog._download_result.size = 100
         self.dialog._download_result.sha256 = "aaaa"
-        self.dialog._download_result.path = Path("/tmp/x.AppImage")
+        self.dialog._download_result.path = self.tempdir / "x.AppImage"
         emitted = []
         self.dialog.installed.connect(lambda: emitted.append(True))
         fake_rc = MagicMock()
