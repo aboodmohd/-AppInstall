@@ -62,7 +62,7 @@ class Workflow(QDialog):
         self.setAttribute(Qt.WA_DeleteOnClose, True)
         self.args=args; self.engine=None; self.info=None; self.job=None; self.jobs=[]
         self.shot=shot; self.retry_callback=None
-        self.setWindowTitle('AppInstall'); self.setMinimumWidth(640); self.resize(660,540)
+        self.setWindowTitle('AppInstall'); self.setWindowIcon(QIcon.fromTheme('appinstall')); self.setMinimumWidth(640); self.resize(660,540)
         layout=QVBoxLayout(self); layout.setContentsMargins(26,24,24,20); layout.setSpacing(12)
         header=QHBoxLayout(); header.setSpacing(16)
         self.icon=QLabel(); self.icon.setFixedSize(72,72); self.icon.setAlignment(Qt.AlignTop)
@@ -231,6 +231,7 @@ if __name__=='__main__':
         args=args[:index]+args[index+2:]
     else: shot=None
     app=QApplication(sys.argv[:1]); ui_style.maybe_dark(app)
+    app.setWindowIcon(QIcon.fromTheme('appinstall'))
     window=Workflow(args,shot); window.show()
     if shot:
         QTimer.singleShot(600, lambda: (window.grab().save(shot), QApplication.quit()))

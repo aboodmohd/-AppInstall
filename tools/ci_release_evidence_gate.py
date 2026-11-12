@@ -30,6 +30,27 @@ SCREENSHOTS = {
 SCRIPTED = set(SCREENSHOTS.values()) - {"manager-live-wayland.png"}
 REPORT_ROW = re.compile(r"^- \*\*(.+?)\*\*: captured (\d+) bytes(?:\s.*)?$")
 
+# The eight official AppInstall application icons are the ONLY PNG files
+# permitted as PKGBUILD sources or inside the installable package. Sources use
+# distinct, makepkg-compatible basenames; installed destinations keep the
+# freedesktop hicolor name appinstall.png in each size directory. Any other PNG
+# (evidence/phase4 screenshots, unrelated images) is strictly rejected.
+APP_INSTALL_ICON_SOURCES = {
+    'appinstall-16.png': 16,
+    'appinstall-24.png': 24,
+    'appinstall-32.png': 32,
+    'appinstall-48.png': 48,
+    'appinstall-64.png': 64,
+    'appinstall-128.png': 128,
+    'appinstall-256.png': 256,
+    'appinstall-512.png': 512,
+}
+APP_INSTALL_ICON_SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
+APP_INSTALL_ICON_INSTALLED = {
+    f"usr/share/icons/hicolor/{size}x{size}/apps/appinstall.png": size
+    for size in APP_INSTALL_ICON_SIZES
+}
+
 
 def verify_evidence():
     files = {p.name for p in EVIDENCE.glob("*.png")}
@@ -81,8 +102,28 @@ def verify_package(package):
     if not source_block:
         raise ValueError("Unable to find explicit PKGBUILD source list")
     sources = re.findall(r"'([^']+)'", source_block.group(1))
-    if not sources or any("evidence/" in entry or entry.endswith(".png") for entry in sources):
-        raise ValueError("PKGBUILD unexpectedly references evidence screenshots or image assets")
+    if not sources or any("evidence/" in entry for entry in sources):
+        raise ValueError("PKGBUILD unexpectedly references evidence assets")
+    # The eight official AppInstall icon sources are the only PNG sources
+    # permitted; reject every other image asset and require the exact inventory.
+    icon_sources = [e for e in sources if e.endswith(".png")]
+    unexpected_png = [e for e in icon_sources if e not in APP_INSTALL_ICON_SOURCES]
+    if unexpected_png:
+        raise ValueError("PKGBUILD unexpectedly references image assets: "+
+                         ", ".join(sorted(unexpected_png)))
+    if set(icon_sources) != set(APP_INSTALL_ICON_SOURCES):
+        raise ValueError("AppInstall icon source inventory incomplete or unexpected")
+    # Validate each icon source is a PNG of its exact declared size.
+    for name, size in APP_INSTALL_ICON_SOURCES.items():
+        path = ROOT / name
+        if not path.is_file():
+            raise ValueError(f"Missing AppInstall icon source: {name}")
+        data = path.read_bytes()
+        if len(data) < 24 or data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
+            raise ValueError(f"{name} is not a valid PNG")
+        width, height = struct.unpack(">II", data[16:24])
+        if (width, height) != (size, size):
+            raise ValueError(f"{name} is {width}x{height}, expected {size}x{size}")
 
     if not package.is_file():
         raise ValueError(f"Missing built package: {package}")
@@ -91,8 +132,16 @@ def verify_package(package):
         check=True, text=True, capture_output=True, timeout=30
     ).stdout.splitlines()
     normalized = {p.lstrip("./") for p in files}
-    if any(p.endswith(".png") or "evidence/phase4" in p for p in normalized):
-        raise ValueError("Installable package unexpectedly includes screenshot/image evidence")
+    # The eight official AppInstall hicolor icons are the only PNG package
+    # contents permitted; reject every other PNG, all evidence/phase4 assets,
+    # unrelated screenshots and unexpected images.
+    packaged_png = [p for p in normalized if p.endswith(".png")]
+    unexpected_png = [p for p in packaged_png if p not in APP_INSTALL_ICON_INSTALLED]
+    if unexpected_png or any("evidence/phase4" in p for p in normalized):
+        raise ValueError("Installable package unexpectedly includes screenshot/image evidence: "+
+                         ", ".join(sorted(unexpected_png)))
+    if set(packaged_png) != set(APP_INSTALL_ICON_INSTALLED):
+        raise ValueError("Packaged AppInstall icon inventory incomplete or unexpected")
     license_path = "usr/share/licenses/appinstall/LICENSE"
     if license_path not in normalized:
         raise ValueError("Installable package is missing its MIT license copy")

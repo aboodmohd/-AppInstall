@@ -851,6 +851,7 @@ class ManagerWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('AppInstall — My Applications')
+        self.setWindowIcon(QIcon.fromTheme('appinstall'))
         self.setMinimumWidth(760)
         self.resize(1000, 640)
         self.inventory = []
@@ -1117,6 +1118,7 @@ class ManagerWindow(QMainWindow):
 if __name__ == '__main__':
     app = QApplication(sys.argv[:1])
     ui_style.maybe_dark(app)
+    app.setWindowIcon(QIcon.fromTheme('appinstall'))
     window = ManagerWindow()
     window.show()
     shot = None

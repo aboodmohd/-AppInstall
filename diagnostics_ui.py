@@ -8,6 +8,7 @@ try:
     from PySide6.QtCore import Qt, QThread, Signal, QTimer
     from PySide6.QtWidgets import (QApplication,QDialog,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,
                                   QPlainTextEdit,QTableWidget,QTableWidgetItem,QMessageBox,QFileDialog,QInputDialog)
+    from PySide6.QtGui import QIcon
 except ImportError as error:
     print('PySide6 is required for Application Diagnostics: '+str(error), file=sys.stderr)
     sys.exit(3)
@@ -25,7 +26,7 @@ class Task(QThread):
 
 class LogWindow(QDialog):
     def __init__(self,path,parent=None):
-        super().__init__(parent);self.setWindowTitle('AppInstall — Diagnostic Logs');self.resize(760,500)
+        super().__init__(parent);self.setWindowTitle('AppInstall — Diagnostic Logs');self.setWindowIcon(QIcon.fromTheme('appinstall'));self.resize(760,500)
         layout=QVBoxLayout(self);text=QPlainTextEdit();text.setReadOnly(True)
         try:content=Path(path).read_bytes()[-monitor.LOG_BYTES:].decode(errors='replace')
         except OSError:content='The log file is not available.'
@@ -36,7 +37,7 @@ class LogWindow(QDialog):
 
 class FailureWindow(QDialog):
     def __init__(self,attempt):
-        super().__init__();self.attempt=attempt;self.setWindowTitle('AppInstall — Launch Failed');self.resize(640,420)
+        super().__init__();self.attempt=attempt;self.setWindowTitle('AppInstall — Launch Failed');self.setWindowIcon(QIcon.fromTheme('appinstall'));self.resize(640,420)
         try:spec=monitor.registry().get(attempt['key'],dict(name=attempt['name']))
         except (OSError,ValueError):spec=dict(name=attempt['name'])
         text=monitor.error_text(spec,attempt['error'])
@@ -56,7 +57,7 @@ class FailureWindow(QDialog):
 
 class Diagnostics(QDialog):
     def __init__(self):
-        super().__init__();self.setWindowTitle('AppInstall — Application Diagnostics');self.resize(1000,650)
+        super().__init__();self.setWindowTitle('AppInstall — Application Diagnostics');self.setWindowIcon(QIcon.fromTheme('appinstall'));self.resize(1000,650)
         self.records=[];self.jobs=[];self.busy=False
         layout=QVBoxLayout(self)
         heading=QLabel('Application Diagnostics');font=heading.font();font.setPointSize(20);heading.setFont(font);layout.addWidget(heading)
@@ -168,6 +169,7 @@ class Diagnostics(QDialog):
 
 if __name__=='__main__':
     app=QApplication(sys.argv)
+    app.setWindowIcon(QIcon.fromTheme('appinstall'))
     if len(sys.argv)>2 and sys.argv[1]=='--error':
         window=FailureWindow(json.loads(Path(sys.argv[2]).read_text()))
     else:window=Diagnostics()

@@ -20,6 +20,7 @@ class SuccessDialog(QDialog):
     def __init__(self, name, description='', open_action=None, parent=None):
         super().__init__(parent)
         self.setWindowTitle('AppInstall — Installation Complete')
+        self.setWindowIcon(QIcon.fromTheme('appinstall'))
         self.setMinimumWidth(420)
         self.setModal(True)
         self._open_action = open_action
@@ -87,6 +88,7 @@ class FailureDialog(QDialog):
     def __init__(self, name, category, explanation='', technical='', logs='', retry=None, parent=None, headline=None):
         super().__init__(parent)
         self.setWindowTitle('AppInstall — Could not finish')
+        self.setWindowIcon(QIcon.fromTheme('appinstall'))
         self.resize(560, 460)
         self.setModal(True)
         self.details = (name+'\n'+category+'\n'+explanation+'\n'+technical).strip()
