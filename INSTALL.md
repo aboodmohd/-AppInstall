@@ -1,14 +1,19 @@
 # AppInstall Installation Guide
 
-AppInstall 1.0.0 (Stable) is published as
+AppInstall 1.0.0 remains the latest **published stable** application release:
 [`v1.0.0`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.0.0).
-The manual package instructions below apply to that release; the v1.1 installer is separate development work.
+Version 1.1.0 is being prepared but is not published. The manual package
+download URLs below still refer to the published v1.0.0.
 
-## One-command installation (in development)
+## One-command installation (Arch/CachyOS)
 
-The v1.1 installer is under review. The public `main/install.sh` command must
-not be used or advertised as working until this branch is merged and the
-merged script is validated. Stable v1.0.0 remains unchanged.
+The separately versioned installer script `install.sh` (v1.1.0) is available
+on `main`. It installs only the latest **published stable** AppInstall
+package on tested Arch/CachyOS x86_64 desktops. Run as a regular user:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash
+```
 
 To review this checkout without installing anything:
 
@@ -22,7 +27,7 @@ repositories. Pacman installs required application dependencies, including
 PySide6. Optional backends are offered separately. Keep the system fully
 updated before installing packages; setup does not refresh databases alone.
 
-When run without `--dry-run`, the proposed installer downloads and verifies
+When run without `--dry-run`, the installer downloads and verifies
 the package plus `SHA256SUMS`, installs through
 `sudo pacman -U` (package installation and optional backend installation use root; the
 app itself never runs as root), offers missing optional backends, and asks for
@@ -61,7 +66,7 @@ sha256sum -c SHA256SUMS   # must print: appinstall-1.0.0-1-any.pkg.tar.zst: OK
 sudo pacman -U appinstall-1.0.0-1-any.pkg.tar.zst
 ```
 
-The proposed v1.1 installer performs download + verification +
+The one-command installer performs download + verification +
 installation automatically.
 
 The package installs `appinstall` to `/usr/bin/appinstall` and registers `/usr/share/applications/appinstall.desktop` as an *available* file handler. It does **not** change your existing default file associations. For a file that opens in another application, right-click it in Dolphin and select **Open With → AppInstall**, then choose AppInstall as the default only if you want to. Some file managers may prefer executable AppImage handling over a MIME default.
