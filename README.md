@@ -1,5 +1,7 @@
 # AppInstall
 
+![AppInstall logo](appinstall-256.png)
+
 A graphical double-click installer for AppImage, Flatpak, DEB, and RPM files on Linux desktops. DEB/RPM applications run in rootless Debian/Fedora Distrobox containers.
 
 **Development status:** tested on CachyOS KDE with selected applications. DEB/RPM compatibility remains application-dependent; some packages omit runtime dependencies or require additional configuration. This project does not guarantee that every Linux package will run.

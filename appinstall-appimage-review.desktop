@@ -9,5 +9,5 @@ X-AppInstall-Managed=true
 
 [Desktop Action ReviewWithAppInstall]
 Name=Review with AppInstall…
-Icon=package-x-generic
+Icon=appinstall
 Exec=appinstall %f

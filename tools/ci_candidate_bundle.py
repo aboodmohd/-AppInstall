@@ -22,6 +22,16 @@ REQUIRED = (
     "usr/share/kio/servicemenus/appinstall-appimage-review.desktop",
 )
 
+# The eight official AppInstall hicolor icons are the ONLY PNG files permitted
+# inside the installable package. Installed destinations keep the freedesktop
+# hicolor name appinstall.png in each size directory. Any other PNG
+# (evidence/phase4 screenshots, unrelated images) is strictly rejected. This
+# allowlist mirrors ci_release_evidence_gate.APP_INSTALL_ICON_INSTALLED.
+APP_INSTALL_ICON_INSTALLED = {
+    f"usr/share/icons/hicolor/{size}x{size}/apps/appinstall.png": size
+    for size in (16, 24, 32, 48, 64, 128, 256, 512)
+}
+
 
 def _expected_sha(package, sums_path):
     lines = sums_path.read_text(encoding="utf-8").splitlines()
@@ -65,8 +75,15 @@ def verify_package(package, pkgbuild):
     listed = {name.lstrip("./") for name in result.stdout.splitlines()}
     if not all(path in listed for path in REQUIRED):
         raise ValueError("Built package is missing CLI or installed LICENSE")
-    if any(path.endswith(".png") or "evidence/phase4/" in path for path in listed):
+    # The eight official AppInstall hicolor icons are the only PNG files
+    # permitted in the package; reject screenshots, evidence/phase4 assets,
+    # unexpected PNGs and unrelated images.
+    packaged_png = [p for p in listed if p.endswith(".png")]
+    unexpected_png = [p for p in packaged_png if p not in APP_INSTALL_ICON_INSTALLED]
+    if unexpected_png or any("evidence/phase4/" in p for p in listed):
         raise ValueError("Evidence screenshots unexpectedly shipped in binary package")
+    if set(packaged_png) != set(APP_INSTALL_ICON_INSTALLED):
+        raise ValueError("Packaged AppInstall icon inventory incomplete or unexpected")
     result = subprocess.run(
         ["bsdtar", "-xOf", str(package), "usr/share/licenses/appinstall/LICENSE"],
         capture_output=True, check=True, timeout=30,

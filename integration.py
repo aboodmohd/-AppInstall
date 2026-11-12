@@ -34,13 +34,19 @@ modules = (
     'runtime_probe.py', 'diagnostics_core.py', 'diagnostics_ui.py',
     'url_install.py', 'url_dialog.py',
 )
+ICON_SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
+# Flat, makepkg-compatible source basenames; installed to hicolor destinations.
+icon_sources = tuple(f'appinstall-{size}.png' for size in ICON_SIZES)
+icon_destinations = tuple(
+    data / 'icons' / 'hicolor' / f'{size}x{size}' / 'apps' / 'appinstall.png'
+    for size in ICON_SIZES)
 uninstalling = sys.argv[1:] == ['--uninstall']
 root = Path(__file__).resolve().parent
 
 if not uninstalling:
     # Check every required file before writing any user-owned location.
     required = ('appinstall', 'appinstall.desktop',
-                'appinstall-appimage-review.desktop', *modules)
+                'appinstall-appimage-review.desktop', *modules, *icon_sources)
     missing = [name for name in required if not (root / name).is_file()]
     if missing:
         raise SystemExit(
@@ -54,6 +60,7 @@ from source_transaction import SourceTransaction
 
 destinations = [
     *(state / name for name in modules),
+    *icon_destinations,
     bindir / 'appinstall',
     bindir / 'appinstall-uninstall',
     apps / 'appinstall.desktop',
@@ -99,6 +106,7 @@ with SourceTransaction(state, destinations) as transaction:
                 changes[service_menu] = None
         for target in (
             apps / 'appinstall.desktop',
+            *icon_destinations,
             bindir / 'appinstall',
             bindir / 'appinstall-uninstall',
             state / 'integration.py',
@@ -134,6 +142,10 @@ with SourceTransaction(state, destinations) as transaction:
             'Exec=appinstall %f',
             'Exec=' + quoted(bindir / 'appinstall') + ' %f')
         changes[service_menu] = (review_menu.encode(), 0o755)
+        for size in ICON_SIZES:
+            src_icon = root / f'appinstall-{size}.png'
+            dst_icon = data / 'icons' / 'hicolor' / f'{size}x{size}' / 'apps' / 'appinstall.png'
+            changes[dst_icon] = (src_icon.read_bytes(), 0o644)
         uninstall = (
             '#!/bin/sh\nexec python3 '+
             shlex.quote(str(state / 'integration.py'))+

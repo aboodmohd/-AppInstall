@@ -89,6 +89,7 @@ def main():
     roots = meta.metadata_roots()
 
     app = QApplication(sys.argv[:1])
+    app.setWindowIcon(QIcon.fromTheme('appinstall'))
     QIcon.setThemeSearchPaths(QIcon.themeSearchPaths() + [str(r/'icons') for r in roots])
     ui_style.maybe_dark(app)
     window = review_window(file, kind, ref, name, description, icon, details)
@@ -119,6 +120,7 @@ def review_window(file, kind, ref, name, description, icon, details):
 
     window = QDialog()
     window.setWindowTitle('AppInstall')
+    window.setWindowIcon(QIcon.fromTheme('appinstall'))
     window.setMinimumWidth(520)
     window.setMaximumWidth(720)
     window.setSizeGripEnabled(True)

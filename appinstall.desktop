@@ -7,6 +7,6 @@ Exec=appinstall %F
 NoDisplay=false
 Terminal=false
 StartupNotify=false
-Icon=package-x-generic
+Icon=appinstall
 Categories=Utility;
 MimeType=application/vnd.debian.binary-package;application/x-deb;application/x-rpm;application/vnd.flatpak;application/vnd.flatpak.ref;application/vnd.flatpak.repo;application/vnd.appimage;application/x-iso9660-appimage;application/x-quickdrop-appimage;
