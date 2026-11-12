@@ -97,6 +97,12 @@ jobs:
           pacman -R --noconfirm appinstall
           ! pacman -Q appinstall
 
+      - name: Verify published v1.0.0 upgrade and rollback in disposable Arch CI
+        if: matrix.kind == 'arch' && github.head_ref == 'release/1.1.0-prep'
+        run: |
+          bash -n tools/ci_v1_1_upgrade_rollback.sh
+          bash tools/ci_v1_1_upgrade_rollback.sh
+
       - name: Validate clean package installation and user data preservation
         if: matrix.kind == 'arch'
         run: |

@@ -18,7 +18,7 @@ Managed applications now use monitored launchers. Startup failures show useful e
 curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash
 ```
 
-The installer script is **v1.1.0**, but it installs the latest *published Stable AppInstall package* (currently **v1.0.0-1**), not an unreleased application version. It selects stable releases only, downloads the release package and its `SHA256SUMS`, verifies the checksum, and installs through pacman. It prompts before installing; when AppInstall is already up to date, it does not reinstall it.
+The installer script is **v1.1.0**, but it installs the latest *published stable AppInstall package*, not an unreleased application version. The installer and the application have separate version numbers. It selects stable releases only, downloads the release package and its `SHA256SUMS`, verifies the checksum, and installs through pacman. It prompts before installing; when AppInstall is already up to date, it does not reinstall it.
 
 The installer also checks required dependencies and offers missing optional backends such as Flatpak, rootless Podman, Distrobox, squashfs-tools, fuse2, KDialog/Zenity and libnotify. It will **ask before changing your default file handlers** for AppImage, Flatpak, DEB and RPM (nine MIME types). That choice is optional, per-user only, and the previous defaults are backed up with a restoration script. It does not create Distrobox containers during setup.
 

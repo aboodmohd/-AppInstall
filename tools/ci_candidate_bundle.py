@@ -77,8 +77,12 @@ def verify_package(package, pkgbuild):
 
 
 def build_report(evidence):
+    version = evidence["package_version"].rsplit("-", 1)[0]
     rows = (
         ("Fresh disposable CachyOS KDE Wayland installation", "PENDING"),
+        ("Install from URL: direct HTTPS, progress, format preview and explicit approval", "PENDING"),
+        ("URL safety: private/metadata IP, redirect, invalid TLS and checksum rejection", "PENDING"),
+        ("URL cleanup after cancellation, failed install and abandoned dialog", "PENDING"),
         ("AppImage: review, cancel, install, launch, reinstall, remove", "PENDING"),
         ("Flatpak: review, cancel, install, launch, reinstall, remove", "PENDING"),
         ("DEB: review, cancel, install, launch, reinstall, remove", "PENDING"),
@@ -87,12 +91,12 @@ def build_report(evidence):
         ("Unrelated user data/MIME defaults preserved and snapshot restored", "PENDING"),
         ("Failure diagnostics and missing-dependency behavior", "PENDING"),
         ("Source/snippet redistribution rights confirmed by owner", "PENDING"),
-        ("All eight screenshot redistribution rights confirmed by owner", "PENDING"),
+        ("Existing screenshot and any new media redistribution rights confirmed by owner", "PENDING"),
         ("Independent checksum of the exact candidate verified on spare host", "PENDING"),
-        ("Explicit separate Stable 1.0 publication approval", "PENDING"),
+        (f"Explicit separate Stable {version} publication approval", "PENDING"),
     )
     lines = [
-        "# AppInstall 1.0 — disposable release candidate evidence",
+        f"# AppInstall {version} — disposable release candidate evidence",
         "",
         "**Status: NO-GO. This CI document is not a release approval.**",
         "",
@@ -136,14 +140,15 @@ def build_report(evidence):
         "   the printed SHA-256 above, and run sha256sum -c SHA256SUMS.",
         "4. Inspect archive contents with bsdtar -tf and pacman -Qip",
         "   before any installation. Stop on a mismatch.",
-        "5. Perform all four format workflows manually in the disposable",
-        "   KDE session. Record redacted evidence, outcomes, and reviewer.",
-        "6. Revert the snapshot and separately confirm source/screenshot",
-        "   redistribution rights; no CI result substitutes for this.",
+        "5. Perform all four format workflows plus Install from URL manually",
+        "   in KDE. Include bad-certificate and blocked-address cases, download",
+        "   cancellation/cleanup, and record redacted outcomes and reviewer.",
+        "6. Revert the snapshot. Reconfirm source and screenshot permissions",
+        "   where necessary; no CI result substitutes for human acceptance.",
         "",
         "GitHub Actions itself does NOT perform the CachyOS human acceptance",
         "steps above, and this evidence bundle must not be published as",
-        "an official Stable 1.0 asset without explicit owner approval.",
+        f"an official Stable {version} asset without explicit owner approval.",
         "",
     ]
     return "\n".join(lines)

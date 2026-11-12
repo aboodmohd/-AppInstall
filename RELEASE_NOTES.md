@@ -1,3 +1,44 @@
+# AppInstall v1.1.0 — Release Candidate (NOT PUBLISHED)
+
+**Preparation only.** No `v1.1.0` tag, release assets or published download
+exist. The latest public stable release remains
+[`v1.0.0`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.0.0).
+
+## What's new: Install from URL
+
+- In the original **My Applications** window, choose **Install from URL…**,
+  paste a direct HTTPS package link and watch download progress.
+- Review the detected format, source and SHA-256 digest; optionally provide an
+  expected checksum. Installation requires a separate confirmation.
+- Supported formats: AppImage, Flatpak bundle/reference/repository, DEB and RPM.
+  The existing local-file backends remain unchanged.
+- CLI: `appinstall --install-url https://example.com/app.AppImage`.
+  `--yes` is available for deliberate scripted noninteractive use.
+
+## Security and limitations
+
+- HTTPS certificates and hostnames are verified. Download connections use
+  public-IP validation and connection pinning for every redirect.
+- Private addresses, unsafe redirects and ambient proxies are blocked/bypassed.
+  Downloads have size limits, private temporary files, SHA-256 digests and
+  cleanup after cancellation, failure or closing the dialog.
+- HTTPS and a calculated SHA-256 do not prove an application is trustworthy.
+  Only install packages from trusted sources.
+- DEB/RPM still use rootless Distrobox; containers are not security sandboxes
+  and package installation transactions are not atomic.
+
+## Candidate packaging
+
+Arch/CachyOS candidate version: `1.1.0-1`. The separate one-command installer
+script is already v1.1.0, but installs only the latest **published stable**
+AppInstall package.
+
+**Pending:** Build and inspect the candidate, verify its actual package
+SHA-256 manifest, run release-branch CI and isolated upgrade/rollback tests,
+and obtain explicit approval before tagging or publishing.
+
+---
+
 # AppInstall 1.0.0 — Release Notes
 
 **Publication:** AppInstall 1.0.0 was published as the Stable release

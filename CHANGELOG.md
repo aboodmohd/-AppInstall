@@ -1,5 +1,27 @@
 # AppInstall Changelog
 
+## 1.1.0 (release candidate — NOT PUBLISHED)
+
+### Added
+- **Install from URL** in the original My Applications window: download
+  AppImage, Flatpak, flatpakref/flatpakrepo, DEB and RPM packages from direct
+  HTTPS URLs with progress, cancellation and preview before installation.
+- CLI: `appinstall --install-url URL` with optional expected SHA-256 verification.
+
+### Security and reliability
+- TLS and hostname validation, public-IP connection pinning and redirect
+  validation to mitigate DNS rebinding, and rejection of private destinations.
+- Streamed size-limited downloads, integrity reporting and temporary-file
+  cleanup after errors, cancellation, abandoned reviews and failed installs.
+- Existing local-file installation backends preserved; DEB/RPM use Distrobox.
+
+### Release status
+- PR #41 merged into `main` at `60fe4dc`.
+- The version-bumped package has **not yet been built, acceptance-tested
+  or approved for publication**. No `v1.1.0` release exists.
+- The one-command `install.sh` script has its own version, `1.1.0`, and
+  installs the latest **published stable package**, not this candidate.
+
 ## 1.0.0 (published 2026-11-10 as [`v1.0.0`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.0.0))
 
 Release notes for the published Stable 1.0 source and package (`adf44eb`,
