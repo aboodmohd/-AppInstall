@@ -124,4 +124,5 @@ appinstall --manage          # Installed Applications Manager
 appinstall --diagnostics     # Application Diagnostics
 appinstall --list            # List managed applications
 appinstall --remove NAME     # Remove a managed application
+appinstall --install-url https://example.com/releases/application.AppImage
 ```

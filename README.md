@@ -66,6 +66,26 @@ The Arch package can be built with `makepkg`. Package installation registers App
 
 Local integration is usually quick. Download speed, runtime size, extraction and dependency setup determine total installation time. Application compatibility still depends on the app and host system.
 
+## Install from URL
+
+AppInstall can install applications from a direct HTTPS download URL. Open the **Installed Applications Manager** (`appinstall --manage`), click **Install from URL…**, paste the direct link to the package file, and download it. The download runs in the background with a progress bar (file name, bytes, total size, percentage and speed) and can be cancelled at any time; cancelled downloads remove the partial temporary file and leave installed applications unchanged.
+
+When the download finishes, AppInstall detects the real package format (AppImage, Flatpak, Flatpak reference/repository, DEB or RPM) from the file contents — not blindly from the URL extension — and opens the existing package preview so you can review the source, size, SHA-256 digest and proposed installation method before confirming. The download is never installed automatically.
+
+The downloaded file is then handed to the normal installation backends (AppImage, Flatpak, or DEB/RPM via Distrobox), so all existing preview, confirmation, ownership records, launchers, diagnostics and uninstall behavior apply unchanged.
+
+- Accepts HTTPS only; TLS certificates are verified and are never disabled.
+- Localhost, loopback, private, link-local, multicast and cloud-metadata addresses are blocked, and every redirect destination is re-validated (mitigating SSRF and DNS rebinding).
+- Downloads are streamed to a private temporary directory with a sanitized filename, a size limit is enforced even without Content-Length, and a SHA-256 digest is computed during transfer.
+- The digest is shown for your review; it does not by itself make an application trustworthy. HTTPS protects the transfer, not the origin. Only install applications from sources you trust.
+
+CLI:
+```sh
+appinstall --install-url https://example.com/releases/application.AppImage
+appinstall --yes --install-url https://example.com/releases/application.AppImage
+```
+`--yes` bypasses confirmation (scripts only). Cancellation with `Ctrl+C` removes the partial download.
+
 ## CLI
 
 ```sh
@@ -73,6 +93,8 @@ appinstall FILE.AppImage
 appinstall --diagnostics
 appinstall --yes --nolaunch FILE.flatpakref
 appinstall --dir ~/Games FILE.AppImage
+appinstall --install-url https://example.com/releases/application.AppImage
+appinstall --yes --install-url https://example.com/releases/application.AppImage
 appinstall --list
 appinstall --remove NAME
 appinstall --detect FILE

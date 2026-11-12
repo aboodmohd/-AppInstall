@@ -32,6 +32,7 @@ modules = (
     'native_backend.py', 'container_backend.py', 'container_ui.py',
     'launch_monitor.py', 'manager.py', 'result_ui.py',
     'runtime_probe.py', 'diagnostics_core.py', 'diagnostics_ui.py',
+    'url_install.py', 'url_dialog.py',
 )
 uninstalling = sys.argv[1:] == ['--uninstall']
 root = Path(__file__).resolve().parent
