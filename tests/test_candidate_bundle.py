@@ -2,6 +2,8 @@
 import hashlib
 import importlib.util
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import unittest
 
@@ -106,6 +108,86 @@ class CandidateBundleTests(unittest.TestCase):
         self.assertIn("temporary", report)
         self.assertIn("b" * 40, report)
         self.assertNotIn("| APPROVED |", report)
+
+    def _make_archive(self, files, version="1.0.0", release="1"):
+        """Build a real pkg.tar.zst from {archive_path: bytes} plus REQUIRED files.
+
+        Returns (package_path, pkgbuild_path) with a matching version/release.
+        """
+        staging = Path(self.tmp.name) / "stage"
+        staging.mkdir(exist_ok=True)
+        full = dict(files)
+        full.setdefault("usr/bin/appinstall", b"#!/bin/sh\nexit 0\n")
+        full.setdefault(
+            "usr/share/licenses/appinstall/LICENSE",
+            (ROOT / "LICENSE").read_bytes(),
+        )
+        full.setdefault(
+            "usr/share/kio/servicemenus/appinstall-appimage-review.desktop",
+            b"[Desktop Entry]\n",
+        )
+        for arc_path, content in full.items():
+            target = staging / arc_path.lstrip("./")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+        package = self.root / f"appinstall-{version}-{release}-any.pkg.tar.zst"
+        members = [p.lstrip("./") for p in full]
+        subprocess.run(
+            ["bsdtar", "-cf", str(package), "-C", str(staging)] + members,
+            check=True, capture_output=True, timeout=30,
+        )
+        pkgbuild = self.root / "PKGBUILD"
+        pkgbuild.write_text(
+            f"pkgver={version}\npkgrel={release}\n", encoding="utf-8"
+        )
+        return package, pkgbuild
+
+    def test_official_icons_are_accepted_in_package(self):
+        sizes = sorted(bundle.APP_INSTALL_ICON_INSTALLED.values())
+        files = {
+            f"usr/share/icons/hicolor/{s}x{s}/apps/appinstall.png":
+                (ROOT / f"appinstall-{s}.png").read_bytes()
+            for s in sizes
+        }
+        package, pkgbuild = self._make_archive(files)
+        version, release = bundle.verify_package(package, pkgbuild)
+        self.assertEqual(("1.0.0", "1"), (version, release))
+
+    def test_screenshot_png_is_rejected(self):
+        sizes = sorted(bundle.APP_INSTALL_ICON_INSTALLED.values())
+        files = {
+            "usr/share/picture.png": b"\x89PNG fake screenshot",
+        }
+        files.update({
+            f"usr/share/icons/hicolor/{s}x{s}/apps/appinstall.png":
+                (ROOT / f"appinstall-{s}.png").read_bytes()
+            for s in sizes
+        })
+        package, pkgbuild = self._make_archive(files)
+        with self.assertRaisesRegex(
+            ValueError, "Evidence screenshots unexpectedly shipped"
+        ):
+            bundle.verify_package(package, pkgbuild)
+
+    def test_unknown_png_is_rejected(self):
+        files = {
+            "usr/share/icons/hicolor/99x99/apps/appinstall.png": b"\x89PNG unknown",
+        }
+        package, pkgbuild = self._make_archive(files)
+        with self.assertRaisesRegex(
+            ValueError, "Evidence screenshots unexpectedly shipped"
+        ):
+            bundle.verify_package(package, pkgbuild)
+
+    def test_missing_icon_inventory_is_rejected(self):
+        files = {
+            f"usr/share/icons/hicolor/{s}x{s}/apps/appinstall.png":
+                (ROOT / f"appinstall-{s}.png").read_bytes()
+            for s in (16, 24, 32, 48, 64, 128, 256)
+        }
+        package, pkgbuild = self._make_archive(files)
+        with self.assertRaisesRegex(ValueError, "icon inventory incomplete"):
+            bundle.verify_package(package, pkgbuild)
 
 
 if __name__ == "__main__":
