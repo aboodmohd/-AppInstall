@@ -67,7 +67,7 @@ HEAD_LIMIT = 65536  # bytes sampled for format detection
 TEMP_DIR_MODE = 0o700
 TEMP_FILE_MODE = 0o600
 
-USER_AGENT = "AppInstall/1.0 (+https://github.com/aboodmohd/-AppInstall)"
+USER_AGENT = "AppInstall/1.1 (+https://github.com/aboodmohd/-AppInstall)"
 
 
 class DownloadError(Exception):
