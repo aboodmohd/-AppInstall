@@ -1,5 +1,10 @@
 # AppInstall Changelog
 
+## 1.2.1
+
+- Add Install from File to My Applications and provide Qt fallback dialogs.
+- Exercise GUI startup under Sway, i3 and Xfwm in CI.
+
 ## 1.2.0
 
 - Add a native AppInstall Debian package for Debian 13, Ubuntu 24.04 and
