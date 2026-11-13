@@ -1030,6 +1030,7 @@ class BatchQueueDialog(QDialog):
         self._active_index = None
         self._kill_timer = None
         self.rows = {}
+        self._closed = False
         self.setWindowTitle('Installing Files')
         self.setMinimumWidth(480)
         self.setModal(False)
@@ -1102,7 +1103,33 @@ class BatchQueueDialog(QDialog):
         if not self.queue.busy():
             self._run_next()
 
+    def reject(self):
+        """Close button (X / Escape / the Close button) cancels the active
+        review, marks it Cancelled, then shuts the dialog. The terminated
+        review becomes an independent orphan process; the queue never starts
+        the next item after a close."""
+        if self._active_index is not None:
+            self.queue.cancel(self._active_index)
+            self._refresh(self._active_index)
+        if self.process is not None:
+            self.process.terminate()
+        self._closed = True
+        self.process = None
+        self._active_index = None
+        super().reject()
+
+    def _force_kill_and_close(self):
+        self._kill_timer = None
+        if self.process is not None:
+            self.process.kill()
+            self._closed = True
+        super().reject()
+
     def _run_next(self):
+        if self._closed:
+            self.process = None
+            self._active_index = None
+            return
         index = self.queue.runnable()
         if index is None:
             self.process = None

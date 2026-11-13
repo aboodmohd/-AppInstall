@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 spec = importlib.util.spec_from_file_location('manager', ROOT / 'manager.py')
 manager = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(manager)
+from qt_compat import QtWidgets
 
 
 def desktop_mime_list():
@@ -285,6 +286,79 @@ class BatchDialogTests(DialogBase):
         status, cancel = dialog.rows[0]
         self.assertEqual(status.text(), 'Installed')
         self.assertFalse(cancel.isEnabled())
+
+    # ── Close-path regressions ──────────────────────────────────────────
+
+    def test_close_cancels_active_review(self):
+        """Closing the dialog while a review runs marks that item Cancelled
+        and closes the dialog instead of letting the review install."""
+        paths = [self.touch('active.AppImage')]
+        with self.patch_command():
+            dialog = self.make_dialog(
+                paths, stub_body='sleep 5; exit 0')
+            self.wait_for(lambda: dialog.queue.items[0].state ==
+                          manager.BatchItem.RUNNING,
+                          message='review never started')
+            dialog.reject()
+            self.wait_for(lambda: dialog.queue.items[0].state ==
+                          manager.BatchItem.CANCELLED,
+                          message='close did not cancel the active review')
+            self.wait_for(lambda: dialog.result() ==
+                          QtWidgets.QDialog.DialogCode.Rejected,
+                          message='dialog did not close')
+        self.assertEqual(dialog.rows[0][0].text(), 'Cancelled')
+
+    def test_close_with_nothing_running_just_closes(self):
+        """Closing after a review completed must not error or re-run."""
+        paths = [self.touch('done.AppImage')]
+        with self.patch_command():
+            dialog = self.make_dialog(paths, stub_body='exit 0')
+            self.wait_for(lambda: not dialog.queue.pending(),
+                          message='item never finished')
+            dialog.reject()
+            self.wait_for(lambda: dialog.result() ==
+                          QtWidgets.QDialog.DialogCode.Rejected,
+                          message='dialog did not close')
+        self.assertEqual(dialog.rows[0][0].text(), 'Installed')
+
+
+class ManagerBatchCloseTests(DialogBase):
+    """Close-path at ManagerWindow level: batch_dialog must be cleared."""
+
+    def setUp(self):
+        super().setUp()
+        self.window = manager.ManagerWindow()
+        self.wait_for(lambda: self.window.loader is not None and
+                      not self.window.loader.isRunning())
+
+    def tearDown(self):
+        if self.window.batch_dialog is not None:
+            self.window.batch_dialog.close()
+        self.window.close()
+        self.app.processEvents()
+        super().tearDown()
+
+    def patch_command(self):
+        return patch.object(manager, '_appinstall_command',
+                            return_value=str(self.stub))
+
+    def test_close_clears_manager_batch_dialog(self):
+        paths = [self.touch('active.AppImage')]
+        with self.patch_command():
+            dialog = self.window.open_batch(paths)
+            self.wait_for(lambda: dialog.queue.items[0].state ==
+                          manager.BatchItem.RUNNING,
+                          message='review never started')
+            self.assertIs(self.window.batch_dialog, dialog)
+            dialog.reject()
+            self.wait_for(lambda: self.window.batch_dialog is None,
+                          message='manager did not clear batch dialog')
+            self.wait_for(lambda: dialog.queue.items[0].state ==
+                          manager.BatchItem.CANCELLED,
+                          message='active review not cancelled on close')
+        self.assertTrue(dialog.isHidden() or dialog.result() ==
+                        QtWidgets.QDialog.DialogCode.Rejected)
+
 
 
 class ManagerDropTests(DialogBase):
