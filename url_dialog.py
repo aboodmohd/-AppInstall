@@ -59,7 +59,7 @@ class DownloadWorker(QThread):
     """Background worker that streams a URL download without blocking the GUI."""
 
     progress = Signal(dict)
-    finished = Signal(object)  # url_install.DownloadResult
+    downloaded = Signal(object)  # url_install.DownloadResult
     failed = Signal(str)
 
     def __init__(self, url, expected_checksum, cancel):
@@ -80,7 +80,7 @@ class DownloadWorker(QThread):
         except BaseException as error:  # noqa: BLE001 - surface any download failure
             self.failed.emit(str(error))
             return
-        self.finished.emit(self.result)
+        self.downloaded.emit(self.result)
 
     def _on_progress(self, info):
         self.progress.emit(info)
@@ -250,6 +250,8 @@ class UrlInstallDialog(QDialog):
     # ── download ───────────────────────────────────────────────────────
 
     def _start_download(self):
+        if self.worker is not None and self.worker.isRunning():
+            return
         url = self.url_edit.text().strip()
         checksum = self.checksum_edit.text().strip() or None
         self.url_error.hide()
@@ -260,11 +262,13 @@ class UrlInstallDialog(QDialog):
             self.url_error.show()
             return
         self.cancel.clear()
+        self.download_btn.setText("&Download")
         self.pg_cancel.setEnabled(True)
         self.pg_cancel.setText("&Cancel Download")
         self.worker = DownloadWorker(url, checksum, self.cancel)
         self.worker.progress.connect(self._on_progress)
-        self.worker.finished.connect(self._download_finished)
+        self.worker.downloaded.connect(self._download_finished)
+        self.worker.finished.connect(self._download_worker_stopped)
         self.worker.failed.connect(self._download_failed)
         self.url_page.hide()
         self.progress_page.show()
@@ -328,7 +332,12 @@ class UrlInstallDialog(QDialog):
         # Show the failure as a URL-level error so the user can correct and retry.
         self.url_error.setText(message)
         self.url_error.show()
-        self.download_btn.setEnabled(True)
+        self.download_btn.setText("&Retry Download")
+        self.download_btn.setEnabled(False)
+
+    def _download_worker_stopped(self):
+        if not self._closing:
+            self.download_btn.setEnabled(True)
 
     # ── review / install ───────────────────────────────────────────────
 

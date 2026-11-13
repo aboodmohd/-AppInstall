@@ -2,6 +2,8 @@
 import configparser
 import os
 import re
+import shlex
+import shutil
 from pathlib import Path
 
 APPID_PATTERN = re.compile(r'^[A-Za-z0-9_]+(\.[A-Za-z0-9_-]+)+$')
@@ -54,3 +56,20 @@ def human_size(value):
     while size >= step and index < len(units)-1:
         size /= float(step); index += 1
     return units[index] % size
+
+def require_backend_tools(*tools):
+    """Report missing host tools and a command for the host package manager."""
+    missing = [tool for tool in tools if not shutil.which(tool)]
+    if not missing:
+        return
+    message = "Missing required host tools: " + ", ".join(missing) + "."
+    if shutil.which("pacman"):
+        command, archive = "sudo pacman -S --needed", "libarchive"
+    elif shutil.which("apt-get"):
+        command, archive = "sudo apt install", "libarchive-tools"
+    elif shutil.which("dnf"):
+        command, archive = "sudo dnf install", "bsdtar"
+    else:
+        raise RuntimeError(message + " Install them with your distribution's package manager.")
+    packages = [archive if tool == "bsdtar" else tool for tool in missing]
+    raise RuntimeError(message + "\nSetup: " + command + " " + shlex.join(packages))
