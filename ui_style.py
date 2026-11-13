@@ -1,7 +1,9 @@
 """Shared visual theme for AppInstall dialogs. Follows the system palette."""
 import os
 
-from PySide6.QtGui import QColor, QPalette
+from qt_compat import QtGui
+QColor = QtGui.QColor
+QPalette = QtGui.QPalette
 
 
 def accent(widget):

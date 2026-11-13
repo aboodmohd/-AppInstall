@@ -691,7 +691,7 @@ def run_cli(argv):
             prompt = ("Install " + result.filename + " (" + kind + ")? [y/N]: ")
             if not _terminal_confirm(prompt):
                 print("The package review could not open and installation was "
-                      "cancelled. Install PySide6 for the graphical review, or "
+                      "cancelled. Install PySide6 or PyQt6 for the graphical review, or "
                       "answer the terminal prompt.",
                       file=sys.stderr)
                 remove_download_dir(result.path)

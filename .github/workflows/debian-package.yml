@@ -1,0 +1,92 @@
+name: Debian-family package
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apt-smoke:
+    name: APT package smoke (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Debian 13
+            image: debian:13
+            id: debian
+          - name: Ubuntu 24.04
+            image: ubuntu:24.04
+            id: ubuntu
+          - name: Ubuntu 26.04
+            image: ubuntu:26.04
+            id: ubuntu
+          - name: Linux Mint 22
+            image: linuxmintd/mint22-amd64:latest
+            id: linuxmint
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build native package
+        run: |
+          bash tools/build_deb.sh dist
+          (cd dist && sha256sum ./*.deb > SHA256SUMS)
+      - name: Install, launch and remove in a disposable container
+        env:
+          TEST_IMAGE: ${{ matrix.image }}
+          EXPECTED_ID: ${{ matrix.id }}
+        run: |
+          docker run --rm -i \
+            --env EXPECTED_ID \
+            --volume "$PWD/dist:/dist:ro" \
+            "$TEST_IMAGE" bash -euo pipefail -s <<'CONTAINER'
+          source /etc/os-release
+          test "$ID" = "$EXPECTED_ID"
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          cd /dist
+          sha256sum -c SHA256SUMS
+          package=(/dist/*.deb)
+          apt-get install -y desktop-file-utils "${package[0]}"
+          version="$(dpkg-query -W -f='${Version}' appinstall)"
+          test "$(appinstall --version)" = "appinstall ${version%-*}"
+          desktop-file-validate /usr/share/applications/appinstall.desktop
+          test "$(appinstall --detect example.deb)" = deb
+
+          useradd --create-home --shell /bin/bash appinstall-ci
+          runuser -u appinstall-ci -- env QT_QPA_PLATFORM=offscreen python3 - <<'PY'
+          import sys
+          sys.path.insert(0, "/usr/lib/appinstall")
+          from qt_compat import QtCore, QtWidgets
+          from manager import ManagerWindow
+          from diagnostics_ui import Diagnostics
+          from url_dialog import UrlInstallDialog
+
+          app = QtWidgets.QApplication([])
+          windows = [ManagerWindow(), Diagnostics(), UrlInstallDialog()]
+          for window in windows:
+              window.show()
+              assert window.isVisible()
+          QtCore.QTimer.singleShot(500, app.quit)
+          assert app.exec() == 0
+          PY
+
+          mkdir -p /home/appinstall-ci/Applications
+          printf '%s\n' 'preserve user data' > /home/appinstall-ci/Applications/keep
+          apt-get install -y --reinstall "${package[0]}"
+          apt-get remove -y appinstall
+          test ! -e /usr/bin/appinstall
+          test ! -e /usr/lib/appinstall/appinstall
+          grep -qx 'preserve user data' /home/appinstall-ci/Applications/keep
+          CONTAINER
+      - uses: actions/upload-artifact@v4
+        if: matrix.name == 'Debian 13'
+        with:
+          name: appinstall-deb-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error

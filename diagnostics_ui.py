@@ -5,12 +5,27 @@ from pathlib import Path
 import subprocess
 import sys
 try:
-    from PySide6.QtCore import Qt, QThread, Signal, QTimer
-    from PySide6.QtWidgets import (QApplication,QDialog,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,
-                                  QPlainTextEdit,QTableWidget,QTableWidgetItem,QMessageBox,QFileDialog,QInputDialog)
-    from PySide6.QtGui import QIcon
+    from qt_compat import QtCore, Signal
+    Qt = QtCore.Qt
+    QThread = QtCore.QThread
+    QTimer = QtCore.QTimer
+    from qt_compat import QtWidgets
+    QApplication = QtWidgets.QApplication
+    QDialog = QtWidgets.QDialog
+    QVBoxLayout = QtWidgets.QVBoxLayout
+    QHBoxLayout = QtWidgets.QHBoxLayout
+    QLabel = QtWidgets.QLabel
+    QPushButton = QtWidgets.QPushButton
+    QPlainTextEdit = QtWidgets.QPlainTextEdit
+    QTableWidget = QtWidgets.QTableWidget
+    QTableWidgetItem = QtWidgets.QTableWidgetItem
+    QMessageBox = QtWidgets.QMessageBox
+    QFileDialog = QtWidgets.QFileDialog
+    QInputDialog = QtWidgets.QInputDialog
+    from qt_compat import QtGui
+    QIcon = QtGui.QIcon
 except ImportError as error:
-    print('PySide6 is required for Application Diagnostics: '+str(error), file=sys.stderr)
+    print('PySide6 or PyQt6 is required for Application Diagnostics: '+str(error), file=sys.stderr)
     sys.exit(3)
 import launch_monitor as monitor
 import diagnostics_core as core
@@ -43,7 +58,7 @@ class FailureWindow(QDialog):
         text=monitor.error_text(spec,attempt['error'])
         self.details=text+'\n\n'+attempt.get('technical','')+'\n\nLog: '+attempt['log']
         layout=QVBoxLayout(self)
-        title=QLabel(attempt['name']+' could not start');title.setTextFormat(Qt.PlainText);font=title.font();font.setPointSize(17);font.setBold(True);title.setFont(font);layout.addWidget(title)
+        title=QLabel(attempt['name']+' could not start');title.setTextFormat(Qt.TextFormat.PlainText);font=title.font();font.setPointSize(17);font.setBold(True);title.setFont(font);layout.addWidget(title)
         body=QPlainTextEdit();body.setReadOnly(True);body.setPlainText(self.details);layout.addWidget(body)
         row=QHBoxLayout()
         for name,callback in [('View Logs',self.logs),('Copy Error Details',lambda:QApplication.clipboard().setText(self.details)),('Application Diagnostics',self.diagnostics)]:
@@ -62,7 +77,7 @@ class Diagnostics(QDialog):
         layout=QVBoxLayout(self)
         heading=QLabel('Application Diagnostics');font=heading.font();font.setPointSize(20);heading.setFont(font);layout.addWidget(heading)
         self.table=QTableWidget(0,5);self.table.setHorizontalHeaderLabels(['Application','Format','Container','Latest attempt','Last recorded failure'])
-        self.table.setSelectionBehavior(QTableWidget.SelectRows);self.table.setSelectionMode(QTableWidget.SingleSelection);self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows);self.table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection);self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.itemSelectionChanged.connect(self.details);layout.addWidget(self.table)
         self.text=QPlainTextEdit();self.text.setReadOnly(True);self.text.setMaximumHeight(210);layout.addWidget(self.text)
         self.buttons={};row=QHBoxLayout()
@@ -110,7 +125,7 @@ class Diagnostics(QDialog):
             self.refresh()
         def failure(message):self.busy=False;QMessageBox.warning(self,'AppInstall',message);self.refresh()
         job.done.connect(success);job.failed.connect(failure);job.start()
-    def confirm(self,message):return QMessageBox.question(self,'AppInstall',message)==QMessageBox.Yes
+    def confirm(self,message):return QMessageBox.question(self,'AppInstall',message)==QMessageBox.StandardButton.Yes
     def launch(self):
         if self.selected():core.open_application(self.selected()['key'])
     def logs(self):
@@ -142,11 +157,11 @@ class Diagnostics(QDialog):
         key=record['key']
         def review(plan):
             dialog=QDialog(self);dialog.setWindowTitle('Review Dependency Repair');dialog.resize(700,500)
-            layout=QVBoxLayout(dialog);label=QLabel('Install '+', '.join(plan['packages'])+' inside '+record['container']+'?');label.setTextFormat(Qt.PlainText);layout.addWidget(label)
+            layout=QVBoxLayout(dialog);label=QLabel('Install '+', '.join(plan['packages'])+' inside '+record['container']+'?');label.setTextFormat(Qt.TextFormat.PlainText);layout.addWidget(label)
             text=QPlainTextEdit();text.setReadOnly(True);text.setPlainText(plan['text']);layout.addWidget(text)
             yes=QPushButton('Install Approved Repair');yes.clicked.connect(dialog.accept);layout.addWidget(yes)
             no=QPushButton('Cancel');no.clicked.connect(dialog.reject);layout.addWidget(no)
-            if dialog.exec()==QDialog.Accepted:self.run_task(lambda:core.install_repair(key,plan))
+            if dialog.exec()==QDialog.DialogCode.Accepted:self.run_task(lambda:core.install_repair(key,plan))
         self.run_task(lambda:core.dependency_plan(key),review)
     def port(self):
         record=self.selected()

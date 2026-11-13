@@ -377,7 +377,7 @@ def deliver_error(spec,attempt):
         except (OSError,subprocess.TimeoutExpired): pass
     ui=Path(__file__).with_name('diagnostics_ui.py')
     import importlib.util
-    if ui.exists() and importlib.util.find_spec('PySide6'):
+    if ui.exists() and (importlib.util.find_spec('PySide6') or importlib.util.find_spec('PyQt6')):
         try:
             subprocess.Popen([sys.executable,str(ui),'--error',attempt['file']],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,start_new_session=True)
             delivered=True

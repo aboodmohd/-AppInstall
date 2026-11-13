@@ -41,6 +41,27 @@ For a no-changes plan, run `curl -fsSL https://raw.githubusercontent.com/aboodmo
 
 Only Arch Linux and CachyOS are supported by this one-command package installer today. Other distributions (Debian/Ubuntu, Fedora, openSUSE and others) should use the [source installation instructions](INSTALL.md) instead; never install an Arch `.pkg.tar.zst` on another distribution. DEB/RPM support within the AppInstall application uses Distrobox and is separate from the installer’s supported host distributions.
 
+## Native Debian-family package candidate
+
+The `Debian-family package` GitHub Actions workflow builds an APT-installable
+AppInstall package and checks Debian 13, Ubuntu 24.04 and 26.04, and Linux Mint
+22 in disposable containers. The workflow covers package installation,
+reinstallation, removal, and headless Qt windows. Desktop integration and
+full application lifecycle testing require a real desktop session.
+
+For testing, download and extract the `appinstall-deb-…` artifact from a
+successful workflow run. From the extracted directory, run:
+
+```bash
+sha256sum -c SHA256SUMS
+sudo apt install ./appinstall_*_all.deb
+appinstall --version
+```
+
+The APT package is removed with `sudo apt remove appinstall`. Ubuntu users
+need the Universe repository enabled. The one-command script above is for
+Arch Linux and CachyOS.
+
 ## Install from source (alternative)
 
 

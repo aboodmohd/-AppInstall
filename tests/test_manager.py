@@ -346,7 +346,8 @@ class LiveManagerRefreshTests(unittest.TestCase):
             'XDG_STATE_HOME': str(self.root / 'state'),
         })
         self.environment.start()
-        from PySide6.QtWidgets import QApplication
+        from qt_compat import QtWidgets
+        QApplication = QtWidgets.QApplication
         self.app = QApplication.instance() or QApplication([])
         self.window = manager.ManagerWindow()
         self.wait_for(lambda: self.window.loader is not None and

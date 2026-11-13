@@ -2,10 +2,20 @@
 from pathlib import Path
 import sys
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-                               QPushButton, QPlainTextEdit, QFrame)
+from qt_compat import QtCore
+Qt = QtCore.Qt
+QTimer = QtCore.QTimer
+from qt_compat import QtGui
+QIcon = QtGui.QIcon
+from qt_compat import QtWidgets
+QApplication = QtWidgets.QApplication
+QDialog = QtWidgets.QDialog
+QVBoxLayout = QtWidgets.QVBoxLayout
+QHBoxLayout = QtWidgets.QHBoxLayout
+QLabel = QtWidgets.QLabel
+QPushButton = QtWidgets.QPushButton
+QPlainTextEdit = QtWidgets.QPlainTextEdit
+QFrame = QtWidgets.QFrame
 import ui_style
 
 
@@ -32,16 +42,16 @@ class SuccessDialog(QDialog):
         picture = QLabel()
         picture.setPixmap(icon_for(name, icon_name=name.casefold().replace(' ', '-')).pixmap(80, 80))
         picture.setFixedSize(84, 84)
-        picture.setAlignment(Qt.AlignCenter)
-        header.addWidget(picture, 0, Qt.AlignTop)
+        picture.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        header.addWidget(picture, 0, Qt.AlignmentFlag.AlignTop)
         text = QVBoxLayout()
         text.setSpacing(4)
         banner = QLabel('Installation Complete')
-        banner.setTextFormat(Qt.PlainText)
+        banner.setTextFormat(Qt.TextFormat.PlainText)
         banner.setStyleSheet('font-size: 19px; font-weight: 700;')
         text.addWidget(banner)
         who = QLabel(name)
-        who.setTextFormat(Qt.PlainText)
+        who.setTextFormat(Qt.TextFormat.PlainText)
         who.setWordWrap(True)
         font = who.font(); font.setPointSizeF(font.pointSizeF()*1.05); who.setFont(font)
         text.addWidget(who)
@@ -52,7 +62,7 @@ class SuccessDialog(QDialog):
             text.addWidget(note)
         header.addLayout(text, 1)
         layout.addLayout(header)
-        line = QFrame(); line.setFrameShape(QFrame.HLine); layout.addWidget(line)
+        line = QFrame(); line.setFrameShape(QFrame.Shape.HLine); layout.addWidget(line)
         buttons = QHBoxLayout(); buttons.setSpacing(10)
         buttons.addStretch(1)
         done = QPushButton('&Done')
@@ -97,12 +107,12 @@ class FailureDialog(QDialog):
         layout.setSpacing(12)
         title = QLabel(headline if headline is not None else name+' could not be installed')
         title.setObjectName('failure-headline')
-        title.setTextFormat(Qt.PlainText)
+        title.setTextFormat(Qt.TextFormat.PlainText)
         title.setWordWrap(True)
         title.setStyleSheet('font-size: 18px; font-weight: 700;')
         layout.addWidget(title)
         kind = QLabel('Problem type: '+category)
-        kind.setTextFormat(Qt.PlainText)
+        kind.setTextFormat(Qt.TextFormat.PlainText)
         kind.setObjectName('failure-category')
         kind.setStyleSheet('color: palette(window-text);')
         layout.addWidget(kind)
