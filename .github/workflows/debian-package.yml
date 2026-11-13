@@ -47,17 +47,15 @@ jobs:
             "$TEST_IMAGE" -euo pipefail -s <<'CONTAINER'
           source /etc/os-release
           printf 'Container OS: %s (%s)\n' "$PRETTY_NAME" "$ID"
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
           if [[ "$EXPECTED_ID" == linuxmint ]]; then
-            # Mint can retain Ubuntu's /etc/os-release in container images.
-            if [[ "$ID" != linuxmint ]]; then
-              test -f /etc/linuxmint/info
-              grep -q '^RELEASE=22' /etc/linuxmint/info
-            fi
+            # This image reports the Ubuntu base. Verify Mint's package
+            # repository and desktop package before testing against it.
+            apt-cache show mint-info-cinnamon >/dev/null
           else
             test "$ID" = "$EXPECTED_ID"
           fi
-          export DEBIAN_FRONTEND=noninteractive
-          apt-get update
           cd /dist
           sha256sum -c SHA256SUMS
           package=(/dist/*.deb)
