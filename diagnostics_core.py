@@ -89,6 +89,32 @@ def reexport(key):
     finally:engine.close()
 
 
+def repair_container(key):
+    """Recreate/ensure the container for a deb/rpm app.
+
+    Calls Engine.ensure, which creates the container when missing and
+    validates the enabled package sources. Returns a status message.
+    """
+    spec = monitor.registry()[key]
+    if spec['kind'] not in ('deb', 'rpm'):
+        raise RuntimeError('Container repair is only supported for DEB/RPM applications.')
+    from container_backend import Engine
+    engine = Engine()
+    try:
+        engine.ensure(spec)
+        return 'Container '+spec['container']+' is healthy.'
+    finally:
+        engine.close()
+
+
+def repair_export(key):
+    """Re-export the application launcher for a deb/rpm app."""
+    spec = monitor.registry()[key]
+    if spec['kind'] not in ('deb', 'rpm'):
+        raise RuntimeError('Launcher re-export is only supported for DEB/RPM applications.')
+    return reexport(key)
+
+
 def start_container(key):
     spec=monitor.registry()[key]
     if not spec.get('container'):raise RuntimeError('This application does not use a container.')
