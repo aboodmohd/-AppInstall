@@ -9,7 +9,6 @@ license=('MIT')
 depends=('bash' 'coreutils' 'xdg-utils' 'python' 'pyside6' 'curl')
 optdepends=('polkit: graphical update authentication' 'flatpak: Flatpak installation' 'kdialog: KDE dialogs' 'zenity: GNOME and Xfce dialogs' 'libnotify: notifications' 'fuse2: AppImage mounting' 'squashfs-tools: passive AppImage preview' 'podman: rootless DEB/RPM containers' 'distrobox: DEB/RPM integration' 'libarchive: package inspection' 'binutils: optional static ELF dependency checks')
 backup=()
-options=(docs)
 
 source=('install.sh'
         'appinstall'
@@ -69,7 +68,7 @@ b2sums=(
         'f8da2822ad2a5638b9f7932728727fc624fae695db8cc30470783e1f7e26e719d1fa8624e0533ebcfd1713f99935d7752d0b8b3c46d90c06f2ff034f8b307d59'
         '5a0a824810d4c4d7a8f7f2603f3c4623874eef4de55ee4b360ab0321ecfae8edf42a9443c134e10272fba0b96f89f74cd45473e6ac09c6493595c9ad0cf9c0e5'
         'aa2943ff6d844443cb68654103a1aadadea9c3b000dffe66ef0601999f12e9a6e5cd3b8ab0b7aa7f5c60bebb1fe872ff51aebec12722cce31f98b04194b39cc8'
-        'a71e1989141efad315b630bffc6beffbdf6b6fe504a57b3653f7db6110f96ec6996dfbb63ae5b7fb9b74271cdee86cc7dcc682e8fd8fc159371994df4c550345'
+        '8199b2d482bcc1b748c55105ba46ee8fdb6a7ee9dabf8ce415ac262750770cd7b7212e6ca593d6f24608ec43964d3386aba4e45cee6cf674114eb01b514f7651'
         '2e05cd589ad5fe269caf53e4f15585792cf0be6fdd18068609e903164d5b976eb4a9bccd789e2fbd13efa9a23fa8ddce50cde9c73bfe1a109620102379d7a7a4'
         'ed13786f49c5f7bda53e4a0abf93c8b0cc21eeb1b43509e4a91929b08fb58baaf2fc8922e0554fca4ec0642c3a0f3f08a7118d6b3f5b5064bd10251289c7f5b7'
         'ecb167e735b2eb0756fa05ff729caa8494ca1a1d886fe15402f0d2da31087a2e42ec54c1a6b18baca25c66322e5d9ee09fc65e662152604f857f3a0eea58bd83'
@@ -111,6 +110,7 @@ b2sums=(
         '52d35713d301522f310302200c6dc53d2b79f683002814cc39fcc0667bb1957b27f28d50d0311c07e8a558a02f617a20858d49d7cd4275d7943a69f60bb9601a'
 )
 package() {
+    install -Dm0644 "$srcdir/RELEASE_NOTES.md" "$pkgdir/usr/share/appinstall/RELEASE_NOTES.md"
     install -Dm0755 "$srcdir/install.sh" "$pkgdir/usr/bin/appinstall-installer"
     for helper in container_backend.py container_ui.py launch_monitor.py manager.py result_ui.py runtime_probe.py diagnostics_core.py diagnostics_ui.py url_install.py url_dialog.py; do
         install -Dm0644 "$srcdir/$helper" "$pkgdir/usr/bin/$helper"

@@ -1234,7 +1234,7 @@ class ManagerWindow(QMainWindow):
                 self._show_update_details('AppInstall update did not complete', output)
                 return
             self.update_status.setText(f'AppInstall {tag} installed. Reopen AppInstall to use it.')
-            notes_path = Path('/usr/share/doc/appinstall/RELEASE_NOTES.md')
+            notes_path = Path('/usr/share/appinstall/RELEASE_NOTES.md')
             try:
                 notes = notes_path.read_text(encoding='utf-8')
             except (OSError, UnicodeError):
