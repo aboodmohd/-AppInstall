@@ -1,24 +1,30 @@
 # AppInstall Changelog
 
-## 1.1.2 (release preparation — NOT PUBLISHED)
+## 1.1.2 (release review complete — NOT PUBLISHED)
 
-### KDE desktop-shortcut fix
-- Recognize AppInstall-managed launchers moved from the menu to the user's
-  configured KDE Desktop folder when their SHA-256 hash and AppInstall launch
-  identifier match the original managed entry.
-- Preserve the user's relocated shortcut; never rewrite, delete, or silently
-  replace it. Reject modified, symlinked, or unrelated desktop launchers.
-- My Applications inventory recognizes verified relocated desktop launchers
-  for AppImage and Distrobox DEB/RPM packages.
-- Regression tests cover moving a launcher, rejecting altered/unrelated
-  shortcuts, and custom XDG desktop directories.
+### KDE moved-launcher bug fix
+- Verified managed desktop launchers relocated to the configured user Desktop
+  using the recorded SHA-256 and AppInstall launch ID; reject mismatches and
+  symlinked launchers.
+- Recognized matching relocated AppImage and Distrobox DEB/RPM launchers in
+  My Applications without modifying other application records.
+- Regression tests added via PR #45 for valid, modified, unrelated and custom
+  XDG desktop-location cases.
 
-### Release preparation
-- Proposed Arch/CachyOS candidate: `appinstall-1.1.2-1-any.pkg.tar.zst`.
-- Require 8/8 CI checks and a genuine published-v1.1.1 → v1.1.2 candidate →
-  v1.1.1 rollback in disposable Arch Linux CI; preserve MIME defaults and data.
-- No change to the published v1.1.1 release or the separately versioned
-  `install.sh` (v1.1.0); owner approval required for merge and publication.
+### Validation and known limits
+- PR #46 release preparation merged as `5044b748` with 8/8 successful
+  post-merge GitHub checks; source/package integrity and published-v1.1.1
+  upgrade/rollback tested in disposable Arch CI.
+- On a real CachyOS KDE device, the owner reported qBittorrent shortcut,
+  Installed status, My Applications Open, Diagnostics and package-file
+  integrity checks passing with the v1.1.2 candidate installed.
+- Broader fresh desktop manual tests of all four package formats, Install
+  from URL, and rollback on the active KDE system have not been repeated.
+- The published v1.1.1 release and independently versioned `install.sh`
+  v1.1.0 remain unchanged. Publication needs explicit owner authorization.
+- Any documentation or packaging follow-up that changes `main` requires
+  new final build/CI and checksum verification; previous artifact hashes
+  do not identify that new build.
 
 ## 1.1.1 (published 2026-11-12 as [`v1.1.1`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.1.1))
 

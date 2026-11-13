@@ -1,23 +1,46 @@
 # AppInstall Upgrade Guide
 
-> **v1.1.0 is a release candidate, NOT a published stable version.**
-> The latest public stable release remains v1.0.0. Do not install this
-> candidate on your active machine without explicit approval.
+## Current status — v1.1.2 approval pending
 
-## Preparing v1.0.0 → v1.1.0 upgrade acceptance
+The latest **published** stable AppInstall release is
+[v1.1.1](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.1.1).
+The v1.1.2 maintenance bug fix is merged and has passed automated CI plus
+owner-reported qBittorrent desktop testing, but **v1.1.2 has not yet been
+tagged or published**.
 
-1. Save the published v1.0.0 package and back up your existing AppInstall
-   application state, launchers and MIME defaults.
-2. Build the version-bumped 1.1.0-1 package from this reviewed candidate.
-3. Verify its independently computed SHA-256 and inspect with `pacman -Qip`.
-4. On a **disposable** Arch/CachyOS installation, test clean install, upgrade,
-   `appinstall --version`, the original UI, Install from URL, inventory,
-   associated handlers, and rollback to the saved v1.0.0 package.
-5. Do not tag, publish, or alter the active installed AppInstall until the
-   owner explicitly approves the release.
+The independently versioned `install.sh` script remains v1.1.0 and always
+resolves the latest **published stable application**, so it must not be
+treated as a way to obtain unpublished v1.1.2.
 
-The separate `install.sh` script is v1.1.0 and always fetches the latest
-**published stable** package, not this candidate.
+### Preparing a safe v1.1.1 → v1.1.2 upgrade
+
+1. Keep the published v1.1.1 package and its SHA256SUMS as a rollback copy.
+   Verify the manifest before treating the old package as known good.
+2. Back up application launch records, user desktop entries, and MIME
+   settings; also retain personal files and installed-app data.
+3. Before installing a **reviewed** v1.1.2 build, verify its exact
+   SHA256SUMS and inspect `pacman -Qip` and `pacman -Qlp`.
+4. Update with `sudo pacman -U <verified-v1.1.2-package>` only after
+   deciding to test that package. This changes the installed application.
+5. Verify `appinstall --version`, `pacman -Qkk appinstall`, the previously
+   failing KDE desktop shortcut, My Applications status/Open, and Diagnostics.
+6. If necessary, roll back with `sudo pacman -U
+   <verified-v1.1.1-package>` and verify managed apps and user data.
+   On the actual user's system, no rollback was needed for the reported test.
+
+**Acceptance evidence:** The owner reported the v1.1.2 qBittorrent shortcut,
+manager and Diagnostics tests passing on real CachyOS KDE, with zero altered
+package files. PR #46's **disposable Arch** CI also verified v1.1.1 ->
+v1.1.2 -> v1.1.1 package rollback, including preservation of unrelated
+files and MIME defaults. These do not establish complete all-format manual
+compatibility or an owner-system rollback.
+
+### Avoid mixed source and system installations
+
+A user-level `~/.local/bin/appinstall` executable may shadow the pacman
+package at `/usr/bin/appinstall`. Check `type -a appinstall` and
+`command -v appinstall` before testing. Avoid deleting managed apps,
+registries, `~/Applications`, or user MIME defaults as an upgrade shortcut.
 
 ## Historical upgrade guidance (older releases)
 
