@@ -1,19 +1,38 @@
 # AppInstall Changelog
 
-## 1.1.1 (release candidate — NOT PUBLISHED)
+## 1.1.2 (release preparation — NOT PUBLISHED)
 
-### Branding
-- Integrate the approved AppInstall blue-folder/download/checkmark icon in
-  eight freedesktop hicolor PNG sizes for Arch/CachyOS packages and source installs.
-- Configure AppInstall-owned KDE launchers and native PySide6 windows to use the
-  appinstall icon theme name while preserving third-party managed application icons.
-- Enforce an explicit allowlist of the eight icons in release evidence checks.
+### KDE desktop-shortcut fix
+- Recognize AppInstall-managed launchers moved from the menu to the user's
+  configured KDE Desktop folder when their SHA-256 hash and AppInstall launch
+  identifier match the original managed entry.
+- Preserve the user's relocated shortcut; never rewrite, delete, or silently
+  replace it. Reject modified, symlinked, or unrelated desktop launchers.
+- My Applications inventory recognizes verified relocated desktop launchers
+  for AppImage and Distrobox DEB/RPM packages.
+- Regression tests cover moving a launcher, rejecting altered/unrelated
+  shortcuts, and custom XDG desktop directories.
 
 ### Release preparation
-- Propose a `1.1.1-1` package without changing the separate `install.sh` version.
-- Require final package checksums, upgrade/rollback, icon display validation,
-  artwork redistribution sign-off and separate publication authorization.
-- The published v1.1.0 package and release assets remain unchanged.
+- Proposed Arch/CachyOS candidate: `appinstall-1.1.2-1-any.pkg.tar.zst`.
+- Require 8/8 CI checks and a genuine published-v1.1.1 → v1.1.2 candidate →
+  v1.1.1 rollback in disposable Arch Linux CI; preserve MIME defaults and data.
+- No change to the published v1.1.1 release or the separately versioned
+  `install.sh` (v1.1.0); owner approval required for merge and publication.
+
+## 1.1.1 (published 2026-11-12 as [`v1.1.1`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.1.1))
+
+- Shipped the owner's official blue-folder/download/checkmark AppInstall icon
+  in eight freedesktop hicolor PNG sizes for Arch and source installations.
+- Connected AppInstall's KDE launcher, service menu and native Qt windows to
+  the icon name `appinstall` without replacing third-party application icons.
+- Enforced the packaged icon allowlist through release-evidence checks.
+- Published the verified `appinstall-1.1.1-1-any.pkg.tar.zst`, SHA256SUMS and
+  RELEASE_VERIFICATION.txt from source commit
+  `311a7785f050c0a04b6d03bfee7ddb46692eced0`, after 8/8 post-merge CI
+  and a reported real CachyOS KDE logo preview.
+- `install.sh` remains independently versioned v1.1.0 and chooses the latest
+  published stable application release.
 
 ## 1.1.0 (published 2026-11-12 as [`v1.1.0`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.1.0))
 

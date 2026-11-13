@@ -10,7 +10,7 @@
 set -u
 IFS=$'\n\t'
 
-VERSION="1.1.1"
+VERSION="1.1.2"
 INSTALL_DIR="${APPINSTALL_APPIMAGES:-$HOME/Applications}"
 APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/pixmaps"
