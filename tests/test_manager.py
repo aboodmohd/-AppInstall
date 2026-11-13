@@ -369,6 +369,32 @@ class LiveManagerRefreshTests(unittest.TestCase):
             time.sleep(.02)
         self.fail('My Applications did not refresh in time')
 
+    def test_update_banner_and_success_require_verified_install(self):
+        from unittest.mock import Mock, patch
+
+        process = Mock()
+        self.window.update_process = process
+        self.window._check_updates()
+        process.readAll.return_value = b"APPINSTALL_UPDATE=v1.3.0\n"
+        self.window._update_finished(0, manager.QProcess.ExitStatus.NormalExit)
+        self.assertEqual(self.window.update_tag, "v1.3.0")
+        self.assertFalse(self.window.update_button.isHidden())
+
+        with patch.object(self.window, "_show_update_details") as details:
+            self.window._install_update()
+            self.assertEqual(process.start.call_args.args[1][-2:],
+                             ["--desktop-update", "v1.3.0"])
+            process.readAll.return_value = b"APPINSTALL_UPDATED=v1.3.0\n"
+            self.window._update_finished(0, manager.QProcess.ExitStatus.NormalExit)
+            self.assertEqual(details.call_args.args[0], "What’s new in AppInstall v1.3.0")
+
+        self.window.update_tag = "v1.3.1"
+        with patch.object(self.window, "_show_update_details") as details:
+            self.window._install_update()
+            process.readAll.return_value = b"Authentication cancelled"
+            self.window._update_finished(1, manager.QProcess.ExitStatus.NormalExit)
+            self.assertEqual(details.call_args.args[0], "AppInstall update did not complete")
+
     def test_install_from_file_dispatches_selected_path(self):
         from unittest.mock import patch
         from qt_compat import QtWidgets

@@ -26,9 +26,9 @@ Architecture: all
 Section: utils
 Priority: optional
 Maintainer: Abood <abood@localhost>
-Depends: bash, coreutils, python3, xdg-utils, python3-pyside6.qtwidgets | python3-pyqt6
+Depends: bash, coreutils, curl, python3, xdg-utils, python3-pyside6.qtwidgets | python3-pyqt6
 Recommends: desktop-file-utils, shared-mime-info, libarchive-tools, zenity | kdialog
-Suggests: flatpak, podman, distrobox, squashfs-tools, binutils, libfuse2t64, libnotify-bin
+Suggests: pkexec, flatpak, podman, distrobox, squashfs-tools, binutils, libfuse2t64, libnotify-bin
 Homepage: $url
 Description: $pkgdesc
  Review and install Linux application packages from the desktop.

@@ -1,0 +1,41 @@
+name: Desktop package upgrade
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upgrade:
+    name: Desktop upgrade (${{ matrix.family }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - family: arch
+            image: archlinux:base-devel
+          - family: debian
+            image: debian:13
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install build and test tools
+        env:
+          FAMILY: ${{ matrix.family }}
+        run: |
+          if [ "$FAMILY" = arch ]; then
+            pacman -Syu --needed --noconfirm curl pyside6 sudo
+          else
+            apt-get update
+            apt-get install -y --no-install-recommends curl python3 sudo
+          fi
+      - name: Verify upgrade, denied authorization, and checksum rejection
+        env:
+          FAMILY: ${{ matrix.family }}
+        run: bash tools/ci_desktop_update.sh
