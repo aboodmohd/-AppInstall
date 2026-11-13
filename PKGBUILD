@@ -9,6 +9,7 @@ license=('MIT')
 depends=('bash' 'coreutils' 'xdg-utils' 'python' 'pyside6' 'curl')
 optdepends=('polkit: graphical update authentication' 'flatpak: Flatpak installation' 'kdialog: KDE dialogs' 'zenity: GNOME and Xfce dialogs' 'libnotify: notifications' 'fuse2: AppImage mounting' 'squashfs-tools: passive AppImage preview' 'podman: rootless DEB/RPM containers' 'distrobox: DEB/RPM integration' 'libarchive: package inspection' 'binutils: optional static ELF dependency checks')
 backup=()
+options=(docs)
 
 source=('install.sh'
         'appinstall'
