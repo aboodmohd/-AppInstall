@@ -4,12 +4,26 @@ import json
 from pathlib import Path
 import sys
 try:
-    from PySide6.QtCore import QThread, Signal, Qt, QTimer, Slot
-    from PySide6.QtGui import QIcon
-    from PySide6.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-                                   QPlainTextEdit, QMessageBox, QInputDialog, QProgressBar, QFrame)
+    from qt_compat import QtCore, Signal, Slot
+    QThread = QtCore.QThread
+    Qt = QtCore.Qt
+    QTimer = QtCore.QTimer
+    from qt_compat import QtGui
+    QIcon = QtGui.QIcon
+    from qt_compat import QtWidgets
+    QApplication = QtWidgets.QApplication
+    QDialog = QtWidgets.QDialog
+    QVBoxLayout = QtWidgets.QVBoxLayout
+    QHBoxLayout = QtWidgets.QHBoxLayout
+    QLabel = QtWidgets.QLabel
+    QPushButton = QtWidgets.QPushButton
+    QPlainTextEdit = QtWidgets.QPlainTextEdit
+    QMessageBox = QtWidgets.QMessageBox
+    QInputDialog = QtWidgets.QInputDialog
+    QProgressBar = QtWidgets.QProgressBar
+    QFrame = QtWidgets.QFrame
 except ImportError as error:
-    print('PySide6 is required for the package workflow window: '+str(error), file=sys.stderr)
+    print('PySide6 or PyQt6 is required for the package workflow window: '+str(error), file=sys.stderr)
     sys.exit(3)
 from container_backend import Engine, inspect_package, PROGRESS
 import ui_style
@@ -59,29 +73,29 @@ class Workflow(QDialog):
         super().__init__()
         # Destroy the dialog before QApplication teardown, not during Python
         # module cleanup (where stale PySide6 wrappers can segfault).
-        self.setAttribute(Qt.WA_DeleteOnClose, True)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.args=args; self.engine=None; self.info=None; self.job=None; self.jobs=[]
         self.shot=shot; self.retry_callback=None
         self.setWindowTitle('AppInstall'); self.setWindowIcon(QIcon.fromTheme('appinstall')); self.setMinimumWidth(640); self.resize(660,540)
         layout=QVBoxLayout(self); layout.setContentsMargins(26,24,24,20); layout.setSpacing(12)
         header=QHBoxLayout(); header.setSpacing(16)
-        self.icon=QLabel(); self.icon.setFixedSize(72,72); self.icon.setAlignment(Qt.AlignTop)
+        self.icon=QLabel(); self.icon.setFixedSize(72,72); self.icon.setAlignment(Qt.AlignmentFlag.AlignTop)
         header.addWidget(self.icon)
         head=QVBoxLayout(); head.setSpacing(4)
-        self.title=QLabel('Reading package…'); self.title.setTextFormat(Qt.PlainText)
+        self.title=QLabel('Reading package…'); self.title.setTextFormat(Qt.TextFormat.PlainText)
         self.title.setStyleSheet('font-size: 20px; font-weight: 700;')
         head.addWidget(self.title)
         self.subtitle=QLabel('Checking the package before any change')
-        self.subtitle.setTextFormat(Qt.PlainText)
+        self.subtitle.setTextFormat(Qt.TextFormat.PlainText)
         self.subtitle.setStyleSheet('color: palette(window-text);')
         head.addWidget(self.subtitle)
         header.addLayout(head,1); layout.addLayout(header)
-        self.description=QLabel(); self.description.setWordWrap(True); self.description.setTextFormat(Qt.PlainText)
+        self.description=QLabel(); self.description.setWordWrap(True); self.description.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(self.description)
         status=QHBoxLayout(); status.setSpacing(12)
         self.stage_label=QLabel('')
 
-        self.stage_label.setTextFormat(Qt.PlainText)
+        self.stage_label.setTextFormat(Qt.TextFormat.PlainText)
         self.stage_label.setStyleSheet('color: palette(window-text); font-weight: 600;')
         status.addWidget(self.stage_label,1)
         self.bar=QProgressBar(); self.bar.setRange(0,0); self.bar.setTextVisible(False)
@@ -89,7 +103,7 @@ class Workflow(QDialog):
         layout.addLayout(status)
         self.logs=QPlainTextEdit(); self.logs.setReadOnly(True); self.logs.setMaximumBlockCount(5000)
         layout.addWidget(self.logs,1)
-        line=QFrame(); line.setFrameShape(QFrame.HLine); layout.addWidget(line)
+        line=QFrame(); line.setFrameShape(QFrame.Shape.HLine); layout.addWidget(line)
         buttons=QHBoxLayout(); buttons.setSpacing(10)
         diagnostics=QPushButton('Application &Diagnostics'); diagnostics.setObjectName('ghost')
         diagnostics.clicked.connect(lambda:__import__('subprocess').Popen([sys.executable,str(Path(__file__).with_name('diagnostics_ui.py'))]))

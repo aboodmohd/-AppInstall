@@ -83,7 +83,8 @@ def _launch_error(key):
 
 def icon_pixmap(app):
     """Return a 64x64 pixmap for an app record, falling back to the generic icon."""
-    from PySide6.QtGui import QIcon
+    from qt_compat import QtGui
+    QIcon = QtGui.QIcon
     icon = app.get('icon') or ''
     if icon and Path(icon).is_file():
         return QPixmap(icon)
@@ -437,14 +438,37 @@ def diagnostics_for(app):
 
 # ── UI layer ───────────────────────────────────────────────────────────────
 
-from PySide6.QtCore import Qt, QThread, Signal, QTimer, QSize
-from PySide6.QtGui import QIcon, QPixmap, QColor, QPalette
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QLineEdit, QListWidget, QListWidgetItem, QFrame, QSizePolicy,
-    QMessageBox, QDialog, QDialogButtonBox, QScrollArea, QGridLayout,
-    QSpacerItem, QMenu, QStackedLayout
-)
+from qt_compat import QtCore, Signal
+Qt = QtCore.Qt
+QThread = QtCore.QThread
+QTimer = QtCore.QTimer
+QSize = QtCore.QSize
+from qt_compat import QtGui
+QIcon = QtGui.QIcon
+QPixmap = QtGui.QPixmap
+QColor = QtGui.QColor
+QPalette = QtGui.QPalette
+from qt_compat import QtWidgets
+QApplication = QtWidgets.QApplication
+QMainWindow = QtWidgets.QMainWindow
+QWidget = QtWidgets.QWidget
+QVBoxLayout = QtWidgets.QVBoxLayout
+QHBoxLayout = QtWidgets.QHBoxLayout
+QLabel = QtWidgets.QLabel
+QPushButton = QtWidgets.QPushButton
+QLineEdit = QtWidgets.QLineEdit
+QListWidget = QtWidgets.QListWidget
+QListWidgetItem = QtWidgets.QListWidgetItem
+QFrame = QtWidgets.QFrame
+QSizePolicy = QtWidgets.QSizePolicy
+QMessageBox = QtWidgets.QMessageBox
+QDialog = QtWidgets.QDialog
+QDialogButtonBox = QtWidgets.QDialogButtonBox
+QScrollArea = QtWidgets.QScrollArea
+QGridLayout = QtWidgets.QGridLayout
+QSpacerItem = QtWidgets.QSpacerItem
+QMenu = QtWidgets.QMenu
+QStackedLayout = QtWidgets.QStackedLayout
 
 import ui_style
 
@@ -470,7 +494,7 @@ class AppCard(QWidget):
         super().__init__(parent)
         self.app = app
         self.setMinimumWidth(300)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setFixedHeight(132)
 
         layout = QHBoxLayout(self)
@@ -480,7 +504,7 @@ class AppCard(QWidget):
         # Icon.
         self.icon = QLabel()
         self.icon.setFixedSize(64, 64)
-        self.icon.setAlignment(Qt.AlignCenter)
+        self.icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.icon.setScaledContents(True)
         pix = self._icon_pixmap()
         self.icon.setPixmap(pix)
@@ -491,27 +515,27 @@ class AppCard(QWidget):
         summary = QVBoxLayout()
         summary.setSpacing(4)
         self.name = QLabel(app['name'])
-        self.name.setTextFormat(Qt.PlainText)
+        self.name.setTextFormat(Qt.TextFormat.PlainText)
         self.name.setWordWrap(True)
         font = self.name.font(); font.setPointSizeF(font.pointSizeF() * 1.12); font.setBold(True)
         self.name.setFont(font)
         summary.addWidget(self.name)
 
         meta = QLabel(self._meta_text())
-        meta.setTextFormat(Qt.PlainText)
+        meta.setTextFormat(Qt.TextFormat.PlainText)
         meta.setWordWrap(True)
         meta.setStyleSheet('color: palette(text); font-size: 12px;')
         summary.addWidget(meta)
 
         self.status = QLabel(self._status_text())
-        self.status.setTextFormat(Qt.PlainText)
+        self.status.setTextFormat(Qt.TextFormat.PlainText)
         self.status.setWordWrap(True)
         self.status.setStyleSheet(self._status_style())
         summary.addWidget(self.status)
 
         if app['problems']:
             note = QLabel('⚠ '+'; '.join(app['problems']))
-            note.setTextFormat(Qt.PlainText)
+            note.setTextFormat(Qt.TextFormat.PlainText)
             note.setWordWrap(True)
             note.setStyleSheet('color: #b3402e; font-size: 11.5px;')
             summary.addWidget(note)
@@ -669,17 +693,17 @@ class AppDetailsDialog(QDialog):
         picture.setScaledContents(True)
         picture.setPixmap(icon_pixmap(app))
         picture.setStyleSheet('border-radius: 8px; background: palette(base);')
-        header.addWidget(picture, 0, Qt.AlignTop)
+        header.addWidget(picture, 0, Qt.AlignmentFlag.AlignTop)
         text = QVBoxLayout()
         text.setSpacing(4)
         title = QLabel(app['name'])
-        title.setTextFormat(Qt.PlainText)
+        title.setTextFormat(Qt.TextFormat.PlainText)
         title.setWordWrap(True)
         font = title.font(); font.setPointSizeF(font.pointSizeF() * 1.3); font.setBold(True)
         title.setFont(font)
         text.addWidget(title)
         kind = QLabel(FORMAT_LABELS.get(app['format'], app['format'])+' · '+app['status'])
-        kind.setTextFormat(Qt.PlainText)
+        kind.setTextFormat(Qt.TextFormat.PlainText)
         kind.setStyleSheet('color: palette(text); font-size: 13px;')
         text.addWidget(kind)
         header.addLayout(text, 1)
@@ -687,7 +711,7 @@ class AppDetailsDialog(QDialog):
 
         if app['description']:
             desc = QLabel(app['description'])
-            desc.setTextFormat(Qt.PlainText)
+            desc.setTextFormat(Qt.TextFormat.PlainText)
             desc.setWordWrap(True)
             layout.addWidget(desc)
 
@@ -712,9 +736,9 @@ class AppDetailsDialog(QDialog):
             key_label.setStyleSheet('color: palette(text); font-size: 12px;')
             grid.addWidget(key_label, row, 0)
             value_label = QLabel(str(value))
-            value_label.setTextFormat(Qt.PlainText)
+            value_label.setTextFormat(Qt.TextFormat.PlainText)
             value_label.setWordWrap(True)
-            value_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
+            value_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
             value_label.setToolTip(str(value))
             grid.addWidget(value_label, row, 1)
         grid.setColumnStretch(1, 1)
@@ -724,12 +748,12 @@ class AppDetailsDialog(QDialog):
         last = app.get('last_launch') or {}
         if last or app.get('last_error'):
             launch_box = QFrame()
-            launch_box.setFrameShape(QFrame.StyledPanel)
+            launch_box.setFrameShape(QFrame.Shape.StyledPanel)
             launch_layout = QVBoxLayout(launch_box)
             launch_layout.setContentsMargins(14, 12, 14, 12)
             launch_layout.setSpacing(6)
             head = QLabel('Last launch')
-            head.setTextFormat(Qt.PlainText)
+            head.setTextFormat(Qt.TextFormat.PlainText)
             font = head.font(); font.setBold(True); head.setFont(font)
             launch_layout.addWidget(head)
             status = _friendly_launch_status(last.get('status', 'Never launched'))
@@ -739,7 +763,7 @@ class AppDetailsDialog(QDialog):
             if app.get('last_error'):
                 err = app['last_error']
                 err_label = QLabel('Error: '+err.get('category', '')+' — '+err.get('detail', ''))
-                err_label.setTextFormat(Qt.PlainText)
+                err_label.setTextFormat(Qt.TextFormat.PlainText)
                 err_label.setWordWrap(True)
                 err_label.setStyleSheet('color: #b3402e;')
                 launch_layout.addWidget(err_label)
@@ -753,11 +777,11 @@ class AppDetailsDialog(QDialog):
         # Compatibility notes.
         if app['problems']:
             compat = QFrame()
-            compat.setFrameShape(QFrame.StyledPanel)
+            compat.setFrameShape(QFrame.Shape.StyledPanel)
             clayout = QVBoxLayout(compat)
             clayout.setContentsMargins(14, 12, 14, 12)
             chead = QLabel('Compatibility notes')
-            chead.setTextFormat(Qt.PlainText)
+            chead.setTextFormat(Qt.TextFormat.PlainText)
             font = chead.font(); font.setBold(True); chead.setFont(font)
             clayout.addWidget(chead)
             for problem in app['problems']:
@@ -790,7 +814,7 @@ class AppDetailsDialog(QDialog):
         action_row.addStretch(1)
         layout.addLayout(action_row)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
         self.setStyleSheet(ui_style.primary_button_stylesheet(self) + ui_style.ghost_button_stylesheet(self))
@@ -841,9 +865,9 @@ def _show_log(path, parent):
     dialog.resize(760, 500)
     layout = QVBoxLayout(dialog)
     text = QLabel(content)
-    text.setTextFormat(Qt.PlainText)
+    text.setTextFormat(Qt.TextFormat.PlainText)
     text.setWordWrap(True)
-    text.setTextInteractionFlags(Qt.TextSelectableByMouse)
+    text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
     scroll = QScrollArea(); scroll.setWidgetResizable(True); scroll.setWidget(text)
     layout.addWidget(scroll)
     copy = QPushButton('Copy Log')
@@ -894,7 +918,7 @@ class ManagerWindow(QMainWindow):
         header.addWidget(heading)
         self.install_url_btn = QPushButton('Install from URL…')
         self.install_url_btn.setObjectName('ghost')
-        self.install_url_btn.setCursor(Qt.PointingHandCursor)
+        self.install_url_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.install_url_btn.clicked.connect(self._install_from_url)
         header.addWidget(self.install_url_btn)
         header.addStretch(1)
@@ -929,7 +953,7 @@ class ManagerWindow(QMainWindow):
 
         # Empty state (stacked behind the list, shown when nothing matches).
         self.empty = QLabel('No AppInstall-managed applications found. Install a file to begin.')
-        self.empty.setAlignment(Qt.AlignCenter)
+        self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty.setStyleSheet('color: palette(text); font-size: 14px;')
 
         self.content_stack = QStackedLayout()
@@ -946,7 +970,7 @@ class ManagerWindow(QMainWindow):
 
         # Empty state (hidden by default).
         self.empty = QLabel('No AppInstall-managed applications found. Install a file to begin.')
-        self.empty.setAlignment(Qt.AlignCenter)
+        self.empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.empty.setStyleSheet('color: palette(text); font-size: 14px;')
         self.empty.hide()
         root.addWidget(self.empty)
@@ -1069,8 +1093,8 @@ class ManagerWindow(QMainWindow):
             self, 'AppInstall',
             'Check for updates to '+app['name']+'? This may update several packages '
             'in the user Flatpak installation.',
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if reply != QMessageBox.Yes:
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
             return
         try:
             message = update_app(app)
@@ -1088,8 +1112,8 @@ class ManagerWindow(QMainWindow):
             'Uninstall '+app['name']+' ('+app['package_id']+')?\n\n'
             'Only AppInstall-managed files, launchers and metadata will be removed. '
             'Personal application data and logs will be kept.',
-            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
-        if reply != QMessageBox.Yes:
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        if reply != QMessageBox.StandardButton.Yes:
             return
         try:
             message = uninstall_app(app)

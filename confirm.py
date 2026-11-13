@@ -72,9 +72,13 @@ def main():
         print(json.dumps(dict(ref, file=str(file), kind=kind, size=size)))
         return
 
-    from PySide6.QtCore import Qt
-    from PySide6.QtGui import QIcon
-    from PySide6.QtWidgets import QApplication, QDialog
+    from qt_compat import QtCore
+    Qt = QtCore.Qt
+    from qt_compat import QtGui
+    QIcon = QtGui.QIcon
+    from qt_compat import QtWidgets
+    QApplication = QtWidgets.QApplication
+    QDialog = QtWidgets.QDialog
     import ui_style
 
     name = ref['name']
@@ -98,7 +102,8 @@ def main():
     if '--screenshot' in rest and rest.index('--screenshot')+1 < len(rest):
         # Offscreen/evidence capture hook: render the dialog, save, quit.
         capture_path = rest[rest.index('--screenshot')+1]
-        from PySide6.QtCore import QTimer
+        from qt_compat import QtCore
+        QTimer = QtCore.QTimer
         def capture():
             window.grab().save(capture_path)
             QApplication.quit()
@@ -107,15 +112,25 @@ def main():
         app.exec()
         return
 
-    sys.exit(0 if window.exec() == QDialog.Accepted else 1)
+    sys.exit(0 if window.exec() == QDialog.DialogCode.Accepted else 1)
 
 
 def review_window(file, kind, ref, name, description, icon, details):
     """Build the package review dialog; returns it without showing it."""
-    from PySide6.QtCore import Qt
-    from PySide6.QtGui import QIcon
-    from PySide6.QtWidgets import (QApplication, QDialog, QVBoxLayout, QHBoxLayout, QLabel,
-                                   QPushButton, QPlainTextEdit, QFrame, QGridLayout)
+    from qt_compat import QtCore
+    Qt = QtCore.Qt
+    from qt_compat import QtGui
+    QIcon = QtGui.QIcon
+    from qt_compat import QtWidgets
+    QApplication = QtWidgets.QApplication
+    QDialog = QtWidgets.QDialog
+    QVBoxLayout = QtWidgets.QVBoxLayout
+    QHBoxLayout = QtWidgets.QHBoxLayout
+    QLabel = QtWidgets.QLabel
+    QPushButton = QtWidgets.QPushButton
+    QPlainTextEdit = QtWidgets.QPlainTextEdit
+    QFrame = QtWidgets.QFrame
+    QGridLayout = QtWidgets.QGridLayout
     import ui_style
 
     window = QDialog()
@@ -137,19 +152,19 @@ def review_window(file, kind, ref, name, description, icon, details):
         image = QIcon.fromTheme('package-x-generic')
     picture.setPixmap(image.pixmap(88, 88))
     picture.setFixedSize(92, 92)
-    picture.setAlignment(Qt.AlignCenter)
-    header.addWidget(picture, 0, Qt.AlignTop)
+    picture.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    header.addWidget(picture, 0, Qt.AlignmentFlag.AlignTop)
     text = QVBoxLayout()
     text.setSpacing(4)
     title = QLabel(name)
-    title.setTextFormat(Qt.PlainText)
+    title.setTextFormat(Qt.TextFormat.PlainText)
     title.setWordWrap(True)
     title.setStyleSheet('font-size: 20px; font-weight: 700;')
     text.addWidget(title)
     subtitle = QLabel({'flatpakref': 'Flatpak application', 'flatpak': 'Flatpak bundle',
                        'appimage': 'AppImage application', 'flatpakrepo': 'Software repository',
                        'deb': 'Debian package', 'rpm': 'RPM package'}.get(kind, kind))
-    subtitle.setTextFormat(Qt.PlainText)
+    subtitle.setTextFormat(Qt.TextFormat.PlainText)
     subtitle.setStyleSheet('color: palette(window-text);')
     text.addWidget(subtitle)
     try: size_text = meta.human_size(file.stat().st_size)
@@ -165,7 +180,7 @@ def review_window(file, kind, ref, name, description, icon, details):
         key.setStyleSheet('color: palette(window-text);')
         facts.addWidget(key, row, 0)
         entry = QLabel(value)
-        entry.setTextFormat(Qt.PlainText)
+        entry.setTextFormat(Qt.TextFormat.PlainText)
         entry.setWordWrap(True)
         facts.addWidget(entry, row, 1)
     facts.setColumnStretch(1, 1)
@@ -174,7 +189,7 @@ def review_window(file, kind, ref, name, description, icon, details):
     layout.addLayout(header)
 
     body = QLabel(description.strip())
-    body.setTextFormat(Qt.PlainText)
+    body.setTextFormat(Qt.TextFormat.PlainText)
     body.setWordWrap(True)
     layout.addWidget(body)
 
@@ -186,13 +201,13 @@ def review_window(file, kind, ref, name, description, icon, details):
     notice.setStyleSheet('color: palette(window-text);')
     layout.addWidget(notice)
 
-    line = QFrame(); line.setFrameShape(QFrame.HLine)
+    line = QFrame(); line.setFrameShape(QFrame.Shape.HLine)
     layout.addWidget(line)
 
     toggle = QPushButton('Show details')
     toggle.setFlat(True)
-    toggle.setCursor(Qt.PointingHandCursor)
-    layout.addWidget(toggle, 0, Qt.AlignLeft)
+    toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+    layout.addWidget(toggle, 0, Qt.AlignmentFlag.AlignLeft)
     extra = QPlainTextEdit()
     extra.setReadOnly(True)
     extra.setPlainText(str(file)+'\n'+details)
@@ -241,7 +256,7 @@ def entry():
     try:
         main()
     except ImportError as error:
-        print('PySide6 is required for the package details window: '+str(error), file=sys.stderr)
+        print('PySide6 or PyQt6 is required for the package details window: '+str(error), file=sys.stderr)
         sys.exit(3)
     except SystemExit:
         raise

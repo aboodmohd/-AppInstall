@@ -440,7 +440,7 @@ container_workflow() {
   python3 "$ui" "$@"
   rc=$?
   if [ "$rc" -eq 3 ]; then
-    error_dialog 'Install PySide6 for DEB/RPM package details and transaction confirmation.'
+    error_dialog 'Install PySide6 or PyQt6 for DEB/RPM package details and transaction confirmation.'
   fi
   return "$rc"
 }
@@ -480,7 +480,7 @@ Only install files from sources you trust."
         0) : ;;
         1) return 0 ;;
         3) dialog_confirm "$confirm_text" || return 0 ;;
-        *) error_dialog 'The package details window could not open, so installation was cancelled. Install PySide6 for graphical package details.'; return "$rc" ;;
+        *) error_dialog 'The package details window could not open, so installation was cancelled. Install PySide6 or PyQt6 for graphical package details.'; return "$rc" ;;
       esac
     else
       dialog_confirm "$confirm_text" || return 0
@@ -515,7 +515,7 @@ main() {
         python3 "$diagnostics"
         local drc=$?
         if [ "$drc" -eq 3 ]; then
-          error_dialog 'PySide6 is required for Application Diagnostics. Launch logs are saved under the user state directory.'
+          error_dialog 'PySide6 or PyQt6 is required for Application Diagnostics. Launch logs are saved under the user state directory.'
         fi
         exit "$drc" ;;
       --manage)
@@ -525,7 +525,7 @@ main() {
         python3 "$manager"
         local mrc=$?
         if [ "$mrc" -eq 3 ]; then
-          error_dialog 'PySide6 is required for the Installed Applications Manager.'
+          error_dialog 'PySide6 or PyQt6 is required for the Installed Applications Manager.'
         fi
         exit "$mrc" ;;
       --list)       do_list; exit 0 ;;
@@ -564,7 +564,7 @@ main() {
       python3 "$manager"
       local mrc=$?
       if [ "$mrc" -eq 3 ]; then
-        error_dialog 'PySide6 is required for the Installed Applications Manager.'
+        error_dialog 'PySide6 or PyQt6 is required for the Installed Applications Manager.'
       fi
       exit "$mrc"
     fi

@@ -27,13 +27,25 @@ import threading
 from pathlib import Path
 
 try:
-    from PySide6.QtCore import Qt, QThread, QTimer, Signal
-    from PySide6.QtGui import QIcon
-    from PySide6.QtWidgets import (QApplication, QDialog, QFrame, QHBoxLayout,
-                                   QLabel, QLineEdit, QMessageBox, QProgressBar,
-                                   QPushButton, QVBoxLayout)
+    from qt_compat import QtCore, Signal
+    Qt = QtCore.Qt
+    QThread = QtCore.QThread
+    QTimer = QtCore.QTimer
+    from qt_compat import QtGui
+    QIcon = QtGui.QIcon
+    from qt_compat import QtWidgets
+    QApplication = QtWidgets.QApplication
+    QDialog = QtWidgets.QDialog
+    QFrame = QtWidgets.QFrame
+    QHBoxLayout = QtWidgets.QHBoxLayout
+    QLabel = QtWidgets.QLabel
+    QLineEdit = QtWidgets.QLineEdit
+    QMessageBox = QtWidgets.QMessageBox
+    QProgressBar = QtWidgets.QProgressBar
+    QPushButton = QtWidgets.QPushButton
+    QVBoxLayout = QtWidgets.QVBoxLayout
 except ImportError as error:  # pragma: no cover - import guard
-    print("PySide6 is required for Install from URL: " + str(error), file=sys.stderr)
+    print("PySide6 or PyQt6 is required for Install from URL: " + str(error), file=sys.stderr)
     sys.exit(3)
 
 import ui_style
@@ -101,12 +113,12 @@ class UrlInstallDialog(QDialog):
 
         title = QLabel("Install from URL")
         font = title.font(); font.setPointSize(20); font.setBold(True); title.setFont(font)
-        title.setTextFormat(Qt.PlainText)
+        title.setTextFormat(Qt.TextFormat.PlainText)
         layout.addWidget(title)
 
         subtitle = QLabel("Download an application package from a direct HTTPS link, "
                           "then review and install it through AppInstall.")
-        subtitle.setTextFormat(Qt.PlainText)
+        subtitle.setTextFormat(Qt.TextFormat.PlainText)
         subtitle.setWordWrap(True)
         subtitle.setStyleSheet("color: palette(window-text);")
         layout.addWidget(subtitle)
@@ -123,18 +135,18 @@ class UrlInstallDialog(QDialog):
         row.addWidget(self.url_edit, 1)
         paste_btn = QPushButton("&Paste")
         paste_btn.setObjectName("ghost")
-        paste_btn.setCursor(Qt.PointingHandCursor)
+        paste_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         paste_btn.clicked.connect(self._paste)
         row.addWidget(paste_btn)
         upage.addLayout(row)
         self.download_btn = QPushButton("&Download")
         self.download_btn.setObjectName("primary")
-        self.download_btn.setCursor(Qt.PointingHandCursor)
+        self.download_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.download_btn.setEnabled(False)
         self.download_btn.clicked.connect(self._start_download)
         upage.addWidget(self.download_btn)
         self.url_error = QLabel("")
-        self.url_error.setTextFormat(Qt.PlainText)
+        self.url_error.setTextFormat(Qt.TextFormat.PlainText)
         self.url_error.setStyleSheet("color: #b3402e; font-size: 12px;")
         self.url_error.hide()
         upage.addWidget(self.url_error)
@@ -143,7 +155,7 @@ class UrlInstallDialog(QDialog):
         # checksum row (optional)
         ck_row = QHBoxLayout(); ck_row.setSpacing(8)
         ck_label = QLabel("Expected SHA-256 (optional):")
-        ck_label.setTextFormat(Qt.PlainText)
+        ck_label.setTextFormat(Qt.TextFormat.PlainText)
         ck_label.setStyleSheet("color: palette(window-text); font-size: 12px;")
         ck_row.addWidget(ck_label)
         self.checksum_edit = QLineEdit()
@@ -156,7 +168,7 @@ class UrlInstallDialog(QDialog):
         note = QLabel("Only install applications from sources you trust. HTTPS protects the "
                       "transfer, but it does not guarantee the downloaded application is "
                       "trustworthy. Local and private network addresses are blocked.")
-        note.setTextFormat(Qt.PlainText)
+        note.setTextFormat(Qt.TextFormat.PlainText)
         note.setWordWrap(True)
         note.setStyleSheet("color: palette(window-text); font-size: 11.5px;")
         layout.addWidget(note)
@@ -166,11 +178,11 @@ class UrlInstallDialog(QDialog):
         ppage = QVBoxLayout(self.progress_page)
         ppage.setSpacing(10)
         self.pg_name = QLabel("")
-        self.pg_name.setTextFormat(Qt.PlainText)
+        self.pg_name.setTextFormat(Qt.TextFormat.PlainText)
         self.pg_name.setStyleSheet("font-weight: 600;")
         ppage.addWidget(self.pg_name)
         self.pg_stats = QLabel("")
-        self.pg_stats.setTextFormat(Qt.PlainText)
+        self.pg_stats.setTextFormat(Qt.TextFormat.PlainText)
         self.pg_stats.setStyleSheet("color: palette(window-text); font-size: 12px;")
         ppage.addWidget(self.pg_stats)
         self.pg_bar = QProgressBar()
@@ -180,7 +192,7 @@ class UrlInstallDialog(QDialog):
         ppage.addWidget(self.pg_bar)
         self.pg_cancel = QPushButton("&Cancel Download")
         self.pg_cancel.setObjectName("ghost")
-        self.pg_cancel.setCursor(Qt.PointingHandCursor)
+        self.pg_cancel.setCursor(Qt.CursorShape.PointingHandCursor)
         self.pg_cancel.clicked.connect(self._cancel_download)
         ppage.addWidget(self.pg_cancel)
         self.progress_page.hide()
@@ -191,20 +203,20 @@ class UrlInstallDialog(QDialog):
         cpage = QVBoxLayout(self.complete_page)
         cpage.setSpacing(10)
         self.cp_format = QLabel("")
-        self.cp_format.setTextFormat(Qt.PlainText)
+        self.cp_format.setTextFormat(Qt.TextFormat.PlainText)
         self.cp_format.setStyleSheet("font-weight: 600;")
         cpage.addWidget(self.cp_format)
         self.cp_size = QLabel("")
-        self.cp_size.setTextFormat(Qt.PlainText)
+        self.cp_size.setTextFormat(Qt.TextFormat.PlainText)
         self.cp_size.setStyleSheet("color: palette(window-text); font-size: 12px;")
         cpage.addWidget(self.cp_size)
         self.cp_sha = QLabel("")
-        self.cp_sha.setTextFormat(Qt.PlainText)
+        self.cp_sha.setTextFormat(Qt.TextFormat.PlainText)
         self.cp_sha.setStyleSheet("color: palette(window-text); font-size: 12px;")
         cpage.addWidget(self.cp_sha)
         self.review_btn = QPushButton("&Review and Install")
         self.review_btn.setObjectName("primary")
-        self.review_btn.setCursor(Qt.PointingHandCursor)
+        self.review_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.review_btn.clicked.connect(self._review_and_install)
         cpage.addWidget(self.review_btn)
         self.complete_page.hide()
@@ -216,7 +228,7 @@ class UrlInstallDialog(QDialog):
         grow = QHBoxLayout(); grow.addStretch(1)
         self.close_btn = QPushButton("&Close")
         self.close_btn.setObjectName("ghost")
-        self.close_btn.setCursor(Qt.PointingHandCursor)
+        self.close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.close_btn.clicked.connect(self.reject)
         grow.addWidget(self.close_btn)
         layout.addLayout(grow)
@@ -369,7 +381,7 @@ class UrlInstallDialog(QDialog):
                 QMessageBox.warning(
                     self, "AppInstall",
                     "The package review window could not open, so installation "
-                    "was cancelled. Install PySide6 to review packages "
+                    "was cancelled. Install PySide6 or PyQt6 to review packages "
                     "graphically.")
                 self._reset_to_url_page()
                 return
@@ -508,7 +520,7 @@ def main(argv=None):
         dialog.show()
         app.exec()
         return
-    sys.exit(0 if dialog.exec() == QDialog.Accepted else 1)
+    sys.exit(0 if dialog.exec() == QDialog.DialogCode.Accepted else 1)
 
 
 if __name__ == "__main__":
