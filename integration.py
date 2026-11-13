@@ -28,7 +28,7 @@ mimes = [
 ]
 modules = (
     'integration.py', 'source_transaction.py', 'confirm.py',
-    'package_meta.py', 'ui_style.py', 'qt_compat.py', 'appimage_backend.py',
+    'package_meta.py', 'ui_style.py', 'qt_compat.py', 'settings.py', 'appimage_backend.py',
     'native_backend.py', 'container_backend.py', 'container_ui.py',
     'launch_monitor.py', 'manager.py', 'result_ui.py',
     'runtime_probe.py', 'diagnostics_core.py', 'diagnostics_ui.py',

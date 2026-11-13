@@ -2,8 +2,13 @@
 import os
 
 from qt_compat import QtGui
+import settings
 QColor = QtGui.QColor
 QPalette = QtGui.QPalette
+
+# Captured on the first apply_theme call so 'auto' can restore the exact
+# palette and style the application started with.
+_native = None
 
 
 def accent(widget):
@@ -37,11 +42,7 @@ def primary_button_stylesheet(widget):
     """
 
 
-def maybe_dark(app):
-    """Force Fusion + dark palette when APPINSTALL_UI_DARK=1; native detection otherwise."""
-    if os.environ.get('APPINSTALL_UI_DARK') != '1':
-        return
-    app.setStyle('Fusion')
+def _dark_palette():
     palette = QPalette()
     window = QColor(49, 54, 59)
     surface = QColor(42, 46, 50)
@@ -64,7 +65,66 @@ def maybe_dark(app):
         palette.setColor(QPalette.ColorGroup.Inactive, role, color)
     for role in (QPalette.ColorRole.WindowText, QPalette.ColorRole.ButtonText, QPalette.ColorRole.Text):
         palette.setColor(QPalette.ColorGroup.Disabled, role, disabled)
-    app.setPalette(palette)
+    return palette
+
+
+def _light_palette():
+    palette = QPalette()
+    window = QColor(245, 246, 248)
+    surface = QColor(255, 255, 255)
+    text = QColor(28, 32, 36)
+    disabled = QColor(130, 134, 140)
+    for role, color in ((QPalette.ColorRole.Window, window),
+                        (QPalette.ColorRole.WindowText, text),
+                        (QPalette.ColorRole.Base, surface),
+                        (QPalette.ColorRole.AlternateBase, window),
+                        (QPalette.ColorRole.ToolTipBase, text),
+                        (QPalette.ColorRole.ToolTipText, text),
+                        (QPalette.ColorRole.Text, text),
+                        (QPalette.ColorRole.Button, surface),
+                        (QPalette.ColorRole.ButtonText, text),
+                        (QPalette.ColorRole.BrightText, QColor(178, 32, 32)),
+                        (QPalette.ColorRole.Link, QColor(41, 128, 185)),
+                        (QPalette.ColorRole.Highlight, QColor(41, 128, 185)),
+                        (QPalette.ColorRole.HighlightedText, QColor(255, 255, 255))):
+        palette.setColor(QPalette.ColorGroup.Active, role, color)
+        palette.setColor(QPalette.ColorGroup.Inactive, role, color)
+    for role in (QPalette.ColorRole.WindowText, QPalette.ColorRole.ButtonText, QPalette.ColorRole.Text):
+        palette.setColor(QPalette.ColorGroup.Disabled, role, disabled)
+    return palette
+
+
+def apply_theme(app, theme):
+    """Apply 'auto', 'light' or 'dark' to a running QApplication.
+
+    'auto' restores the palette and style captured on the first call; 'light'
+    and 'dark' force Fusion with an explicit palette so the appearance is
+    deterministic on any system theme.
+    """
+    global _native
+    if theme not in ('light', 'dark'):
+        theme = 'auto'
+    if _native is None:
+        _native = (app.style().objectName(), QPalette(app.palette()))
+    if theme == 'auto':
+        app.setStyle(_native[0])
+        app.setPalette(QPalette(_native[1]))
+    else:
+        app.setStyle('Fusion')
+        app.setPalette(_dark_palette() if theme == 'dark' else _light_palette())
+
+
+def maybe_dark(app):
+    """APPINSTALL_UI_DARK=1 forces dark (test/CI override); otherwise the
+    saved theme setting applies, falling back to native detection."""
+    if os.environ.get('APPINSTALL_UI_DARK') == '1':
+        apply_theme(app, 'dark')
+        return
+    try:
+        theme = settings.read().get('theme', 'auto')
+    except Exception:
+        theme = 'auto'
+    apply_theme(app, theme)
 
 
 def ghost_button_stylesheet(widget):
