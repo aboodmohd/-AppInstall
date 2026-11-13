@@ -113,7 +113,8 @@ test "$status" -eq 3
 test "$(appinstall --version)" = 'appinstall 1.2.2'
 mv correct-sums SHA256SUMS
 
-run_update allow --desktop-update v1.2.3 | grep -Fx 'APPINSTALL_UPDATED=v1.2.3'
+output="$(run_update allow --desktop-update v1.2.3)" || { printf "%s\n" "$output"; exit 1; }
+printf "%s\n" "$output" | grep -Fx 'APPINSTALL_UPDATED=v1.2.3'
 test "$(appinstall --version)" = 'appinstall 1.2.3'
 grep -Fx '# AppInstall 1.2.3' /usr/share/doc/appinstall/RELEASE_NOTES.md
 output="$(run_update deny --desktop-check)"
