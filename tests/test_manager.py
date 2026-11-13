@@ -369,6 +369,20 @@ class LiveManagerRefreshTests(unittest.TestCase):
             time.sleep(.02)
         self.fail('My Applications did not refresh in time')
 
+    def test_install_from_file_dispatches_selected_path(self):
+        from unittest.mock import patch
+        from qt_compat import QtWidgets
+
+        package = str(Path(self.temp.name) / "Sample App.AppImage")
+        with patch.object(QtWidgets.QFileDialog, "getOpenFileName",
+                          return_value=(package, "")) as choose:
+            with patch("subprocess.Popen") as launch:
+                self.window.install_file_btn.click()
+
+        self.assertEqual(choose.call_args.kwargs["options"],
+                         QtWidgets.QFileDialog.Option.DontUseNativeDialog)
+        self.assertEqual(launch.call_args.args[0][1:], ["--", package])
+
     def test_external_install_appears_without_reopening_manager(self):
         self.assertEqual(self.window.inventory, [])
         self.assertTrue(self.window._inventory_timer.isActive())

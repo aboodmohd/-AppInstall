@@ -916,6 +916,10 @@ class ManagerWindow(QMainWindow):
         heading = QLabel('My Applications')
         font = heading.font(); font.setPointSize(21); font.setBold(True); heading.setFont(font)
         header.addWidget(heading)
+        self.install_file_btn = QPushButton('Install from File…')
+        self.install_file_btn.setObjectName('ghost')
+        self.install_file_btn.clicked.connect(lambda: ui_style.open_package(self))
+        header.addWidget(self.install_file_btn)
         self.install_url_btn = QPushButton('Install from URL…')
         self.install_url_btn.setObjectName('ghost')
         self.install_url_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -1150,6 +1154,7 @@ class ManagerWindow(QMainWindow):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv[:1])
+    app.setDesktopFileName("appinstall")
     ui_style.maybe_dark(app)
     app.setWindowIcon(QIcon.fromTheme('appinstall'))
     window = ManagerWindow()

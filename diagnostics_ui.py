@@ -2,7 +2,6 @@
 """Application Diagnostics and launch-error windows within AppInstall. Exit 3 when Qt is unavailable."""
 import json
 from pathlib import Path
-import subprocess
 import sys
 try:
     from qt_compat import QtCore, Signal
@@ -20,7 +19,6 @@ try:
     QTableWidget = QtWidgets.QTableWidget
     QTableWidgetItem = QtWidgets.QTableWidgetItem
     QMessageBox = QtWidgets.QMessageBox
-    QFileDialog = QtWidgets.QFileDialog
     QInputDialog = QtWidgets.QInputDialog
     from qt_compat import QtGui
     QIcon = QtGui.QIcon
@@ -29,6 +27,7 @@ except ImportError as error:
     sys.exit(3)
 import launch_monitor as monitor
 import diagnostics_core as core
+import ui_style
 
 
 class Task(QThread):
@@ -171,10 +170,7 @@ class Diagnostics(QDialog):
         if record and self.confirm('Uninstall '+record['name']+' and its managed launcher? Personal application data and logs will be kept.'):
             self.run_task(lambda:core.uninstall(record['key']))
     def install_file(self):
-        path,_=QFileDialog.getOpenFileName(self,'Install Application',str(Path.home()/'Downloads'),'Applications (*.AppImage *.appimage *.flatpak *.flatpakref *.flatpakrepo *.deb *.rpm)')
-        if path:
-            local=Path(__file__).with_name('appinstall');command=str(local) if local.exists() else str(Path.home()/'.local/bin/appinstall')
-            subprocess.Popen([command,path])
+        ui_style.open_package(self)
     def closeEvent(self,event):
         if self.busy:event.ignore()
         else:event.accept()

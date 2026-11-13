@@ -5,6 +5,7 @@ A real Wayland compositor accepts AppInstall Qt top-level surfaces. This is
 not KDE Plasma, CachyOS, Dolphin, installation, nor a release acceptance test.
 No installed applications or real user data are accessed or modified.
 """
+import argparse
 import os
 from pathlib import Path
 import signal
@@ -42,20 +43,20 @@ def wait_for_socket(path, proc, seconds=20):
     deadline = time.monotonic() + seconds
     while time.monotonic() < deadline:
         if proc.poll() is not None:
-            raise RuntimeError(f"Weston exited before its socket was ready (status {proc.returncode})")
+            raise RuntimeError(f"Compositor exited before its socket was ready (status {proc.returncode})")
         if path.exists():
             sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             try:
                 sock.settimeout(1)
                 sock.connect(str(path))
-                print("PASS: disposable Weston Wayland socket accepts connections", flush=True)
+                print("PASS: disposable Wayland compositor socket accepts connections", flush=True)
                 return
             except OSError:
                 pass
             finally:
                 sock.close()
         time.sleep(0.2)
-    raise RuntimeError("Weston did not create a usable Wayland socket")
+    raise RuntimeError("Compositor did not create a usable Wayland socket")
 
 
 def qt_platform_probe(env):
@@ -99,7 +100,7 @@ def check_app_window(flag, label, env):
                         f"{label} exited early with {child.returncode}; "
                         f"output: {content[-7000:].decode(errors='replace')}"
                     )
-                # WAYLAND_DEBUG=client emits real Qt -> Weston protocol traffic.
+                # WAYLAND_DEBUG=client emits real Qt -> compositor protocol traffic.
                 # Require creation of a top-level Wayland surface and a commit
                 # while the CLI-launched AppInstall process remains alive.
                 if b"xdg_toplevel" in content and b".commit(" in content:
@@ -145,6 +146,9 @@ def check_manager_capture(env, path):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--compositor", choices=("weston", "sway"), default="weston")
+    compositor = parser.parse_args().compositor
     if os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("CI") != "true":
         raise RuntimeError("Refusing to run outside GitHub Actions CI")
     if os.geteuid() == 0:
@@ -171,7 +175,7 @@ def main():
             "XDG_STATE_HOME": str(root / "state"),
             "XDG_RUNTIME_DIR": str(runtime),
             "XDG_SESSION_TYPE": "wayland",
-            "XDG_CURRENT_DESKTOP": "Weston",
+            "XDG_CURRENT_DESKTOP": compositor,
             "WAYLAND_DISPLAY": SOCKET_NAME,
             "QT_QPA_PLATFORM": "wayland",
             "QT_QUICK_BACKEND": "software",
@@ -181,20 +185,39 @@ def main():
         weston_env = dict(env)
         weston_env.pop("WAYLAND_DISPLAY", None)
         weston_env.pop("WAYLAND_DEBUG", None)
-        with (root / "weston.log").open("w+b") as weston_log:
+        if compositor == "sway":
+            config = root / "sway.conf"
+            config.write_text("output * resolution 1280x800\n")
+            command = ["sway", "--config", str(config)]
+            weston_env.update({
+                "WLR_BACKENDS": "headless",
+                "WLR_HEADLESS_OUTPUTS": "1",
+                "WLR_RENDERER": "pixman",
+            })
+        else:
+            command = [
+                "weston", "--backend=headless-backend.so",
+                "--socket=" + SOCKET_NAME, "--idle-time=0",
+                "--width=1280", "--height=800", "--no-config",
+            ]
+        with (root / "compositor.log").open("w+b") as weston_log:
             weston = subprocess.Popen(
-                [
-                    "weston", "--backend=headless-backend.so",
-                    "--socket=" + SOCKET_NAME, "--idle-time=0",
-                    "--width=1280", "--height=800", "--no-config",
-                ],
+                command,
                 cwd=str(root), env=weston_env,
                 stdout=weston_log, stderr=subprocess.STDOUT,
                 start_new_session=True,
             )
             try:
                 try:
-                    wait_for_socket(runtime / SOCKET_NAME, weston)
+                    if compositor == "sway":
+                        deadline = time.monotonic() + 20
+                        while time.monotonic() < deadline and weston.poll() is None:
+                            sockets = sorted(p for p in runtime.glob("wayland-*") if p.is_socket())
+                            if sockets:
+                                env["WAYLAND_DISPLAY"] = sockets[0].name
+                                break
+                            time.sleep(0.2)
+                    wait_for_socket(runtime / env["WAYLAND_DISPLAY"], weston)
                     qt_platform_probe(env)
                     for flag, label in COMMANDS:
                         check_app_window(flag, label, env)
@@ -209,15 +232,15 @@ def main():
                     weston_log.flush()
                     weston_log.seek(0)
                     print(
-                        "--- Weston diagnostic output ---\n" +
+                        "--- Compositor diagnostic output ---\n" +
                         weston_log.read()[-10000:].decode(errors="replace") +
-                        "\n--- end Weston output ---",
+                        "\n--- end compositor output ---",
                         file=sys.stderr,
                     )
                     raise
             finally:
                 stop_process(weston)
-    print("PASS: isolated headless-Weston AppInstall Wayland smoke completed", flush=True)
+    print(f"PASS: isolated headless {compositor} Wayland smoke completed", flush=True)
 
 
 if __name__ == "__main__":
