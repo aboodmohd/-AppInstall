@@ -17,6 +17,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -31,6 +32,7 @@ STATUS_NEEDS_REPAIR = 'needs-repair'
 STATUS_MISSING = 'missing'
 STATUS_STALE = 'stale'
 STATUS_CORRUPTED = 'corrupted'
+UPDATE_TTL_SECONDS = 12 * 60 * 60  # ~12 hours between automatic checks
 STATUS_UNKNOWN = 'unknown'
 
 
@@ -1875,6 +1877,19 @@ class ManagerWindow(QMainWindow):
     def _check_updates(self, manual=False):
         if self.update_operation or self.update_tag:
             return
+        if not manual:
+            last_check = settings.read().get('last_update_check', 0)
+            now = time.time()
+            if now - last_check < UPDATE_TTL_SECONDS:
+                # Within TTL: do not re-check automatically.
+                if self.update_tag:
+                    self.update_status.setText(
+                        f'AppInstall {self.update_tag} is available')
+                    self.update_check_button.hide()
+                    self.update_button.show()
+                else:
+                    self.update_status.setText('AppInstall is up to date')
+                return
         self.update_operation = 'check'
         self.update_manual = manual
         self.update_status.setText('Checking for updates…')
@@ -1905,6 +1920,11 @@ class ManagerWindow(QMainWindow):
         self.update_button.setEnabled(True)
         ok = exit_code == 0 and exit_status == QProcess.ExitStatus.NormalExit
         if operation == 'check':
+            # Record that a check was performed so auto checks respect the TTL.
+            try:
+                settings.update('last_update_check', int(time.time()))
+            except OSError:
+                pass
             import re
             match = re.search(r'^APPINSTALL_UPDATE=(v[0-9]+\.[0-9]+\.[0-9]+)$', output, re.M)
             if ok and match:
@@ -1912,6 +1932,7 @@ class ManagerWindow(QMainWindow):
                 self.update_status.setText(f'AppInstall {self.update_tag} is available')
                 self.update_check_button.hide()
                 self.update_button.show()
+                self._notify_update(match[1])
             elif ok:
                 self.update_status.setText('AppInstall is up to date')
             else:
@@ -1934,6 +1955,18 @@ class ManagerWindow(QMainWindow):
             except (OSError, UnicodeError):
                 notes = f'https://github.com/aboodmohd/-AppInstall/releases/tag/{tag}'
             self._show_update_details(f'What’s new in AppInstall {tag}', notes)
+
+    def _notify_update(self, tag):
+        """Best-effort desktop notification; headless-safe."""
+        if not settings.read().get('notifications', False):
+            return
+        try:
+            subprocess.run(
+                ['notify-send', 'AppInstall',
+                 f'Version {tag} is available'],
+                capture_output=True, timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            pass
 
     def _show_update_details(self, title, text):
         message = QMessageBox(self)

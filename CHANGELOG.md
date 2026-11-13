@@ -1,5 +1,14 @@
 # AppInstall Changelog
 
+## 1.4.0
+
+- Managed-app update checks: auto (TTL-cached ~12h) plus manual Check now.
+- Desktop notifications for available updates (notify-send, headless-safe).
+- Settings module, theme toggle (auto/light/dark), favorites, package size.
+- Drag-and-drop batch install with per-file results and cancel.
+- Container health & repair for DEB/RPM container apps.
+- Uninstall cleanup with explicit per-path checkboxes; nothing silently deleted.
+
 ## 1.3.0
 
 - Check for stable updates from My Applications.
