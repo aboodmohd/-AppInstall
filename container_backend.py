@@ -18,6 +18,8 @@ import tarfile
 import tempfile
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 
+from package_meta import require_backend_tools
+
 SPECS = {'deb': ('debian-apps', 'docker.io/library/debian:13'),
          'rpm': ('fedora-apps', 'registry.fedoraproject.org/fedora:44')}
 ENV = dict(os.environ, DBX_CONTAINER_MANAGER='podman', LC_ALL='C')
@@ -92,6 +94,7 @@ def inspect_package(file):
     kind = path.suffix.lower().lstrip('.')
     if kind not in SPECS:
         raise ValueError('Expected a .deb or .rpm file')
+    require_backend_tools('bsdtar')
     data = path.read_bytes()
     if kind == 'deb':
         members = deb_members(data)
@@ -214,9 +217,7 @@ class Engine:
         return command(['distrobox','enter','--name',info['container'],'--no-tty','--',*args])
 
     def ensure(self, info):
-        for tool in ('podman','distrobox','bsdtar'):
-            if not shutil.which(tool):
-                raise RuntimeError('Install '+tool+' using your software manager first (CachyOS: podman, distrobox, libarchive).')
+        require_backend_tools('podman', 'distrobox', 'bsdtar')
         if command(['podman','info','--format','{{.Host.Security.Rootless}}']).strip() != b'true':
             raise RuntimeError('Podman must run rootless.')
         found = subprocess.run(['podman','container','exists',info['container']],env=ENV).returncode

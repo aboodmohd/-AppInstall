@@ -152,6 +152,17 @@ class MonitorTests(unittest.TestCase):
         path.write_text('[Desktop Entry]\nName=Other\nExec=true\n')
         with self.assertRaises(RuntimeError):core.repair_launcher(spec['key'])
         self.assertIn('Name=Other',path.read_text())
+    def test_launcher_repair_rejects_dangling_symlink(self):
+        spec = self.spec()
+        path = Path(spec['desktop'])
+        path.unlink()
+        target = path.with_name('missing.desktop')
+        path.symlink_to(target)
+        with self.assertRaisesRegex(RuntimeError, 'symbolic link'):
+            core.repair_launcher(spec['key'])
+        self.assertEqual(path.readlink(), target)
+        self.assertFalse(target.exists())
+
     def test_modified_managed_launcher_is_not_overwritten(self):
         spec=self.spec();path=Path(spec['desktop'])
         changed=path.read_text().replace('Name=Example','Name=User Changed Name');path.write_text(changed)

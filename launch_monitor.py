@@ -19,6 +19,8 @@ import time
 import uuid
 from urllib.parse import unquote, urlparse
 
+from package_meta import require_backend_tools
+
 STARTUP_SECONDS = 12
 LOG_BYTES = 128*1024
 HISTORY = 8
@@ -191,8 +193,9 @@ def wrap_desktop(key, path, format, **extra):
 
 def rewrite_launcher(spec):
     path = Path(spec['desktop'])
+    if path.is_symlink():
+        raise RuntimeError('This launcher is a symbolic link and cannot be repaired safely.')
     if path.exists():
-        current = desktop_values(path.read_text())
         current_hash = hashlib.sha256(path.read_bytes()).hexdigest()
         if current_hash not in (spec.get('desktop_hash'),hashlib.sha256(spec['original_text'].encode()).hexdigest()):
             raise RuntimeError('This launcher was modified outside AppInstall. It has not been overwritten.')
@@ -312,8 +315,10 @@ def preflight(spec, argv):
             cwd=cwd or manifest['fallback']
     container=spec.get('container')
     if container:
-        if not shutil.which('podman') or not shutil.which('distrobox'):
-            return failure('container','Podman or Distrobox is missing.'),None
+        try:
+            require_backend_tools('podman', 'distrobox')
+        except RuntimeError as error:
+            return failure('container', str(error)), None
         try:
             result=subprocess.run(['podman','container','exists',container],capture_output=True,timeout=15)
             if result.returncode:

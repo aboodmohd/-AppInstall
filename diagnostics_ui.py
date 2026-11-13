@@ -63,7 +63,52 @@ class FailureWindow(QDialog):
         for name,callback in [('View Logs',self.logs),('Copy Error Details',lambda:QApplication.clipboard().setText(self.details)),('Application Diagnostics',self.diagnostics)]:
             button=QPushButton(name);button.clicked.connect(callback);row.addWidget(button)
         layout.addLayout(row)
+        self.repair_job = None
+        if (attempt['error'].get('category') == 'launcher'
+                and spec.get('desktop') and spec.get('original_text')):
+            self.repair_button = QPushButton('Repair Launcher')
+            self.repair_button.clicked.connect(self.repair_launcher)
+            row.addWidget(self.repair_button)
+            self.retry_button = QPushButton('Retry Open')
+            self.retry_button.setEnabled(False)
+            self.retry_button.clicked.connect(self.retry_open)
+            row.addWidget(self.retry_button)
         close=QPushButton('Close');close.clicked.connect(self.accept);layout.addWidget(close)
+    def repair_launcher(self):
+        if self.repair_job is not None:
+            return
+        self.repair_button.setEnabled(False)
+        self.repair_error = None
+        self.repair_job = Task(lambda: core.repair_launcher(self.attempt['key']))
+        self.repair_job.failed.connect(self.record_repair_error)
+        self.repair_job.finished.connect(self.repair_finished)
+        self.repair_job.start()
+
+    def record_repair_error(self, message):
+        self.repair_error = message
+
+    def repair_finished(self):
+        self.repair_job.deleteLater()
+        self.repair_job = None
+        if self.repair_error:
+            self.repair_button.setEnabled(True)
+            QMessageBox.warning(self, 'AppInstall', self.repair_error)
+        else:
+            self.retry_button.setEnabled(True)
+            self.retry_button.setFocus()
+
+    def retry_open(self):
+        try:
+            core.open_application(self.attempt['key'])
+        except OSError as error:
+            QMessageBox.warning(self, 'AppInstall', monitor.redact(str(error)))
+            return
+        self.accept()
+
+    def done(self, result):
+        if self.repair_job is None:
+            super().done(result)
+
     def logs(self):LogWindow(self.attempt['log'],self).exec()
     def diagnostics(self):
         self.manager=Diagnostics();self.manager.show()

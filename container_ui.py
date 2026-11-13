@@ -33,6 +33,7 @@ import result_ui
 def classify(message):
     """Map a raw failure line to a user-facing problem category."""
     text=message.lower()
+    if text.startswith('missing required host tools:'): return 'Missing backend tools'
     if 'permission' in text or 'denied' in text: return 'Permission problem'
     if 'network' in text or 'curl' in text or 'http' in text or 'download' in text: return 'Network or repository problem'
     if 'no space' in text or 'disk' in text or 'full' in text: return 'Not enough storage'

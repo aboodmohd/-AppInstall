@@ -73,6 +73,22 @@ class UrlDialogTests(_DialogTestBase, unittest.TestCase):
         self.assertEqual(self.dialog.url_edit.text(), "https://example.com/pasted.AppImage")
         self.assertTrue(self.dialog.download_btn.isEnabled())
 
+    def test_retry_preserves_url_and_checksum(self):
+        url = "https://example.com/app.AppImage"
+        checksum = "a" * 64
+        self.dialog.url_edit.setText(url)
+        self.dialog.checksum_edit.setText(checksum)
+        self.dialog._download_failed("Connection lost")
+        self.assertEqual(self.dialog.download_btn.text(), "&Retry Download")
+        self.assertFalse(self.dialog.download_btn.isEnabled())
+        self.dialog._download_worker_stopped()
+        worker = MagicMock()
+        worker.isRunning.return_value = False
+        with patch.object(url_install, "validate_url"), \
+             patch.object(url_dialog, "DownloadWorker", return_value=worker) as create:
+            self.dialog.download_btn.click()
+            create.assert_called_once_with(url, checksum, self.dialog.cancel)
+
     def test_invalid_url_shows_error(self):
         self.dialog.url_edit.setText("https://localhost/evil.AppImage")
         self.dialog._start_download()
