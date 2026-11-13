@@ -1,38 +1,56 @@
-# AppInstall v1.1.1 — Release Candidate (NOT PUBLISHED)
+# AppInstall v1.1.2 — Release Candidate (NOT PUBLISHED)
 
-**Preparation only.** AppInstall v1.1.1 is not tagged or published. The
-latest publicly available stable release remains
-[v1.1.0](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.1.0).
+**Preparation only.** This version has not been tagged or released.
+The latest public stable version remains
+[v1.1.1](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.1.1).
 
-## What's new — official AppInstall icon
+## Bug fix — moved KDE desktop shortcuts
 
-- Ships the owner's selected blue-folder / white-download-arrow / green-checkmark
-  logo in eight transparent PNG sizes: 16, 24, 32, 48, 64, 128, 256 and 512.
-- KDE application launcher, AppInstall-owned desktop actions and native
-  PySide6 windows request `Icon=appinstall` from the theme.
-- Arch/CachyOS packages install icons in system hicolor directories; source
-  installs track per-user icon files in the existing recovery/uninstall journal.
-- No change to third-party managed application icons. All existing AppImage,
-  Flatpak, DEB/RPM, Install from URL and diagnostics functionality is retained.
+- Fix AppInstall's monitored launcher failing with "The managed desktop entry
+  is missing" after a user moves an AppInstall-managed shortcut from the KDE
+  application menu to their desktop (reported with qBittorrent).
+- Detect the user's configured XDG desktop location and recognize **only**
+  byte-identical, regular, non-symlink `.desktop` files that match both the
+  previously recorded SHA-256 hash and the AppInstall-specific launch ID.
+- Keep the desktop shortcut where the user moved it; continue to reject
+  altered or unrelated launchers. My Applications recognizes validated moved
+  launchers for AppImage and Distrobox packages.
+- Existing AppImage, Flatpak, DEB, RPM, Install from URL, application
+  diagnostics, and official logo behavior are otherwise unchanged.
 
-## Packaging, acceptance and limitations
+## Package, security and release gates
 
-Proposed Arch/CachyOS candidate: `appinstall-1.1.1-1-any.pkg.tar.zst`.
-The separate one-command installer `install.sh` remains version 1.1.0 and
-continues to select only the latest **published stable** application release.
-The published v1.1.0 package must not be replaced or overwritten.
+Proposed Arch/CachyOS candidate: `appinstall-1.1.2-1-any.pkg.tar.zst`.
+Changes are limited to the moved-shortcut bug fix, tests, and release
+documentation. The separate one-command `install.sh` stays version 1.1.0 and
+continues choosing only the latest **published stable** AppInstall release.
 
-The eight official hicolor PNGs are the only permitted packaged PNG assets;
-both release evidence gates reject unapproved images and screenshot evidence.
-Rights to redistribute the approved artwork require explicit owner sign-off.
-Automated CI and disposable package testing do not substitute for an actual
-CachyOS KDE Plasma Wayland visual/functional acceptance check.
+Candidate acceptance requires all eight CI checks; actual Arch package
+build and source integrity checks; genuine published v1.1.1 → candidate
+v1.1.2 → published v1.1.1 rollback in disposable CI; and manual verification
+on an actual KDE desktop that moving a managed shortcut to the Desktop
+does not break launch, while changed/unrelated shortcuts remain untrusted.
+A successful automated test does not prove full KDE compatibility.
+No tag, public release, SHA256SUMS or final package checksum is claimed yet.
+Obtain separate owner approval before merging, then again before publishing.
 
-**Release gates:** verify the final source commit, build and inspect the exact
-candidate package, independently generate its SHA-256 manifest, complete
-KDE/app icon and upgrade/rollback acceptance, review rights and obtain separate
-explicit owner approval before tagging or publishing v1.1.1.
-No release artifact or checksum is claimed in this draft.
+---
+
+# AppInstall v1.1.1 — Release Notes (published November 12, 2026)
+
+[v1.1.1](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.1.1)
+introduced the owner's official AppInstall blue-folder/download/checkmark
+icon in eight hicolor PNG sizes (16, 24, 32, 48, 64, 128, 256, 512).
+The application launcher, desktop service menu, and native PySide6 windows
+request `Icon=appinstall`, preserving installed third-party application icons.
+
+The published Arch/CachyOS package was
+`appinstall-1.1.1-1-any.pkg.tar.zst` with SHA256SUMS and release verification
+assets. It was built from exact source commit
+`311a7785f050c0a04b6d03bfee7ddb46692eced0` after 8/8 GitHub CI checks.
+The owner reported successful side-by-side logo appearance on real CachyOS KDE;
+a full native system-package desktop acceptance test was not performed.
+The official artwork's redistribution was explicitly authorized by its owner.
 
 ---
 
