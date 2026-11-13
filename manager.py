@@ -479,12 +479,48 @@ def can_update(app):
     return app['format'] == 'flatpak'
 
 
-def uninstall_app(app):
-    """Safe uninstall via diagnostics_core. Removes only AppInstall-owned artifacts."""
+def uninstall_cleanup_items(app):
+    """Data that can be reliably tied to this app and offered for cleanup.
+
+    Every item is an exact path. AppInstall-owned launchers and icons come
+    from the registry record; launch logs and history come from the app's
+    keyed state directory; AppImage targets and manifests come from the
+    record itself. Personal application data is never offered.
+    """
+    items = []
+    for entry in app.get('exports', []) + app.get('icons', []):
+        path = entry.get('path', '')
+        if path:
+            items.append(('Export', path))
+    key = app['key']
+    history_dir = Path(os.environ.get('XDG_STATE_HOME',
+                                      Path.home()/'.local/state'))/'appinstall'/'launches'/hashlib.sha256(key.encode()).hexdigest()[:20]
+    if history_dir.is_dir():
+        items.append(('Launch history', str(history_dir)))
+    if app['format'] == 'appimage':
+        for path in (app.get('target'), app.get('manifest')):
+            if path:
+                items.append(('AppImage file', path))
+    elif app['format'] in ('deb', 'rpm') and app.get('container'):
+        items.append(('Container', app['container']))
+    # De-duplicate while preserving order.
+    seen = set()
+    unique = []
+    for label, path in items:
+        if path not in seen:
+            seen.add(path)
+            unique.append((label, path))
+    return unique
+
+
+def uninstall_app(app, cleanup=()):
+    """Safe uninstall via diagnostics_core. Removes only AppInstall-owned
+    artifacts, plus any cleanup paths explicitly selected by the user."""
     if not can_uninstall(app):
         raise RuntimeError('Uninstall is not supported for '+app['format']+' applications.')
-    core.uninstall(app['key'])
+    core.uninstall(app['key'], cleanup=set(cleanup))
     return 'Application removed. Personal application data and logs were kept.'
+
 
 
 def reinstall_app(app):
@@ -618,6 +654,7 @@ QGridLayout = QtWidgets.QGridLayout
 QSpacerItem = QtWidgets.QSpacerItem
 QMenu = QtWidgets.QMenu
 QStackedLayout = QtWidgets.QStackedLayout
+QCheckBox = QtWidgets.QCheckBox
 
 import ui_style
 import settings
@@ -1320,6 +1357,67 @@ class HealthDialog(QDialog):
         self.reexport_requested.emit()
 
 
+class UninstallDialog(QDialog):
+    """Confirm uninstall and choose which app-tied data to clean up.
+
+    Every cleanup checkbox is unchecked by default — nothing is silently
+    deleted. Only data that can be reliably tied to this app is offered:
+    exported launchers, installed icons, launch logs/history, and (for
+    DEB/RPM) the container. Exact paths are shown so the user knows what
+    will be removed.
+    """
+
+    def __init__(self, app, items, parent=None):
+        super().__init__(parent)
+        self.app = app
+        self.items = items  # list of (label, path)
+        self.setWindowTitle('Uninstall — '+app['name'])
+        self.setMinimumWidth(640)
+        self.setModal(True)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(26, 22, 26, 20)
+        root.setSpacing(14)
+
+        head = QLabel('Uninstall '+app['name']+'?')
+        font = head.font(); font.setPointSizeF(font.pointSizeF()*1.3); font.setBold(True)
+        head.setTextFormat(Qt.TextFormat.PlainText)
+        root.addWidget(head)
+
+        sub = QLabel('Only AppInstall-managed files will be removed. Personal '
+                     'application data is always kept. Choose additional data '
+                     'to clean up below (nothing is selected by default).')
+        sub.setTextFormat(Qt.TextFormat.PlainText)
+        sub.setWordWrap(True)
+        sub.setStyleSheet('color: palette(text); font-size: 12px;')
+        root.addWidget(sub)
+
+        box = QFrame()
+        box.setFrameShape(QFrame.Shape.StyledPanel)
+        bl = QVBoxLayout(box)
+        bl.setContentsMargins(12, 10, 12, 10)
+        bl.setSpacing(8)
+        bl.addWidget(QLabel('Clean up'))
+        self.checks = {}
+        for label, path in items:
+            cb = QCheckBox(label+' — '+path)
+            cb.setChecked(False)
+            cb.setToolTip('Remove '+path)
+            bl.addWidget(cb)
+            self.checks[path] = cb
+        root.addWidget(box)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Cancel |
+            QDialogButtonBox.StandardButton.Ok)
+        buttons.button(QDialogButtonBox.StandardButton.Ok).setText('Uninstall')
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        root.addWidget(buttons)
+
+    def selected_paths(self):
+        return {path for path, cb in self.checks.items() if cb.isChecked()}
+
+
 class ManagerWindow(QMainWindow):
     """Main window of the Installed Applications Manager."""
 
@@ -1716,20 +1814,17 @@ class ManagerWindow(QMainWindow):
         if not can_uninstall(app):
             QMessageBox.information(self, 'AppInstall', 'Uninstall is not supported for '+app['format']+' applications.')
             return
-        reply = QMessageBox.question(
-            self, 'AppInstall',
-            'Uninstall '+app['name']+' ('+app['package_id']+')?\n\n'
-            'Only AppInstall-managed files, launchers and metadata will be removed. '
-            'Personal application data and logs will be kept.',
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
-        if reply != QMessageBox.StandardButton.Yes:
+        items = uninstall_cleanup_items(app)
+        dialog = UninstallDialog(app, items, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         try:
-            message = uninstall_app(app)
+            message = uninstall_app(app, cleanup=dialog.selected_paths())
             QMessageBox.information(self, 'AppInstall', message)
             self.refresh()
         except Exception as error:
             QMessageBox.warning(self, 'AppInstall', 'Uninstall failed: '+str(error))
+
 
     def _show_logs(self, app):
         last = app.get('last_launch') or {}
