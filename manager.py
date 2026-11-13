@@ -226,6 +226,95 @@ def format_size(size):
     return f'{value:.1f} PB'
 
 
+# Extension → MIME mapping for dropped package files. Every value must also
+# appear in the MimeType= line of appinstall.desktop (enforced by tests). The
+# iso9660-appimage and quickdrop-appimage MIME types are AppImage containers
+# sharing the same .AppImage extension, so no extra entry is needed.
+PACKAGE_MIMES = {
+    '.deb': 'application/vnd.debian.binary-package',
+    '.rpm': 'application/x-rpm',
+    '.appimage': 'application/vnd.appimage',
+    '.flatpak': 'application/vnd.flatpak',
+    '.flatpakref': 'application/vnd.flatpak.ref',
+    '.flatpakrepo': 'application/vnd.flatpak.repo',
+}
+
+
+def classify_package(path):
+    """Desktop-listed MIME type for a dropped package file, or None."""
+    target = Path(path)
+    try:
+        if not target.is_file():
+            return None
+    except OSError:
+        return None
+    return PACKAGE_MIMES.get(target.suffix.lower())
+
+
+def _appinstall_command():
+    """Path of the appinstall CLI hosting the normal per-file review."""
+    command = Path(__file__).with_name('appinstall')
+    if command.is_file():
+        return command
+    return Path.home()/'.local/bin/appinstall'
+
+
+class BatchItem:
+    """One dropped file and its install state."""
+    QUEUED = 'queued'
+    RUNNING = 'running'
+    INSTALLED = 'installed'
+    FAILED = 'failed'
+    CANCELLED = 'cancelled'
+    UNSUPPORTED = 'unsupported'
+
+    def __init__(self, path):
+        self.path = Path(path)
+        self.mime = classify_package(path)
+        self.state = BatchItem.QUEUED if self.mime else BatchItem.UNSUPPORTED
+        self.exit_code = None
+
+
+class BatchQueue:
+    """Sequential queue state for batch installs. Qt-free on purpose so the
+    state transitions are testable without spawning processes."""
+
+    def __init__(self, paths=()):
+        self.items = [BatchItem(path) for path in paths]
+
+    def runnable(self):
+        """Index of the next item to review, or None when nothing is queued."""
+        for index, item in enumerate(self.items):
+            if item.state == BatchItem.QUEUED:
+                return index
+        return None
+
+    def started(self, index):
+        item = self.items[index]
+        if item.state == BatchItem.QUEUED:
+            item.state = BatchItem.RUNNING
+
+    def finished(self, index, exit_code):
+        item = self.items[index]
+        if item.state != BatchItem.RUNNING:
+            return  # Cancelled mid-review keeps its Cancelled verdict.
+        item.exit_code = exit_code
+        item.state = BatchItem.INSTALLED if exit_code == 0 else BatchItem.FAILED
+
+    def cancel(self, index):
+        item = self.items[index]
+        if item.state in (BatchItem.QUEUED, BatchItem.RUNNING):
+            item.state = BatchItem.CANCELLED
+
+    def busy(self):
+        return any(item.state == BatchItem.RUNNING for item in self.items)
+
+    def pending(self):
+        return any(item.state in (BatchItem.QUEUED, BatchItem.RUNNING)
+                   for item in self.items)
+
+
+
 def _friendly_launch_status(status):
     """Map a raw launch status to user-friendly text."""
     friendly = {
@@ -924,6 +1013,153 @@ def _show_log(path, parent):
     dialog.exec()
 
 
+class BatchQueueDialog(QDialog):
+    """Modeless progress list for a drag-and-drop batch install.
+
+    One file runs at a time through the normal `appinstall FILE` review so
+    confirm dialogs never overlap. Every file keeps its own row and result;
+    cancelling a queued row skips it, cancelling the running row closes that
+    review and the queue moves on with the remaining files. Closing the
+    dialog never kills a running review — it is an independent app window.
+    """
+
+    def __init__(self, queue, parent=None):
+        super().__init__(parent)
+        self.queue = queue
+        self.process = None
+        self._active_index = None
+        self._kill_timer = None
+        self.rows = {}
+        self.setWindowTitle('Installing Files')
+        self.setMinimumWidth(480)
+        self.setModal(False)
+        root = QVBoxLayout(self)
+        self.list = QListWidget()
+        self.list.setSelectionMode(QListWidget.SelectionMode.NoSelection)
+        self.list.setAlternatingRowColors(True)
+        root.addWidget(self.list)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(self.reject)
+        root.addWidget(buttons)
+        for index, item in enumerate(self.queue.items):
+            self._add_row(index, item)
+        self._run_next()
+
+    def _add_row(self, index, item):
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(8, 4, 8, 4)
+        name = QLabel(item.path.name)
+        name.setToolTip(str(item.path))
+        layout.addWidget(name, 1)
+        status = QLabel(self._status_text(item))
+        layout.addWidget(status)
+        cancel = QPushButton('Cancel')
+        cancel.setObjectName('ghost')
+        cancel.clicked.connect(lambda checked=False, i=index: self._cancel(i))
+        layout.addWidget(cancel)
+        wrapper = QListWidgetItem()
+        wrapper.setSizeHint(row.sizeHint())
+        self.list.addItem(wrapper)
+        self.list.setItemWidget(wrapper, row)
+        active = item.state in (BatchItem.QUEUED, BatchItem.RUNNING)
+        cancel.setEnabled(active)
+        cancel.setVisible(active)
+        self.rows[index] = (status, cancel)
+
+    @staticmethod
+    def _status_text(item):
+        if item.state == BatchItem.QUEUED:
+            return 'Queued'
+        if item.state == BatchItem.RUNNING:
+            return 'Review open…'
+        if item.state == BatchItem.INSTALLED:
+            return 'Installed'
+        if item.state == BatchItem.FAILED:
+            return f'Failed (exit {item.exit_code})'
+        if item.state == BatchItem.CANCELLED:
+            return 'Cancelled'
+        return 'Unsupported type'
+
+    def _refresh(self, index):
+        item = self.queue.items[index]
+        status, cancel = self.rows[index]
+        status.setText(self._status_text(item))
+        active = item.state in (BatchItem.QUEUED, BatchItem.RUNNING)
+        cancel.setEnabled(active)
+        cancel.setVisible(active)
+
+    def _refresh_all(self):
+        for index in self.rows:
+            self._refresh(index)
+
+    def append(self, paths):
+        """Add more dropped files to a dialog that is already open."""
+        for path in paths:
+            index = len(self.queue.items)
+            self.queue.items.append(BatchItem(path))
+            self._add_row(index, self.queue.items[index])
+        if not self.queue.busy():
+            self._run_next()
+
+    def _run_next(self):
+        index = self.queue.runnable()
+        if index is None:
+            self.process = None
+            self._active_index = None
+            return
+        item = self.queue.items[index]
+        self.queue.started(index)
+        self._refresh(index)
+        self._active_index = index
+        self.process = QProcess(self)
+        self.process.finished.connect(self._on_finished)
+        self.process.errorOccurred.connect(self._on_process_error)
+        self.process.start(str(_appinstall_command()), ['--', str(item.path)])
+
+    def _on_finished(self, exit_code=None, status=None):
+        if self._kill_timer is not None:
+            self._kill_timer.stop()
+            self._kill_timer = None
+        process = self.process
+        self.process = None
+        if self._active_index is None:
+            return
+        index = self._active_index
+        self._active_index = None
+        code = process.exitCode() if exit_code is None else exit_code
+        self.queue.finished(index, code)
+        self._refresh(index)
+        self._run_next()
+
+    def _on_process_error(self, error):
+        # finished() is not emitted when the process never started.
+        if error == QProcess.ProcessError.FailedToStart:
+            self._on_finished(-1)
+
+    def _cancel(self, index):
+        item = self.queue.items[index]
+        if item.state not in (BatchItem.QUEUED, BatchItem.RUNNING):
+            return
+        running = item.state == BatchItem.RUNNING
+        self.queue.cancel(index)
+        self._refresh(index)
+        if running and self.process is not None:
+            self.process.terminate()
+            kill_timer = QTimer(self)
+            kill_timer.setSingleShot(True)
+            kill_timer.timeout.connect(self._force_kill)
+            kill_timer.start(3000)
+            self._kill_timer = kill_timer
+        elif not self.queue.busy():
+            self._run_next()
+
+    def _force_kill(self):
+        self._kill_timer = None
+        if self.process is not None:
+            self.process.kill()
+
+
 class ManagerWindow(QMainWindow):
     """Main window of the Installed Applications Manager."""
 
@@ -938,6 +1174,8 @@ class ManagerWindow(QMainWindow):
         self.cards = {}
         self.favorites = set(settings.read().get('favorites', []))
         self.loader = None
+        self.setAcceptDrops(True)
+        self.batch_dialog = None
         self._inventory_revision = inventory_signature()
         self._refresh_pending = False
         self._build_ui()
@@ -1229,6 +1467,46 @@ class ManagerWindow(QMainWindow):
         theme = settings.read().get('theme', 'auto')
         for theme_id, action in self.theme_actions.items():
             action.setChecked(theme_id == theme)
+
+    # ── Drag-and-drop batch install ──────────────────────────────────────
+
+    def dragEnterEvent(self, event):
+        if self._acceptable(event.mimeData()):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    @staticmethod
+    def _acceptable(mime_data):
+        if not mime_data.hasUrls():
+            return False
+        return any(classify_package(url.toLocalFile())
+                   for url in mime_data.urls())
+
+    def dropEvent(self, event):
+        paths = [url.toLocalFile() for url in event.mimeData().urls()
+                 if url.isLocalFile()]
+        if paths:
+            self.open_batch(paths)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def open_batch(self, paths):
+        """Queue dropped files; reuse the open batch dialog if there is one."""
+        if self.batch_dialog is not None and self.batch_dialog.isVisible():
+            self.batch_dialog.append(paths)
+            self.batch_dialog.raise_()
+            self.batch_dialog.activateWindow()
+            return self.batch_dialog
+        dialog = BatchQueueDialog(BatchQueue(paths), self)
+        dialog.finished.connect(self._batch_dialog_closed)
+        dialog.show()
+        self.batch_dialog = dialog
+        return dialog
+
+    def _batch_dialog_closed(self, result=None):
+        self.batch_dialog = None
 
     # ── actions ──────────────────────────────────────────────────────────
 
