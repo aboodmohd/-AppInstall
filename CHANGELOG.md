@@ -1,5 +1,11 @@
 # AppInstall Changelog
 
+## 1.2.2
+
+- Repair a managed launcher directly from the launch failure dialog, then choose Retry Open.
+- Retry failed URL downloads with the same URL and expected SHA-256.
+- See which DEB/RPM backend tools are missing and how to install them on your distro.
+
 ## 1.2.1
 
 - Add Install from File to My Applications and provide Qt fallback dialogs.
