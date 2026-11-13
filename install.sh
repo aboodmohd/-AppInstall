@@ -88,6 +88,8 @@ STATE_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/installer"
 LOG_FILE=""
 TMP_DIR=""
 TTY_OK=0
+DESKTOP_CHECK=0
+DESKTOP_UPDATE=""
 
 # ---------------------------------------------------------------------------
 # Output helpers
@@ -244,6 +246,12 @@ run_root() {
   fi
   if ((EUID == 0)); then
     "$@"
+  elif [[ -n "$DESKTOP_UPDATE" ]]; then
+    local executable
+    executable="$(command -v "$1")" || return 2
+    shift
+    [[ "$executable" == /usr/bin/pacman || "$executable" == /usr/bin/apt-get ]] || return 2
+    /usr/bin/pkexec --disable-internal-agent "$executable" "$@"
   elif have_cmd sudo; then
     if [[ $TTY_OK -eq 1 ]]; then
       sudo -- "$@" <"$TTY_IN"
@@ -285,7 +293,12 @@ api_get() { # path -> stdout
 resolve_release() {
   local json
   local family="${1:-arch}"
-  json="$(api_get "/repos/${REPO_SLUG}/releases/latest")" || return 4
+  if [[ $DESKTOP_CHECK -eq 1 || -n "$DESKTOP_UPDATE" ]]; then
+    json="$(curl -q -fsS --proto '=https' --connect-timeout 8 --max-time 20 \
+      "https://api.github.com/repos/${REPO_SLUG}/releases/latest")" || return 4
+  else
+    json="$(api_get "/repos/${REPO_SLUG}/releases/latest")" || return 4
+  fi
   python3 -c '
 import json, re, sys
 from urllib.parse import urlparse
@@ -717,7 +730,7 @@ install_package_file() { # verified pkg path
     return 0
   fi
   info "Installing package: pacman -U $(basename "$pkg")"
-  if [[ $TTY_OK -eq 1 ]]; then
+  if [[ $TTY_OK -eq 1 && -z "$DESKTOP_UPDATE" ]]; then
     run_root pacman -U --needed -- "$pkg" || die 5 "pacman reported an error and the package was not installed. Review pacman's message; nothing else was changed by this script."
   else
     if [[ $ASSUME_YES -ne 1 ]]; then
@@ -807,6 +820,12 @@ HELP
 parse_flags() {
   while (($#)); do
     case $1 in
+      --desktop-check) DESKTOP_CHECK=1 ;;
+      --desktop-update)
+        [[ ${2:-} =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die 2 "Invalid update version."
+        DESKTOP_UPDATE="$2"
+        shift
+        ;;
       --yes|-y) ASSUME_YES=1 ;;
       --set-defaults) SET_DEFAULTS=1 ;;
       --no-defaults) NO_DEFAULTS=1 ;;
@@ -884,12 +903,22 @@ main() {
     exit 2
   fi
 
+  if [[ $DESKTOP_CHECK -eq 1 || -n "$DESKTOP_UPDATE" ]]; then
+    [[ -z "$TEST_OS_RELEASE$TEST_RELEASES_JSON" ]] || die 2 "Desktop updates require the live release service."
+    if [[ -n "$DESKTOP_UPDATE" ]]; then
+      [[ -x /usr/bin/pkexec ]] || die 2 "Desktop authentication is unavailable. Update AppInstall in a terminal."
+      have_cmd pkexec || die 2 "Install polkit and start a desktop authentication agent, or update in a terminal."
+      ASSUME_YES=1
+      NO_DEFAULTS=1
+      NO_OPTIONAL=1
+    fi
+  fi
   prepare_tty
-  if [[ $TTY_OK -eq 0 && $ASSUME_YES -eq 0 && $DRY_RUN -eq 0 ]]; then
+  if [[ $DESKTOP_CHECK -eq 0 && $TTY_OK -eq 0 && $ASSUME_YES -eq 0 && $DRY_RUN -eq 0 ]]; then
     die 2 "Noninteractive run without --yes: nothing was installed. Run from a terminal to answer prompts."
   fi
   if ! have_cmd python3; then
-    if [[ "$family" == debian ]]; then
+    if [[ "$family" == debian || $DESKTOP_CHECK -eq 1 || -n "$DESKTOP_UPDATE" ]]; then
       die 2 "Install the distribution's python3 package, then retry."
     fi
     if [[ $DRY_RUN -eq 1 ]]; then
@@ -904,7 +933,7 @@ main() {
   fi
 
   # --- 4. state cleanup (first-run hygiene) ----------------------------
-  if [[ $DRY_RUN -eq 0 ]]; then
+  if [[ $DRY_RUN -eq 0 && $DESKTOP_CHECK -eq 0 && -z "$DESKTOP_UPDATE" ]]; then
     mkdir -p "$STATE_DIR"
     LOG_FILE="${STATE_DIR}/install-log.txt"
   fi
@@ -921,7 +950,9 @@ main() {
   prepare_tty
 
   # --- 6. conflict / shadow install handling --------------------------
-  check_shadow_conflicts
+  if [[ $DESKTOP_CHECK -eq 0 ]]; then
+    check_shadow_conflicts
+  fi
 
   # --- 7. resolve the latest stable release ---------------------------
   local installed_rel="" installed="0"
@@ -939,6 +970,20 @@ main() {
   local pkg_ver
   pkg_ver="$(package_version_from_asset "$pkg_name")"
   info "Latest stable: ${tag} — asset: ${pkg_name}"
+
+  if [[ $DESKTOP_CHECK -eq 1 || -n "$DESKTOP_UPDATE" ]]; then
+    [[ -n "$installed_rel" ]] || die 2 "A native AppInstall package is required for desktop updates."
+    [[ "$pkg_ver" == "${tag#v}-"* ]] || die 4 "Package version does not match the selected release."
+    local relation
+    relation="$(version_relation "$installed_rel" "$pkg_ver" "$family")"
+    if [[ $DESKTOP_CHECK -eq 1 ]]; then
+      if [[ "$relation" == lt ]]; then printf 'APPINSTALL_UPDATE=%s\n' "$tag"; fi
+      return 0
+    fi
+    [[ "$tag" == "$DESKTOP_UPDATE" ]] || die 4 "The latest release changed. Check for updates again."
+    [[ "$relation" == lt || "$relation" == eq ]] || die 5 "The selected update cannot be installed over this version."
+  fi
+
 
   # --- 8. dry-run: show the complete plan, change nothing ----------------
   if [[ $DRY_RUN -eq 1 ]]; then
@@ -1010,6 +1055,12 @@ main() {
     install_package_file "${TMP_DIR}/${pkg_name}" "$family"
   fi
 
+  if [[ -n "$DESKTOP_UPDATE" ]]; then
+    [[ "$(installed_version "$family")" == "$pkg_ver" ]] || die 5 "The installed package version could not be verified."
+    printf 'APPINSTALL_UPDATED=%s\n' "$tag"
+    return 0
+  fi
+
   # --- 10. optional backends ------------------------------------------
   if [[ "$family" == arch ]]; then
     audit_optional_backends
@@ -1039,6 +1090,12 @@ main() {
 # Treat stdin execution like direct file execution, but not like `source`.
 if [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
   parse_flags "$@"
+  if [[ $DESKTOP_CHECK -eq 1 || -n "$DESKTOP_UPDATE" ]]; then
+    [[ $# -eq 1 && $DESKTOP_CHECK -eq 1 || $# -eq 2 && -n "$DESKTOP_UPDATE" ]] ||
+      die 2 "Desktop update modes must be used on their own."
+    DRY_RUN=0 ASSUME_YES=0 SET_DEFAULTS=0 NO_DEFAULTS=0 WITH_OPTIONAL=0 NO_OPTIONAL=0
+    ALLOW_ARCH_LIKE=0 REMOVE_SOURCE_INSTALL=0 UNINSTALL=0
+  fi
   if [[ $SET_DEFAULTS -eq 1 && $NO_DEFAULTS -eq 1 ]]; then
     bad "--set-defaults and --no-defaults are mutually exclusive."
     exit 2

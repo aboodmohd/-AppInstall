@@ -6,11 +6,12 @@ pkgdesc="Double-click installer for AppImage, Flatpak, DEB, and RPM files on Lin
 arch=('any')
 url="https://github.com/aboodmohd/-AppInstall"
 license=('MIT')
-depends=('bash' 'coreutils' 'xdg-utils' 'python' 'pyside6')
-optdepends=('flatpak: Flatpak installation' 'kdialog: KDE dialogs' 'zenity: GNOME and Xfce dialogs' 'libnotify: notifications' 'fuse2: AppImage mounting' 'squashfs-tools: passive AppImage preview' 'podman: rootless DEB/RPM containers' 'distrobox: DEB/RPM integration' 'libarchive: package inspection' 'binutils: optional static ELF dependency checks')
+depends=('bash' 'coreutils' 'xdg-utils' 'python' 'pyside6' 'curl')
+optdepends=('polkit: graphical update authentication' 'flatpak: Flatpak installation' 'kdialog: KDE dialogs' 'zenity: GNOME and Xfce dialogs' 'libnotify: notifications' 'fuse2: AppImage mounting' 'squashfs-tools: passive AppImage preview' 'podman: rootless DEB/RPM containers' 'distrobox: DEB/RPM integration' 'libarchive: package inspection' 'binutils: optional static ELF dependency checks')
 backup=()
 
-source=('appinstall'
+source=('install.sh'
+        'appinstall'
         'appinstall.desktop'
         'appinstall-appimage-review.desktop'
         'confirm.py'
@@ -62,11 +63,12 @@ source=('appinstall'
         'appinstall-512.png'
 )
 b2sums=(
+        '2d2c68e50853bd37a9d546bff53009d62bd3e7146f529a0636003a5a83b68fee28b7a8dced396576a13f589f6194a270657ea3f919e9c31017fb8fbf6adcf6db'
         '44965a7becd7c0fd5c73eacb4b2e35b35560d533572f3eb538ade6a12e2bec4f7a4d1ba5d1e0cd9f8c89611ba86ceb595e2ff6fdfd6565f4cde7e8135fcea72e'
         'f8da2822ad2a5638b9f7932728727fc624fae695db8cc30470783e1f7e26e719d1fa8624e0533ebcfd1713f99935d7752d0b8b3c46d90c06f2ff034f8b307d59'
         '5a0a824810d4c4d7a8f7f2603f3c4623874eef4de55ee4b360ab0321ecfae8edf42a9443c134e10272fba0b96f89f74cd45473e6ac09c6493595c9ad0cf9c0e5'
         'aa2943ff6d844443cb68654103a1aadadea9c3b000dffe66ef0601999f12e9a6e5cd3b8ab0b7aa7f5c60bebb1fe872ff51aebec12722cce31f98b04194b39cc8'
-        '7ffd722a584490349dcefa9c60a51836089b12ec95109945af371a74ae4e154e64932c4d2c254e36447a20b9f35f6a91231c0d7a3bbf77572e9a3b08fadc5f1e'
+        'a71e1989141efad315b630bffc6beffbdf6b6fe504a57b3653f7db6110f96ec6996dfbb63ae5b7fb9b74271cdee86cc7dcc682e8fd8fc159371994df4c550345'
         '2e05cd589ad5fe269caf53e4f15585792cf0be6fdd18068609e903164d5b976eb4a9bccd789e2fbd13efa9a23fa8ddce50cde9c73bfe1a109620102379d7a7a4'
         'ed13786f49c5f7bda53e4a0abf93c8b0cc21eeb1b43509e4a91929b08fb58baaf2fc8922e0554fca4ec0642c3a0f3f08a7118d6b3f5b5064bd10251289c7f5b7'
         'ecb167e735b2eb0756fa05ff729caa8494ca1a1d886fe15402f0d2da31087a2e42ec54c1a6b18baca25c66322e5d9ee09fc65e662152604f857f3a0eea58bd83'
@@ -81,7 +83,7 @@ b2sums=(
         '91e72a7e9bed260673d1f7fbeb7f7f8f80128e2acbe4b863ef22a39216d640939dac2e8353e6ec93e2bb50febfa157d4100466b148f7ffe234deb9d0b779a1ca'
         '40312bd4605b692791c1910d2126108ea84f34400131c4e03f00ae257c8d773523da493f687046d3c38a85d7231133bbb789a6f88d8f484e26d17bd5a8226307'
         'bb3f9b8d6a3916a3cb249ca5201489c1e3259fbf5f579b6a70b6f23400f45c91fc1d46cace131c4a825392f728b6ec731d5803ce8c9f36c99e1b405a77e3ff2a'
-        '22da7a5816548dd9f33baf9edace3d9d99ee0ef7a556fb07de875dc741ffd14897280032fc7b9a605fe7683b1c06783f69bdb5e00c6f0ffc4c657e0bc9d254e7'
+        'd6ccc4dd9c61ccb6cd6cfae8506f368a03cbdf316a3ca4d2e70d98a48b958668830bcde700edeb6e2391ded24e27ad8d32b4e83671c3e301247b9f56e6876626'
         'fb989f8ee11448944229f9268b47ac9c645191f1cf58943837b3215dd596decf989bd023d8bf7b1444f5d3be36aa58059e86e8693d192c606d6c3fe43ec47c77'
         'aa57bc6a30118876bba2d2360383e2bb13b43738dc8d87296f7cfa53df1c19c3b2348dd1a4ffb00199a8a06a0f0dbf285edd7e33edffad02e98a9f07c29fb72d'
         'eb7caf4bc1e66f0db898e56dd98926b96b7afbf5b1a561aff75f06e93bbe0ad45f169230f0938c76d9770ce82b4895295a7c47e94b1fbd1b7a70c455dbd0ad4a'
@@ -108,6 +110,7 @@ b2sums=(
         '52d35713d301522f310302200c6dc53d2b79f683002814cc39fcc0667bb1957b27f28d50d0311c07e8a558a02f617a20858d49d7cd4275d7943a69f60bb9601a'
 )
 package() {
+    install -Dm0755 "$srcdir/install.sh" "$pkgdir/usr/bin/appinstall-installer"
     for helper in container_backend.py container_ui.py launch_monitor.py manager.py result_ui.py runtime_probe.py diagnostics_core.py diagnostics_ui.py url_install.py url_dialog.py; do
         install -Dm0644 "$srcdir/$helper" "$pkgdir/usr/bin/$helper"
     done

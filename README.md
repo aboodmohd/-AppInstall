@@ -55,6 +55,12 @@ File…**. The file picker works without a desktop portal. File-manager
 associations and launcher menus vary by session. CI checks the common X11
 and Wayland paths. Individual desktop sessions may need separate testing.
 
+My Applications checks for AppInstall updates while open. When a release is
+available, choose **Update AppInstall** and authenticate using your desktop’s
+polkit agent. After installation, AppInstall shows the release notes. Reopen
+AppInstall to use the new version. On desktops without an authentication
+agent, run the terminal installer above.
+
 ## Native Debian-family package candidate
 
 The `Debian-family package` GitHub Actions workflow builds an APT-installable

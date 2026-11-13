@@ -440,6 +440,7 @@ def diagnostics_for(app):
 
 from qt_compat import QtCore, Signal
 Qt = QtCore.Qt
+QProcess = QtCore.QProcess
 QThread = QtCore.QThread
 QTimer = QtCore.QTimer
 QSize = QtCore.QSize
@@ -902,6 +903,21 @@ class ManagerWindow(QMainWindow):
         self._inventory_timer.timeout.connect(self._check_inventory_changes)
         self._inventory_timer.start()
         QTimer.singleShot(0, self.refresh)
+        self.update_helper = Path(__file__).with_name('appinstall-installer')
+        self.update_process = QProcess(self)
+        self.update_process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+        self.update_process.finished.connect(self._update_finished)
+        self.update_process.errorOccurred.connect(self._update_process_error)
+        self.update_operation = ''
+        self.update_tag = ''
+        if self.update_helper.is_file():
+            self.update_row.show()
+            QTimer.singleShot(1200, self._check_updates)
+            self.update_timer = QTimer(self)
+            self.update_timer.setInterval(4 * 60 * 60 * 1000)
+            self.update_timer.timeout.connect(self._check_updates)
+            self.update_timer.start()
+
 
     def _build_ui(self):
         central = QWidget()
@@ -933,6 +949,22 @@ class ManagerWindow(QMainWindow):
         self.search.textChanged.connect(self._refilter)
         header.addWidget(self.search)
         root.addLayout(header)
+
+        self.update_row = QWidget()
+        updates = QHBoxLayout(self.update_row)
+        updates.setContentsMargins(0, 0, 0, 0)
+        self.update_status = QLabel('AppInstall updates')
+        self.update_status.setTextFormat(Qt.TextFormat.PlainText)
+        updates.addWidget(self.update_status, 1)
+        self.update_check_button = QPushButton('Check for Updates')
+        self.update_check_button.clicked.connect(lambda: self._check_updates(manual=True))
+        updates.addWidget(self.update_check_button)
+        self.update_button = QPushButton('Update AppInstall')
+        self.update_button.clicked.connect(self._install_update)
+        self.update_button.hide()
+        updates.addWidget(self.update_button)
+        self.update_row.hide()
+        root.addWidget(self.update_row)
 
         # Filters.
         filters = QHBoxLayout()
@@ -1145,6 +1177,88 @@ class ManagerWindow(QMainWindow):
         import subprocess, sys
         ui = Path(__file__).resolve().with_name('diagnostics_ui.py')
         subprocess.Popen([sys.executable, str(ui)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+    def _check_updates(self, manual=False):
+        if self.update_operation or self.update_tag:
+            return
+        self.update_operation = 'check'
+        self.update_manual = manual
+        self.update_status.setText('Checking for updates…')
+        self.update_check_button.setEnabled(False)
+        self.update_process.start('/usr/bin/bash', [str(self.update_helper), '--desktop-check'])
+        self.update_process.closeWriteChannel()
+
+    def _install_update(self):
+        if self.update_operation or not self.update_tag:
+            return
+        self.update_operation = 'install'
+        self.update_button.setEnabled(False)
+        self.update_check_button.setEnabled(False)
+        self.update_status.setText(f'Installing AppInstall {self.update_tag}…')
+        self.update_process.start('/usr/bin/bash', [
+            str(self.update_helper), '--desktop-update', self.update_tag,
+        ])
+        self.update_process.closeWriteChannel()
+
+    def _update_process_error(self, error):
+        if error == QProcess.ProcessError.FailedToStart:
+            self._update_finished(1, QProcess.ExitStatus.CrashExit)
+
+    def _update_finished(self, exit_code, exit_status):
+        operation, self.update_operation = self.update_operation, ''
+        output = bytes(self.update_process.readAll()).decode(errors='replace')
+        self.update_check_button.setEnabled(True)
+        self.update_button.setEnabled(True)
+        ok = exit_code == 0 and exit_status == QProcess.ExitStatus.NormalExit
+        if operation == 'check':
+            import re
+            match = re.search(r'^APPINSTALL_UPDATE=(v[0-9]+\.[0-9]+\.[0-9]+)$', output, re.M)
+            if ok and match:
+                self.update_tag = match[1]
+                self.update_status.setText(f'AppInstall {self.update_tag} is available')
+                self.update_check_button.hide()
+                self.update_button.show()
+            elif ok:
+                self.update_status.setText('AppInstall is up to date')
+            else:
+                self.update_status.setText('Could not check for updates')
+                if self.update_manual:
+                    self._show_update_details('Update check failed', output)
+        elif operation == 'install':
+            tag = self.update_tag
+            self.update_tag = ''
+            self.update_button.hide()
+            self.update_check_button.show()
+            if not ok or f'APPINSTALL_UPDATED={tag}' not in output.splitlines():
+                self.update_status.setText('Update did not complete')
+                self._show_update_details('AppInstall update did not complete', output)
+                return
+            self.update_status.setText(f'AppInstall {tag} installed. Reopen AppInstall to use it.')
+            notes_path = Path('/usr/share/doc/appinstall/RELEASE_NOTES.md')
+            try:
+                notes = notes_path.read_text(encoding='utf-8')
+            except (OSError, UnicodeError):
+                notes = f'https://github.com/aboodmohd/-AppInstall/releases/tag/{tag}'
+            self._show_update_details(f'What’s new in AppInstall {tag}', notes)
+
+    def _show_update_details(self, title, text):
+        message = QMessageBox(self)
+        message.setWindowTitle('AppInstall')
+        message.setTextFormat(Qt.TextFormat.PlainText)
+        message.setText(title)
+        message.setDetailedText(text[-12000:])
+        if title.startswith('What’s new'):
+            message.setInformativeText(text[:2500])
+        message.exec()
+
+    def closeEvent(self, event):
+        if self.update_operation == 'install':
+            event.ignore()
+            return
+        if self.update_operation == 'check':
+            self.update_process.kill()
+            self.update_process.waitForFinished(1000)
+        super().closeEvent(event)
 
     def _install_from_url(self):
         dialog = UrlInstallDialog(self)
