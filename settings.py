@@ -12,7 +12,8 @@ import uuid
 from pathlib import Path
 
 THEMES = ('auto', 'light', 'dark')
-DEFAULTS = {'theme': 'auto', 'favorites': [], 'notifications': False}
+DEFAULTS = {'theme': 'auto', 'favorites': [], 'notifications': False,
+            'last_update_check': 0}
 
 
 def settings_path():
@@ -33,6 +34,11 @@ def _sanitize(values):
     notifications = values.get('notifications')
     if isinstance(notifications, bool):
         result['notifications'] = notifications
+    last_check = values.get('last_update_check')
+    if isinstance(last_check, (int, float)):
+        result['last_update_check'] = int(last_check)
+    else:
+        result['last_update_check'] = DEFAULTS['last_update_check']
     return result
 
 
