@@ -248,9 +248,11 @@ run_root() {
     "$@"
   elif [[ -n "$DESKTOP_UPDATE" ]]; then
     local executable
-    executable="$(command -v "$1")" || return 2
+    case "$1" in
+      pacman|apt-get) executable="/usr/bin/$1" ;;
+      *) return 2 ;;
+    esac
     shift
-    [[ "$executable" == /usr/bin/pacman || "$executable" == /usr/bin/apt-get ]] || return 2
     /usr/bin/pkexec --disable-internal-agent "$executable" "$@"
   elif have_cmd sudo; then
     if [[ $TTY_OK -eq 1 ]]; then
