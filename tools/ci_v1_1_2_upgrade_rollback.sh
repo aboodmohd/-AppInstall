@@ -40,8 +40,8 @@ curl -fLsS --retry 3 --connect-timeout 20 --max-time 120 \
   cd "$tmp"
   sha256sum -c --strict SHA256SUMS
 )
-pacman -Qip "$tmp/$stable_name" | grep -Eq '^Version[[:space:]]*:[[:space:]]*1\.1\.0-1$'
-pacman -Qip "$candidate" | grep -Eq '^Version[[:space:]]*:[[:space:]]*1\.1\.1-1$'
+pacman -Qip "$tmp/$stable_name" | grep -Eq '^Version[[:space:]]*:[[:space:]]*1\.1\.1-1$'
+pacman -Qip "$candidate" | grep -Eq '^Version[[:space:]]*:[[:space:]]*1\.1\.2-1$'
 
 # These represent unrelated per-user files: package operations must not
 # overwrite or modify them. All paths belong to a disposable test account.
