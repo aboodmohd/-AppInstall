@@ -12,6 +12,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from subprocess import CompletedProcess
 from unittest.mock import Mock, patch
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -221,6 +222,48 @@ class RepairTests(unittest.TestCase):
         with patch.object(c, 'Engine', return_value=engine):
             with self.assertRaises(RuntimeError):
                 diagnostics_core.repair_export('flatpak:org.example')
+
+    def test_repair_refuses_missing_container_keeps_records_intact(self):
+        """Container missing but managed-app records exist: repair must refuse
+        to create an empty replacement and leave records and launchers intact."""
+        spec = self._spec()
+        monitor.atomic_json(
+            Path(os.environ['XDG_DATA_HOME']) / 'appinstall' / 'launchers.json',
+            {'deb:example': spec})
+        with patch.object(c.shutil,'which',return_value='/usr/bin/tool'), \
+             patch.object(c,'command',
+                          side_effect=[b'true', RuntimeError('create failed')]), \
+             patch.object(c.subprocess,'run',
+                          return_value=CompletedProcess([],1)):
+            engine = self.engine()
+            engine.registry['deb:example'] = spec
+            ownership = engine.root / (spec['container'] + '.json')
+            ownership.write_text('{}')
+            before = dict(engine.registry)
+            with patch.object(c, 'Engine', return_value=engine):
+                with self.assertRaises(RuntimeError):
+                    diagnostics_core.repair_container('deb:example')
+        self.assertEqual(engine.registry, before)
+
+    def test_reexport_preserves_user_modified_launcher(self):
+        """A launcher whose on-disk content no longer matches the recorded
+        hash is treated as user-modified: re-export refuses and leaves it
+        untouched."""
+        import hashlib
+        engine = self.engine()
+        apps = Path(os.environ['XDG_DATA_HOME']) / 'applications'
+        apps.mkdir(parents=True)
+        predicted = apps / 'debian-apps-example-example.desktop'
+        predicted.write_text('user-modified launcher content')
+        spec = self._spec()
+        spec.update(desktop='/usr/share/applications/example.desktop',
+                    desktop_hash='stale-hash',
+                    exports=[dict(path=str(predicted), sha256='stale-hash')])
+        engine.registry['deb:example'] = spec
+        engine.save()
+        with self.assertRaisesRegex(RuntimeError, 'modified launcher'):
+            engine._export(spec, '/usr/share/applications/example.desktop')
+        self.assertEqual(predicted.read_text(), 'user-modified launcher content')
 
 
 class ManagerHealthTests(unittest.TestCase):
