@@ -162,6 +162,36 @@ class InventoryTests(unittest.TestCase):
         self.assertIn('launcher missing', apps[0]['problems'])
         self.assertEqual(apps[0]['status'], manager.STATUS_STALE)
 
+    def test_moved_appimage_desktop_launcher_is_not_stale(self):
+        desktop=self.root/'Desktop';desktop.mkdir()
+        menu=self.root/'data/applications/example.desktop';menu.parent.mkdir(parents=True)
+        menu.write_text('[Desktop Entry]\nType=Application\nName=Example App\nExec=true\n')
+        target=self.root/'Example.AppImage';target.write_bytes(b'example')
+        key='appimage:example'
+        with patch.dict(os.environ,{'XDG_DESKTOP_DIR':str(desktop)}):
+            manager.monitor.wrap_desktop(key,menu,'appimage',target=str(target))
+            menu.replace(desktop/'Example.desktop')
+            apps=manager.load_inventory()
+        self.assertEqual(len(apps),1)
+        self.assertEqual(apps[0]['status'],manager.STATUS_INSTALLED)
+        self.assertNotIn('launcher missing',apps[0]['problems'])
+
+    def test_moved_container_desktop_launcher_is_not_stale(self):
+        desktop=self.root/'Desktop';desktop.mkdir()
+        menu=self.root/'data/applications/example.desktop';menu.parent.mkdir(parents=True)
+        menu.write_text('[Desktop Entry]\nType=Application\nName=Example App\nExec=true\n')
+        key='deb:example'
+        with patch.dict(os.environ,{'XDG_DESKTOP_DIR':str(desktop)}):
+            manager.monitor.wrap_desktop(key,menu,'deb',container='example-distrobox')
+            menu.replace(desktop/'Example.desktop')
+            write_registry(manager.container_registry_path(),{
+                key:make_app(key,'deb',container='example-distrobox',
+                             desktop=str(menu),exports=[])[1]})
+            apps=manager.load_inventory()
+        self.assertEqual(len(apps),1)
+        self.assertEqual(apps[0]['status'],manager.STATUS_INSTALLED)
+        self.assertNotIn('launcher missing',apps[0]['problems'])
+
     def test_missing_appimage_file_is_missing(self):
         write_registry(manager.launch_registry_path(), {
             'appimage:example': make_app(target='/nonexistent/Example.AppImage')[1],

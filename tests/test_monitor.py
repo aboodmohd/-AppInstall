@@ -42,6 +42,47 @@ class MonitorTests(unittest.TestCase):
     def test_missing_desktop(self):
         spec=self.spec();Path(spec['desktop']).unlink();result=m.monitor(spec,notify=False)
         self.assertEqual(result['error']['category'],'launcher')
+    def test_moved_managed_launcher_still_runs(self):
+        """KDE desktop moves must not break a byte-identical owned launcher."""
+        spec=self.spec()
+        desktop=self.root/'Desktop';desktop.mkdir()
+        moved=desktop/'Example.desktop'
+        Path(spec['desktop']).replace(moved)
+        with patch.dict(os.environ,{'XDG_DESKTOP_DIR':str(desktop)}):
+            result=m.monitor(spec,notify=False,startup=.5)
+            self.assertEqual(m.relocated_desktop_launcher(spec),moved)
+        self.assertIsNone(result['error'])
+        self.assertFalse(Path(spec['desktop']).exists())  # do not silently undo the move
+
+    def test_modified_moved_launcher_is_not_trusted(self):
+        spec=self.spec();desktop=self.root/'Desktop';desktop.mkdir()
+        moved=desktop/'Example.desktop';Path(spec['desktop']).replace(moved)
+        moved.write_text(moved.read_text()+'Comment=Modified outside AppInstall\n')
+        with patch.dict(os.environ,{'XDG_DESKTOP_DIR':str(desktop)}):
+            result=m.monitor(spec,notify=False,startup=.5)
+        self.assertEqual(result['error']['category'],'launcher')
+
+    def test_wrong_launch_id_moved_launcher_is_not_trusted(self):
+        spec=self.spec();desktop=self.root/'Desktop';desktop.mkdir()
+        moved=desktop/'Example.desktop';Path(spec['desktop']).replace(moved)
+        moved.write_text(moved.read_text().replace(
+            'X-AppInstall-LaunchID='+spec['key'],'X-AppInstall-LaunchID=unrelated'))
+        spec['desktop_hash']=__import__('hashlib').sha256(moved.read_bytes()).hexdigest()
+        with patch.dict(os.environ,{'XDG_DESKTOP_DIR':str(desktop)}):
+            result=m.monitor(spec,notify=False,startup=.5)
+        self.assertEqual(result['error']['category'],'launcher')
+
+    def test_custom_xdg_desktop_location_is_recognized(self):
+        spec=self.spec()
+        desktop=self.root/'Custom Desktop';desktop.mkdir()
+        moved=desktop/'Example.desktop';Path(spec['desktop']).replace(moved)
+        config=self.root/'config';config.mkdir()
+        (config/'user-dirs.dirs').write_text('XDG_DESKTOP_DIR="'+str(desktop)+'"\n')
+        with patch.dict(os.environ,{'XDG_CONFIG_HOME':str(config)}):
+            os.environ.pop('XDG_DESKTOP_DIR',None)
+            result=m.monitor(spec,notify=False,startup=.5)
+        self.assertIsNone(result['error'])
+
     def test_container_start_failure(self):
         spec=self.spec();spec.update(format='deb',container='missing',command='distrobox-enter -n missing -- example')
         with patch.object(m.shutil,'which',return_value='/usr/bin/tool'),patch.object(m.subprocess,'run',return_value=subprocess.CompletedProcess([],1)):

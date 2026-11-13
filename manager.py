@@ -96,7 +96,7 @@ def icon_pixmap(app):
     return qicon.pixmap(QSize(64, 64))
 
 
-def _launcher_exists(record):
+def _launcher_exists(record, key=None):
     """A managed launcher is real if the recorded desktop entry OR any
     AppInstall-owned export path exists on disk."""
     desktop = record.get('desktop') or ''
@@ -106,6 +106,15 @@ def _launcher_exists(record):
         path = entry.get('path') if isinstance(entry, dict) else None
         if path and Path(path).is_file():
             return True
+    # A menu entry may have been moved to KDE's desktop. Its bytes and
+    # AppInstall launch ID must still match the owned record before trusting it.
+    if key:
+        try:
+            spec = monitor.registry().get(key, {})
+            if monitor.relocated_desktop_launcher(spec) is not None:
+                return True
+        except (OSError, ValueError, AttributeError):
+            pass
     return False
 
 
@@ -224,7 +233,7 @@ def build_app_record(key, raw, source):
             problems.append('manifest missing')
         if target and not Path(target).is_file():
             problems.append('application file missing')
-        if not _launcher_exists(raw):
+        if not _launcher_exists(raw, key):
             problems.append('launcher missing')
     elif fmt == 'flatpak':
         appid = key.rsplit(':', 1)[-1] if key.startswith('flatpak:') else None
@@ -238,7 +247,7 @@ def build_app_record(key, raw, source):
     elif fmt in ('deb', 'rpm'):
         if status not in (STATUS_INSTALLED, 'installing', 'removing'):
             problems.append('container record not installed')
-        if not _launcher_exists(raw):
+        if not _launcher_exists(raw, key):
             problems.append('launcher missing')
         if not container:
             problems.append('container not recorded')

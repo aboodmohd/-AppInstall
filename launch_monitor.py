@@ -107,6 +107,55 @@ def expand_exec(value, files, spec, action=None):
     return result
 
 
+def user_desktop_directory():
+    """Read the XDG desktop location without interpreting user-dirs shell code."""
+    home = Path.home()
+    value = os.environ.get('XDG_DESKTOP_DIR')
+    if value is None:
+        config = Path(os.environ.get('XDG_CONFIG_HOME', home / '.config')) / 'user-dirs.dirs'
+        try:
+            for line in config.read_text().splitlines():
+                match = re.fullmatch(r'\s*XDG_DESKTOP_DIR\s*=\s*"([^"\n]*)"\s*', line)
+                if match:
+                    value = match.group(1)
+                    break
+        except OSError:
+            pass
+    if value == '$HOME':
+        return home
+    if value and value.startswith('$HOME/'):
+        return home / value[len('$HOME/'):]
+    if value and value.startswith('/') and '$' not in value:
+        return Path(value)
+    return home / 'Desktop'
+
+
+def relocated_desktop_launcher(spec):
+    """Find a byte-identical AppInstall launcher moved to the user's desktop.
+
+    Do not search arbitrary filesystem locations, trust modified launchers, or
+    silently recreate a menu entry the user deliberately moved.
+    """
+    key, expected = spec.get('key'), spec.get('desktop_hash')
+    if not isinstance(key, str) or not key or not isinstance(expected, str) or not re.fullmatch(r'[0-9a-f]{64}', expected):
+        return None
+    try:
+        candidates = user_desktop_directory().glob('*.desktop')
+        for path in candidates:
+            try:
+                if path.is_symlink() or not path.is_file() or path.stat().st_size > 1048576:
+                    continue
+                if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+                    continue
+                if desktop_values(path.read_text()).get('X-AppInstall-LaunchID') == key:
+                    return path
+            except (OSError, UnicodeError, configparser.Error):
+                continue
+    except OSError:
+        pass
+    return None
+
+
 def wrap_desktop(key, path, format, **extra):
     path = Path(path)
     original = path.read_text()
@@ -356,7 +405,7 @@ def monitor(spec, files=(), action=None, notify=True, startup=STARTUP_SECONDS):
         return attempt
     try:
         if spec.get('launch_error'):return fail(spec['launch_error'])
-        if not Path(spec['desktop']).is_file():
+        if not Path(spec['desktop']).is_file() and relocated_desktop_launcher(spec) is None:
             return fail(failure('launcher','The managed desktop entry is missing.'))
         value=spec.get('actions',{}).get(action) if action else spec['command']
         if value is None: raise ValueError('The requested desktop action does not exist.')
