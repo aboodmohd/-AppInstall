@@ -169,25 +169,50 @@ def port_owner(key):
     return monitor.redact(monitor.checked(['ss','-ltnp','sport = :'+str(port)],10))
 
 
-def uninstall(key):
+def uninstall(key, cleanup=()):
+    cleanup = set(cleanup)
     spec=monitor.registry()[key]
     if spec['format'] in ('deb','rpm'):
         from container_backend import Engine
         engine=Engine()
-        try:engine.uninstall(key)
+        try:engine.uninstall(key, cleanup=cleanup)
         finally:engine.close()
     elif spec['format']=='flatpak':
         monitor.checked(['flatpak','uninstall','--user','--noninteractive','--assumeyes',spec['appid']],300)
         remove_owned_launcher(spec)
+        _remove_cleanup(spec, cleanup)
     elif spec['format']=='appimage':
         import shutil
         manifest=Path(spec['manifest']);info=json.loads(manifest.read_text())
         generation=Path(info['generation'])
         if not generation.name.startswith('.appinstall-') or generation.is_symlink():raise RuntimeError('The recorded AppImage directory is not safe to remove.')
         shutil.rmtree(generation);manifest.unlink();remove_owned_launcher(spec)
+        _remove_cleanup(spec, cleanup)
     else:raise RuntimeError('Uninstall is not supported for this entry.')
     monitor.update_registry(key,None)
     return 'Application removed. Personal application data and diagnostic history were kept.'
+
+
+def _remove_cleanup(spec, cleanup):
+    """Remove explicitly-selected app-tied paths that are still owned.
+
+    A path is removed only when it matches an export/icon record whose
+    on-disk sha256 still matches — user-modified launchers are preserved.
+    Directories (e.g. launch history) are removed whole when selected.
+    """
+    owned = {}
+    for entry in spec.get('exports', []) + spec.get('icons', []):
+        path = entry.get('path', '')
+        p = Path(path)
+        if p.is_file() and hashlib.sha256(p.read_bytes()).hexdigest() == entry.get('sha256', ''):
+            owned[str(p)] = p
+    import shutil
+    for path in cleanup:
+        p = Path(path)
+        if str(p) in owned:
+            p.unlink()
+        elif p.is_dir():
+            shutil.rmtree(p)
 
 
 def remove_owned_launcher(spec):

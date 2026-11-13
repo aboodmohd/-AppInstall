@@ -371,7 +371,8 @@ class Engine:
             self.save()
         return exports
 
-    def uninstall(self,key):
+    def uninstall(self,key, cleanup=()):
+        cleanup = set(cleanup)
         info = self.registry[key]; info['status']='removing'; self.save()
         try:
             if info['kind'] == 'deb':
@@ -379,11 +380,24 @@ class Engine:
             else:
                 self.enter(info,['sudo','dnf','--assumeyes','--setopt=clean_requirements_on_remove=False','remove',info['name']])
             for item in info.get('exports',[])+info.get('icons',[]):
-                if any(item['path']==other['path'] for otherkey,record in self.registry.items() if otherkey!=key for other in record.get('icons',[])+record.get('exports',[])):
+                path = item['path']
+                if any(path==other['path'] for otherkey,record in self.registry.items()
+                       if otherkey!=key for other in record.get('icons',[])+record.get('exports',[])):
                     continue
-                path = Path(item['path'])
-                if path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == item['sha256']:
-                    path.unlink()
+                p = Path(path)
+                if p.is_file() and hashlib.sha256(p.read_bytes()).hexdigest() == item['sha256']:
+                    p.unlink()
+            # Explicitly selected cleanup paths (launch history, etc.).
+            for path in cleanup:
+                p = Path(path)
+                if p.is_dir():
+                    import shutil; shutil.rmtree(p)
+                elif p.is_file():
+                    p.unlink()
+            # Destroy the container when explicitly selected. Each app owns its
+            # container, so this is safe only when the user chose it.
+            if 'container' in cleanup:
+                command(['distrobox','rm','--yes',info['container']],env=ENV)
             del self.registry[key]; self.save()
             import launch_monitor
             launch_monitor.update_registry(key,None)

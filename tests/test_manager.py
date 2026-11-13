@@ -515,9 +515,9 @@ class ActionTests(unittest.TestCase):
         key, raw = make_app()
         app = manager.build_app_record(key, raw, 'launch-monitor')
         calls = []
-        with patch.object(manager.core, 'uninstall', side_effect=lambda k: calls.append(k)):
+        with patch.object(manager.core, 'uninstall', side_effect=lambda k, cleanup=(): calls.append((k, cleanup))):
             message = manager.uninstall_app(app)
-        self.assertEqual(calls, [key])
+        self.assertEqual(calls, [(key, set())])
         self.assertIn('removed', message.lower())
 
     def test_uninstall_unsupported_format(self):
