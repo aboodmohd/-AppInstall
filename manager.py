@@ -544,6 +544,32 @@ def repair_launcher(app):
     raise RuntimeError('Launcher repair is not supported for '+app['format']+' applications.')
 
 
+def container_health_report(app):
+    """Health report for a container-backed app (deb/rpm), or None otherwise."""
+    if app['format'] not in ('deb', 'rpm'):
+        return None
+    from container_backend import Engine
+    engine = Engine()
+    try:
+        return engine.container_health(app['key'])
+    finally:
+        engine.close()
+
+
+def repair_container_app(app):
+    """Repair/ensure the container for a deb/rpm app."""
+    if app['format'] not in ('deb', 'rpm'):
+        raise RuntimeError('Container repair is not supported for '+app['format']+' applications.')
+    return core.repair_container(app['key'])
+
+
+def reexport_launcher(app):
+    """Re-export the application launcher for a deb/rpm app."""
+    if app['format'] not in ('deb', 'rpm'):
+        raise RuntimeError('Launcher re-export is not supported for '+app['format']+' applications.')
+    return core.repair_export(app['key'])
+
+
 def diagnostics_for(app):
     return dict(
         key=app['key'],
@@ -698,6 +724,9 @@ class AppCard(QWidget):
         self.open_requested = None
         self.details_requested = None
         self.pin_requested = None
+        self.health_requested = None
+        self.container_repair_requested = None
+        self.reexport_requested = None
 
     def _icon_pixmap(self):
         return icon_pixmap(self.app)
@@ -768,6 +797,11 @@ class AppCard(QWidget):
         menu.addAction('View Logs', self._emit_logs)
         menu.addAction('Repair Launcher', self._emit_repair)
         menu.addAction('Open Diagnostics', self._emit_diagnostics)
+        if app['format'] in ('deb', 'rpm'):
+            menu.addSection('Container')
+            menu.addAction('Container Health…', self._emit_health)
+            menu.addAction('Repair Container', self._emit_container_repair)
+            menu.addAction('Re-export Launcher', self._emit_reexport)
         return menu
 
     def _emit_open(self):
@@ -805,6 +839,18 @@ class AppCard(QWidget):
     def _emit_diagnostics(self):
         if hasattr(self, 'diagnostics_requested') and self.diagnostics_requested:
             self.diagnostics_requested(self.app)
+
+    def _emit_health(self):
+        if hasattr(self, 'health_requested') and self.health_requested:
+            self.health_requested(self.app)
+
+    def _emit_container_repair(self):
+        if hasattr(self, 'container_repair_requested') and self.container_repair_requested:
+            self.container_repair_requested(self.app)
+
+    def _emit_reexport(self):
+        if hasattr(self, 'reexport_requested') and self.reexport_requested:
+            self.reexport_requested(self.app)
 
 
 class AppDetailsDialog(QDialog):
@@ -1187,6 +1233,93 @@ class BatchQueueDialog(QDialog):
             self.process.kill()
 
 
+class HealthDialog(QDialog):
+    """Health report for one container-backed app, with repair actions.
+
+    Shows per-check results (container exists, responsive, exports intact)
+    and any issues. Repair and re-export are exposed as signals so the
+    window can run them and refresh the inventory afterward.
+    """
+
+    repair_requested = Signal()
+    reexport_requested = Signal()
+
+    def __init__(self, app, report, parent=None):
+        super().__init__(parent)
+        self.app = app
+        self.report = report
+        self.setWindowTitle('Container Health — '+app['name'])
+        self.setMinimumWidth(560)
+        self.setModal(True)
+        root = QVBoxLayout(self)
+        root.setContentsMargins(26, 22, 26, 20)
+        root.setSpacing(14)
+
+        title = QLabel('Container '+app.get('container',''))
+        font = title.font(); font.setPointSizeF(font.pointSizeF()*1.3); font.setBold(True)
+        title.setTextFormat(Qt.TextFormat.PlainText)
+        root.addWidget(title)
+
+        checks = report.get('checks', {})
+        labels = {
+            'container_exists': 'Container exists',
+            'container_responsive': 'Container responds',
+            'exports_intact': 'Exported launchers intact',
+        }
+        for key, label in labels.items():
+            row = QHBoxLayout()
+            ok = checks.get(key, False)
+            dot = QLabel('●' if ok else '○')
+            dot.setStyleSheet('color: #2e7d32;' if ok else 'color: #b3402e;')
+            dot.setFixedWidth(14)
+            text = QLabel(label + ' — ' + ('OK' if ok else 'Problem'))
+            text.setTextFormat(Qt.TextFormat.PlainText)
+            row.addWidget(dot)
+            row.addWidget(text, 1)
+            root.addLayout(row)
+
+        issues = report.get('issues', [])
+        if issues:
+            box = QFrame()
+            box.setFrameShape(QFrame.Shape.StyledPanel)
+            box_layout = QVBoxLayout(box)
+            box_layout.setContentsMargins(12, 10, 12, 10)
+            box_layout.setSpacing(6)
+            head = QLabel('Issues')
+            head_font = head.font(); head_font.setBold(True); head.setFont(head_font)
+            box_layout.addWidget(head)
+            for issue in issues:
+                line = QLabel('• '+issue)
+                line.setTextFormat(Qt.TextFormat.PlainText)
+                line.setWordWrap(True)
+                box_layout.addWidget(line)
+            root.addWidget(box)
+
+        buttons = QDialogButtonBox()
+        repair = buttons.addButton('Repair Container', QDialogButtonBox.ButtonRole.ActionRole)
+        repair.clicked.connect(self._repair)
+        reexport = buttons.addButton('Re-export Launcher', QDialogButtonBox.ButtonRole.ActionRole)
+        reexport.clicked.connect(self._reexport)
+        close = buttons.addButton('Close', QDialogButtonBox.ButtonRole.RejectRole)
+        buttons.rejected.connect(self.reject)
+        root.addWidget(buttons)
+
+        self.repair_btn = repair
+        self.reexport_btn = reexport
+        self._refresh_buttons()
+
+    def _refresh_buttons(self):
+        healthy = self.report.get('healthy', False)
+        self.repair_btn.setEnabled(not healthy)
+        self.reexport_btn.setEnabled(not healthy)
+
+    def _repair(self):
+        self.repair_requested.emit()
+
+    def _reexport(self):
+        self.reexport_requested.emit()
+
+
 class ManagerWindow(QMainWindow):
     """Main window of the Installed Applications Manager."""
 
@@ -1456,6 +1589,9 @@ class ManagerWindow(QMainWindow):
             card.logs_requested = self._show_logs
             card.repair_requested = self._repair_app
             card.diagnostics_requested = self._open_diagnostics
+            card.health_requested = self._health_app
+            card.container_repair_requested = self._repair_container_app
+            card.reexport_requested = self._reexport_app
             item = QListWidgetItem(self.list)
             item.setSizeHint(card.sizeHint())
             self.list.addItem(item)
@@ -1614,6 +1750,32 @@ class ManagerWindow(QMainWindow):
         import subprocess, sys
         ui = Path(__file__).resolve().with_name('diagnostics_ui.py')
         subprocess.Popen([sys.executable, str(ui)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+
+    def _health_app(self, app):
+        report = container_health_report(app)
+        if report is None:
+            QMessageBox.information(self, 'AppInstall', 'Container health is not tracked for '+app['format']+' applications.')
+            return
+        dialog = HealthDialog(app, report, self)
+        dialog.repair_requested.connect(lambda: self._repair_container_app(app))
+        dialog.reexport_requested.connect(lambda: self._reexport_app(app))
+        dialog.exec()
+
+    def _repair_container_app(self, app):
+        try:
+            message = repair_container_app(app)
+            QMessageBox.information(self, 'AppInstall', message)
+            self.refresh()
+        except Exception as error:
+            QMessageBox.warning(self, 'AppInstall', 'Container repair failed: '+str(error))
+
+    def _reexport_app(self, app):
+        try:
+            message = reexport_launcher(app)
+            QMessageBox.information(self, 'AppInstall', message)
+            self.refresh()
+        except Exception as error:
+            QMessageBox.warning(self, 'AppInstall', 'Launcher re-export failed: '+str(error))
 
     def _check_updates(self, manual=False):
         if self.update_operation or self.update_tag:

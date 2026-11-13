@@ -396,3 +396,48 @@ class Engine:
             raise RuntimeError('This package has no exported graphical application.')
         import diagnostics_core
         return diagnostics_core.open_application(key)
+
+    def container_health(self, key):
+        """Health report for one registered container app (deb/rpm).
+
+        Returns a dict with per-check booleans, an issues list and a healthy
+        flag. Every check degrades gracefully when podman/distrobox are
+        unavailable — a missing binary never crashes the report.
+        """
+        info = self.registry[key]
+        checks = {
+            'container_exists': False,
+            'container_responsive': False,
+            'exports_intact': True,
+        }
+        issues = []
+
+        found = subprocess.run(['podman','container','exists',info['container']],
+                               env=ENV).returncode
+        checks['container_exists'] = (found == 0)
+        if not checks['container_exists']:
+            issues.append('Container '+info['container']+' does not exist')
+
+        if checks['container_exists']:
+            try:
+                result = subprocess.run(['distrobox','enter','--name',info['container'],
+                                         '--no-tty','--','true'],
+                                        env=ENV, capture_output=True, timeout=30)
+                checks['container_responsive'] = (result.returncode == 0)
+            except (subprocess.TimeoutExpired, OSError):
+                checks['container_responsive'] = False
+            if not checks['container_responsive']:
+                issues.append('Container '+info['container']+' is not responding')
+
+        # Exports intact: every recorded launcher still exists and matches hash.
+        for entry in info.get('exports', []):
+            path = Path(entry['path'])
+            if not path.is_file():
+                checks['exports_intact'] = False
+                issues.append('Exported launcher missing: '+entry['path'])
+                continue
+            if hashlib.sha256(path.read_bytes()).hexdigest() != entry['sha256']:
+                checks['exports_intact'] = False
+                issues.append('Exported launcher modified: '+entry['path'])
+
+        return dict(key=key, checks=checks, issues=issues, healthy=not issues)
