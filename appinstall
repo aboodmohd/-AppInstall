@@ -51,12 +51,21 @@ AppImages land in: $INSTALL_DIR (override: --dir or \$APPINSTALL_APPIMAGES)
 EOF
 }
 
+qt_message() {
+  [ -n "${WAYLAND_DISPLAY:-}${DISPLAY:-}" ] || return 3
+  local ui
+  ui="$(dirname -- "$(realpath -- "$0")")/confirm.py"
+  [ -f "$ui" ] || ui="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/confirm.py"
+  [ -f "$ui" ] || return 3
+  python3 "$ui" "$1" "$2"
+}
+
 dialog_confirm() {
   [ "$ASSUME_YES" = 1 ] && return 0
   if have kdialog; then kdialog --title AppInstall --yesno "$1"
   elif have zenity; then zenity --question --title=AppInstall --text="$1"
   elif [ -t 0 ]; then read -r -p "$1 [y/N] " answer; [[ "$answer" = [yY] ]]
-  else printf '%s\n' 'Install kdialog or zenity to review this installation.' >&2; return 1; fi
+  else qt_message --question "$1"; fi
 }
 
 ensure_flatpak() {
@@ -94,8 +103,11 @@ notify_ok() { # msg
 error_dialog() { # msg
   if have kdialog; then
     kdialog --title "AppInstall — error" --error "$1" >/dev/null 2>&1 || true
+  elif have zenity; then
+    zenity --error --title=AppInstall --text="$1" 2>/dev/null || true
+  else
+    qt_message --error "$1" || true
   fi
-  if ! have kdialog && have zenity; then zenity --error --title=AppInstall --text="$1" 2>/dev/null || true; fi
   printf 'ERROR: %b\n' "$1" >&2
 }
 

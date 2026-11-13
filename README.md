@@ -49,6 +49,12 @@ For other distributions, see [source installation](INSTALL.md). Installing
 DEB/RPM apps inside AppInstall uses Distrobox and is separate from installing
 AppInstall itself.
 
+On KDE, GNOME, XFCE, COSMIC, Niri, Hyprland, Sway, and i3, you can
+open **My Applications** with `appinstall --manage` and use **Install from
+File…**. The file picker works without a desktop portal. File-manager
+associations and launcher menus vary by session. CI checks the common X11
+and Wayland paths. Individual desktop sessions may need separate testing.
+
 ## Native Debian-family package candidate
 
 The `Debian-family package` GitHub Actions workflow builds an APT-installable

@@ -52,6 +52,23 @@ def enriched_metadata(file, ref):
 
 
 def main():
+    if sys.argv[1] in ('--question', '--error'):
+        from qt_compat import QtCore, QtWidgets
+
+        app = QtWidgets.QApplication(sys.argv[:1])
+        message = QtWidgets.QMessageBox()
+        message.setWindowTitle('AppInstall')
+        message.setTextFormat(QtCore.Qt.TextFormat.PlainText)
+        message.setText(sys.argv[2])
+        if sys.argv[1] == '--error':
+            message.setIcon(message.Icon.Critical)
+            message.exec()
+            return
+        message.setIcon(message.Icon.Question)
+        message.setStandardButtons(message.StandardButton.Yes | message.StandardButton.No)
+        message.setDefaultButton(message.StandardButton.No)
+        sys.exit(0 if message.exec() == message.StandardButton.Yes else 1)
+
     file = Path(sys.argv[1])
     kind, details = sys.argv[2:4]
     probe = '--probe' in sys.argv[4:]

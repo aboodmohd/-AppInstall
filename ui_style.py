@@ -81,3 +81,35 @@ def ghost_button_stylesheet(widget):
     QPushButton#ghost:hover { border-color: palette(highlight); }
     QPlainTextEdit#hidden-logs { font-family: monospace; }
     """
+
+
+def choose_package(parent):
+    """Use Qt's file picker even when no desktop portal is running."""
+    from qt_compat import QtWidgets
+
+    dialog = QtWidgets.QFileDialog
+    directory = os.path.join(os.path.expanduser('~'), 'Downloads')
+    path, _ = dialog.getOpenFileName(
+        parent, 'Install Application', directory,
+        'Applications (*.AppImage *.appimage *.flatpak *.flatpakref *.flatpakrepo *.deb *.rpm)',
+        options=dialog.Option.DontUseNativeDialog,
+    )
+    return path
+
+
+def open_package(parent):
+    """Route a selected package through the normal CLI review."""
+    from pathlib import Path
+    import subprocess
+    from qt_compat import QtWidgets
+
+    path = choose_package(parent)
+    if not path:
+        return
+    command = Path(__file__).with_name('appinstall')
+    if not command.is_file():
+        command = Path.home() / '.local/bin/appinstall'
+    try:
+        subprocess.Popen([str(command), '--', path])
+    except OSError as error:
+        QtWidgets.QMessageBox.warning(parent, 'AppInstall', str(error))

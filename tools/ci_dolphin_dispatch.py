@@ -277,7 +277,7 @@ def verify_dolphin_dispatch(artifact, kind, env, *, required=True):
         time.sleep(0.6)
         dolphin = subprocess.Popen(
             ["dolphin", "--select", str(artifact)],
-            env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
         window = wait_for_window(["--class", "dolphin"], env)
         print(f"PASS: Dolphin opened for {kind} (X11 window {window})", flush=True)
@@ -331,10 +331,10 @@ def verify_dolphin_dispatch(artifact, kind, env, *, required=True):
             if dolphin.poll() is None:
                 dolphin.terminate()
             try:
-                dolphin.communicate(timeout=5)
+                dolphin.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 dolphin.kill()
-                dolphin.communicate(timeout=5)
+                dolphin.wait(timeout=5)
         if manager.poll() is None:
             manager.terminate()
         try:
