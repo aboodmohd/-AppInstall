@@ -1,13 +1,12 @@
-# AppInstall v1.2.0
+# AppInstall v1.2.1
 
-AppInstall now has a native APT package for Debian 13, Ubuntu 24.04 and
-26.04, and Linux Mint 22. The one-command installer selects the appropriate
-release package and verifies its checksum. On APT systems it installs only
-required dependencies. Arch and CachyOS use pacman.
+Open My Applications and choose **Install from File** to review a local
+package. The built-in Qt picker works without a desktop portal. AppInstall
+can also display Qt confirmation and error dialogs on minimal desktops.
 
-CI covers package installation, reinstallation, removal, preservation of
-user data, and headless GUI startup on the APT targets. Full desktop
-integration and managed-app lifecycle testing on these desktops remain
-unverified.
+CI checks GUI startup under Sway, i3 and Xfwm. Direct Niri, Hyprland, GNOME
+and COSMIC session testing is pending. File-manager associations vary by
+desktop setup.
 
-Ubuntu users need the Universe repository enabled.
+The one-command installer selects the package for Arch, CachyOS, Debian,
+Ubuntu or Mint and verifies its checksum.
