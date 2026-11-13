@@ -44,6 +44,7 @@ jobs:
           docker run --rm -i --user 0 --entrypoint /bin/bash \
             --env EXPECTED_ID \
             --volume "$PWD/dist:/dist:ro" \
+            --volume "$PWD/install.sh:/installer.sh:ro" \
             "$TEST_IMAGE" -euo pipefail -s <<'CONTAINER'
           source /etc/os-release
           printf 'Container OS: %s (%s)\n' "$PRETTY_NAME" "$ID"
@@ -59,13 +60,43 @@ jobs:
           cd /dist
           sha256sum -c SHA256SUMS
           package=(/dist/*.deb)
-          apt-get install -y desktop-file-utils "${package[0]}"
+          apt-get install -y --no-install-recommends curl python3 sudo desktop-file-utils
+          useradd --create-home --shell /bin/bash appinstall-ci
+          printf '%s\n' 'appinstall-ci ALL=(root) NOPASSWD: /usr/bin/apt-get, /usr/bin/true' > /etc/sudoers.d/appinstall-ci
+          chmod 0440 /etc/sudoers.d/appinstall-ci
+          printf 'ID=%s\n' "$EXPECTED_ID" > /tmp/appinstall-os-release
+          python3 - "${package[0]}" <<'PYTHON'
+          import json
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          package = Path(sys.argv[1])
+          version = subprocess.check_output(["dpkg-deb", "-f", package, "Version"], text=True).strip()
+          tag = "v" + version.rsplit("-", 1)[0]
+          arch_name = f"appinstall-{version}-any.pkg.tar.zst"
+          assets = [
+              {"name": path.name, "browser_download_url": path.as_uri()}
+              for path in (package, Path("/dist/SHA256SUMS"))
+          ]
+          assets.append({"name": arch_name, "browser_download_url": f"file:///dist/{arch_name}"})
+          Path("/tmp/appinstall-release.json").write_text(json.dumps({
+              "tag_name": tag, "draft": False, "prerelease": False, "assets": assets,
+          }))
+          PYTHON
+          run_installer() {
+            runuser -u appinstall-ci -- env \
+              APPINSTALL_TEST_OS_RELEASE=/tmp/appinstall-os-release \
+              APPINSTALL_TEST_RELEASES_JSON=/tmp/appinstall-release.json \
+              bash /installer.sh --yes --no-defaults "$@"
+          }
+          run_installer
+          run_installer | grep 'already installed'
           version="$(dpkg-query -W -f='${Version}' appinstall)"
           test "$(appinstall --version)" = "appinstall ${version%-*}"
           desktop-file-validate /usr/share/applications/appinstall.desktop
           test "$(appinstall --detect example.deb)" = deb
 
-          useradd --create-home --shell /bin/bash appinstall-ci
           runuser -u appinstall-ci -- env QT_QPA_PLATFORM=offscreen python3 - <<'PY'
           import sys
           sys.path.insert(0, "/usr/lib/appinstall")
@@ -85,8 +116,8 @@ jobs:
 
           mkdir -p /home/appinstall-ci/Applications
           printf '%s\n' 'preserve user data' > /home/appinstall-ci/Applications/keep
-          apt-get install -y --reinstall "${package[0]}"
-          apt-get remove -y appinstall
+          apt-get install -y --no-install-recommends --reinstall "${package[0]}"
+          run_installer --uninstall
           test ! -e /usr/bin/appinstall
           test ! -e /usr/lib/appinstall/appinstall
           grep -qx 'preserve user data' /home/appinstall-ci/Applications/keep

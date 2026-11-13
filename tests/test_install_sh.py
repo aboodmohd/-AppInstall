@@ -119,7 +119,7 @@ class ReleaseResolutionTests(unittest.TestCase):
         ],
     }
 
-    def resolve(self, obj_or_none):
+    def resolve(self, obj_or_none, family="arch"):
         with tempfile.TemporaryDirectory() as tmp:
             if obj_or_none is None:
                 env = {}
@@ -127,7 +127,7 @@ class ReleaseResolutionTests(unittest.TestCase):
                 path = Path(tmp) / "releases.json"
                 path.write_text(json.dumps(obj_or_none))
                 env = {"APPINSTALL_TEST_RELEASES_JSON": str(path)}
-            rc, out, err = run_sourced("resolve_release", env_extra=env)
+            rc, out, err = run_sourced(f"resolve_release {family}", env_extra=env)
             return rc, out.strip(), err.strip()
 
     def test_resolves_tag_and_asset_urls(self):
@@ -138,6 +138,40 @@ class ReleaseResolutionTests(unittest.TestCase):
         self.assertEqual(pkg_name, "appinstall-1.0.0-1-any.pkg.tar.zst")
         self.assertTrue(pkg_url.endswith("appinstall-1.0.0-1-any.pkg.tar.zst"))
         self.assertTrue(sums_url.endswith("SHA256SUMS"))
+
+    def test_selects_only_native_package_from_mixed_release(self):
+        data = json.loads(json.dumps(self.RELEASE_JSON))
+        name = "appinstall_1.0.0-1_all.deb"
+        data["assets"].append({
+            "name": name,
+            "browser_download_url":
+                "https://github.com/aboodmohd/-AppInstall/releases/download/v1.0.0/" + name,
+        })
+        for family, expected in (("arch", data["assets"][0]["name"]), ("debian", name)):
+            with self.subTest(family=family):
+                rc, line, err = self.resolve(data, family)
+                self.assertEqual(rc, 0, err)
+                self.assertEqual(line.split("|")[-1], expected)
+
+    def test_apt_fails_when_release_only_has_arch_package(self):
+        rc, line, _ = self.resolve(self.RELEASE_JSON, "debian")
+        self.assertEqual((rc, line), (4, ""))
+
+    def test_apt_installs_only_required_dependencies(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "appinstall"
+            path.touch()
+            rc, out, err = run_sourced(
+                'APP_BIN="$TEST_BIN"; ASSUME_YES=1; '
+                'run_root() { printf "%s\\n" "$@"; }; '
+                'install_package_file /tmp/appinstall_1.0.0-1_all.deb debian',
+                env_extra={"TEST_BIN": str(path)},
+            )
+            self.assertEqual(rc, 0, err)
+            self.assertEqual(out.splitlines()[-5:], [
+                "apt-get", "--no-install-recommends", "-y", "install",
+                "/tmp/appinstall_1.0.0-1_all.deb",
+            ])
 
     def test_signature_assets_are_not_picked_as_package(self):
         data = json.loads(json.dumps(self.RELEASE_JSON))
