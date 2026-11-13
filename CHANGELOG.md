@@ -1,5 +1,11 @@
 # AppInstall Changelog
 
+## 1.3.0
+
+- Check for stable updates from My Applications.
+- Install the verified native package with desktop authentication.
+- Show release notes after verifying the installed version.
+
 ## 1.2.2
 
 - Repair a managed launcher directly from the launch failure dialog, then choose Retry Open.
