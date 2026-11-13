@@ -28,7 +28,7 @@ jobs:
             image: ubuntu:26.04
             id: ubuntu
           - name: Linux Mint 22
-            image: linuxmintd/mint22-amd64:latest
+            image: linuxmintd/mint22-amd64@sha256:34ff53d1dca48a73486c3051425306421278225ae02b6d5066a3c940183cae1f
             id: linuxmint
     steps:
       - uses: actions/checkout@v5
@@ -41,12 +41,21 @@ jobs:
           TEST_IMAGE: ${{ matrix.image }}
           EXPECTED_ID: ${{ matrix.id }}
         run: |
-          docker run --rm -i \
+          docker run --rm -i --user 0 --entrypoint /bin/bash \
             --env EXPECTED_ID \
             --volume "$PWD/dist:/dist:ro" \
-            "$TEST_IMAGE" bash -euo pipefail -s <<'CONTAINER'
+            "$TEST_IMAGE" -euo pipefail -s <<'CONTAINER'
           source /etc/os-release
-          test "$ID" = "$EXPECTED_ID"
+          printf 'Container OS: %s (%s)\n' "$PRETTY_NAME" "$ID"
+          if [[ "$EXPECTED_ID" == linuxmint ]]; then
+            # Mint can retain Ubuntu's /etc/os-release in container images.
+            if [[ "$ID" != linuxmint ]]; then
+              test -f /etc/linuxmint/info
+              grep -q '^RELEASE=22' /etc/linuxmint/info
+            fi
+          else
+            test "$ID" = "$EXPECTED_ID"
+          fi
           export DEBIAN_FRONTEND=noninteractive
           apt-get update
           cd /dist
