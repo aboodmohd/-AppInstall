@@ -1,6 +1,13 @@
 # AppInstall Changelog
 
-## 1.1.2 (release review complete — NOT PUBLISHED)
+## 1.2.0
+
+- Add a native AppInstall Debian package for Debian 13, Ubuntu 24.04 and
+  26.04, and Linux Mint 22.
+- Select the host package automatically in the one-command installer. APT
+  installs required dependencies only.
+
+## 1.1.2 (published)
 
 ### KDE moved-launcher bug fix
 - Verified managed desktop launchers relocated to the configured user Desktop
