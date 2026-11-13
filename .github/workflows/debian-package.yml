@@ -35,7 +35,7 @@ jobs:
       - name: Build native package
         run: |
           bash tools/build_deb.sh dist
-          (cd dist && sha256sum ./*.deb > SHA256SUMS)
+          (cd dist && sha256sum appinstall_*.deb > SHA256SUMS)
       - name: Install, launch and remove in a disposable container
         env:
           TEST_IMAGE: ${{ matrix.image }}
