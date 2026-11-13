@@ -110,7 +110,7 @@ jobs:
           bash tools/ci_v1_1_1_upgrade_rollback.sh
 
       - name: Verify published v1.1.1 upgrade and rollback in disposable Arch CI
-        if: matrix.kind == 'arch' && github.head_ref == 'release/1.1.2-kde-shortcut-fix'
+        if: matrix.kind == 'arch' && (github.head_ref == 'release/1.1.2-kde-shortcut-fix' || github.head_ref == 'docs/v1.1.2-final-acceptance')
         run: |
           bash -n tools/ci_v1_1_2_upgrade_rollback.sh
           bash tools/ci_v1_1_2_upgrade_rollback.sh

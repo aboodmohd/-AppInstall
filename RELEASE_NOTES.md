@@ -1,38 +1,63 @@
-# AppInstall v1.1.2 — Release Candidate (NOT PUBLISHED)
+# AppInstall v1.1.2 — Release Notes (Publication Pending)
 
-**Preparation only.** This version has not been tagged or released.
+**Status on 2026-11-13:** This release has **not** been tagged or published.
 The latest public stable version remains
 [v1.1.1](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.1.1).
+The v1.1.2 bug fix and release-preparation commits are merged in `main`.
 
-## Bug fix — moved KDE desktop shortcuts
+## Fixed — moved KDE desktop shortcut
 
-- Fix AppInstall's monitored launcher failing with "The managed desktop entry
-  is missing" after a user moves an AppInstall-managed shortcut from the KDE
-  application menu to their desktop (reported with qBittorrent).
-- Detect the user's configured XDG desktop location and recognize **only**
-  byte-identical, regular, non-symlink `.desktop` files that match both the
-  previously recorded SHA-256 hash and the AppInstall-specific launch ID.
-- Keep the desktop shortcut where the user moved it; continue to reject
-  altered or unrelated launchers. My Applications recognizes validated moved
-  launchers for AppImage and Distrobox packages.
-- Existing AppImage, Flatpak, DEB, RPM, Install from URL, application
-  diagnostics, and official logo behavior are otherwise unchanged.
+AppInstall-managed shortcuts could fail with **"The managed desktop entry is
+missing"** after the original `.desktop` launcher was moved out of the
+applications menu and onto the KDE Desktop. The initial report involved
+qBittorrent on CachyOS.
 
-## Package, security and release gates
+- Recognize a relocated desktop entry only within the user's configured XDG
+  Desktop directory, requiring the original recorded SHA-256 and launch ID.
+- Reject changed, symlinked, or unrelated launcher files rather than trusting
+  arbitrary desktop-entry commands.
+- Keep recognized moved managed AppImage and DEB/RPM launchers visible as
+  Installed within **My Applications**.
+- Preserve other application installation backends and AppInstall's official
+  icon; there are no intentional changes to them in this maintenance release.
 
-Proposed Arch/CachyOS candidate: `appinstall-1.1.2-1-any.pkg.tar.zst`.
-Changes are limited to the moved-shortcut bug fix, tests, and release
-documentation. The separate one-command `install.sh` stays version 1.1.0 and
-continues choosing only the latest **published stable** AppInstall release.
+## Verification completed
 
-Candidate acceptance requires all eight CI checks; actual Arch package
-build and source integrity checks; genuine published v1.1.1 → candidate
-v1.1.2 → published v1.1.1 rollback in disposable CI; and manual verification
-on an actual KDE desktop that moving a managed shortcut to the Desktop
-does not break launch, while changed/unrelated shortcuts remain untrusted.
-A successful automated test does not prove full KDE compatibility.
-No tag, public release, SHA256SUMS or final package checksum is claimed yet.
-Obtain separate owner approval before merging, then again before publishing.
+- PR #45 (launcher fix) and PR #46 (release preparation) were merged.
+- Eight of eight required CI checks passed on merged source commit
+  `5044b748846906bebdfd6d443ec1262e8d4d552a`.
+- Disposable Arch CI built and inspected the v1.1.2-1 candidate, checked
+  source hashes and performed package install/reinstall/remove. PR #46's
+  dedicated Arch job verified published **v1.1.1 → candidate v1.1.2 →
+  v1.1.1 rollback** while preserving unrelated files and MIME defaults.
+- The owner reported installing v1.1.2 on an actual CachyOS KDE desktop:
+  the previously failing qBittorrent desktop shortcut opened without repair,
+  its entry showed Installed in My Applications, **Open** worked, Diagnostics
+  showed no new launcher errors, and `pacman -Qkk appinstall` reported
+  zero altered files.
+- These real-device results are owner-reported. They demonstrate this shortcut
+  scenario, **not** a full fresh-install, four-format or hostile-shortcut
+  manual acceptance run.
+
+## Limitations and publication controls
+
+- The byte-identical and matching-launch-ID requirement may not accept
+  shortcuts changed by KDE or edited by the user. Modified launchers require
+  review and should not bypass AppInstall's integrity checks.
+- Full manual AppImage, Flatpak, DEB, RPM and Install-from-URL lifecycle
+  regression testing has **not** been repeated for this bug-fix release;
+  automated tests and previous-version behavior do not establish all-distro
+  compatibility. Distrobox containers are not security sandboxes.
+- Keep a known-good v1.1.1 package and a backup before upgrading. The
+  separately versioned `install.sh` remains v1.1.0 and installs only the
+  latest **published stable** AppInstall application.
+- Proposed Arch/CachyOS package name: `appinstall-1.1.2-1-any.pkg.tar.zst`.
+  Final exact package hash, release verification record, source commit,
+  manual-test scope, and redistribution permissions require review.
+  **If the source changes after a verified CI package, rebuild and re-verify
+  that exact new artifact; earlier hashes must not be reused.**
+- Do not create a `v1.1.2` tag or public release without the owner's
+  **separate explicit publication authorization**.
 
 ---
 
