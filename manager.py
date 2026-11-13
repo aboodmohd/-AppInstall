@@ -194,6 +194,38 @@ def _clean_description(text):
     return stripped
 
 
+def app_disk_usage(app):
+    """Best-effort bytes attributable to one managed app, or None.
+
+    AppImage: the generation file. DEB/RPM: the staged package file — the
+    container filesystem is shared, so installed size is not attributable
+    per application. Flatpak: owned by the Flatpak installation, not a file.
+    """
+    if app.get('format') not in ('appimage', 'deb', 'rpm'):
+        return None
+    target = app.get('target')
+    if not target:
+        return None
+    try:
+        return Path(target).stat().st_size
+    except OSError:
+        return None
+
+
+def format_size(size):
+    """Human-readable size for the manager; an em dash when unknown."""
+    if size is None:
+        return '—'
+    if size < 1024:
+        return f'{size:.0f} B'
+    value = float(size)
+    for unit in ('KB', 'MB', 'GB', 'TB'):
+        value /= 1024.0
+        if value < 1024.0:
+            return f'{value:.1f} {unit}'
+    return f'{value:.1f} PB'
+
+
 def _friendly_launch_status(status):
     """Map a raw launch status to user-friendly text."""
     friendly = {
@@ -451,6 +483,7 @@ QColor = QtGui.QColor
 QPalette = QtGui.QPalette
 from qt_compat import QtWidgets
 QApplication = QtWidgets.QApplication
+QComboBox = QtWidgets.QComboBox
 QMainWindow = QtWidgets.QMainWindow
 QWidget = QtWidgets.QWidget
 QVBoxLayout = QtWidgets.QVBoxLayout
@@ -472,6 +505,7 @@ QMenu = QtWidgets.QMenu
 QStackedLayout = QtWidgets.QStackedLayout
 
 import ui_style
+import settings
 
 from url_dialog import UrlInstallDialog
 
@@ -491,9 +525,10 @@ class InventoryLoader(QThread):
 class AppCard(QWidget):
     """One application card: icon, summary, status and permitted actions."""
 
-    def __init__(self, app, parent=None):
+    def __init__(self, app, parent=None, pinned=False):
         super().__init__(parent)
         self.app = app
+        self.pinned = pinned
         self.setMinimumWidth(300)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.setFixedHeight(132)
@@ -515,7 +550,7 @@ class AppCard(QWidget):
         # Summary.
         summary = QVBoxLayout()
         summary.setSpacing(4)
-        self.name = QLabel(app['name'])
+        self.name = QLabel(('★ ' if pinned else '')+app['name'])
         self.name.setTextFormat(Qt.TextFormat.PlainText)
         self.name.setWordWrap(True)
         font = self.name.font(); font.setPointSizeF(font.pointSizeF() * 1.12); font.setBold(True)
@@ -573,6 +608,7 @@ class AppCard(QWidget):
         # Signals exposed to the window.
         self.open_requested = None
         self.details_requested = None
+        self.pin_requested = None
 
     def _icon_pixmap(self):
         return icon_pixmap(self.app)
@@ -586,6 +622,9 @@ class AppCard(QWidget):
             parts.append(app['container']+' container')
         elif app['format'] == 'appimage':
             parts.append('AppImage file')
+        size = app_disk_usage(app)
+        if size is not None:
+            parts.append(format_size(size))
         return '   ·   '.join(parts)
 
     def _status_text(self):
@@ -620,6 +659,7 @@ class AppCard(QWidget):
         if self._can_launch():
             menu.addAction('Launch (monitored)', self._emit_open)
         menu.addSection('Management')
+        menu.addAction('Unpin from top' if self.pinned else 'Pin to top', self._emit_pin)
         if can_reinstall(app):
             menu.addAction('Reinstall', self._emit_reinstall)
         else:
@@ -648,6 +688,10 @@ class AppCard(QWidget):
     def _emit_details(self):
         if self.details_requested:
             self.details_requested(self.app)
+
+    def _emit_pin(self):
+        if self.pin_requested:
+            self.pin_requested(self.app)
 
     def _emit_reinstall(self):
         if hasattr(self, 'reinstall_requested') and self.reinstall_requested:
@@ -724,6 +768,7 @@ class AppDetailsDialog(QDialog):
             ('Version', app['version']),
             ('Installation date', app['install_date']),
             ('Installed path', app['target'] or '—'),
+            ('Package size', format_size(app_disk_usage(app))),
         ]
         if app.get('container'):
             rows.append(('Container', app['container']))
@@ -891,6 +936,7 @@ class ManagerWindow(QMainWindow):
         self.inventory = []
         self.filtered = []
         self.cards = {}
+        self.favorites = set(settings.read().get('favorites', []))
         self.loader = None
         self._inventory_revision = inventory_signature()
         self._refresh_pending = False
@@ -942,6 +988,18 @@ class ManagerWindow(QMainWindow):
         self.install_url_btn.clicked.connect(self._install_from_url)
         header.addWidget(self.install_url_btn)
         header.addStretch(1)
+        self.theme_button = QPushButton('Theme')
+        self.theme_button.setObjectName('ghost')
+        self.theme_menu = QMenu(self.theme_button)
+        self.theme_actions = {}
+        for theme_id, label in (('auto', 'Follow system'), ('light', 'Light'), ('dark', 'Dark')):
+            action = self.theme_menu.addAction(label)
+            action.setCheckable(True)
+            action.triggered.connect(lambda checked, t=theme_id: self._set_theme(t))
+            self.theme_actions[theme_id] = action
+        self.theme_button.setMenu(self.theme_menu)
+        self._sync_theme_menu()
+        header.addWidget(self.theme_button)
         self.search = QLineEdit()
         self.search.setPlaceholderText('Search applications…')
         self.search.setClearButtonEnabled(True)
@@ -979,7 +1037,23 @@ class ManagerWindow(QMainWindow):
             btn.clicked.connect(lambda checked, f=fmt: self._set_filter(f))
             filters.addWidget(btn)
             self.filter_buttons[fmt] = btn
+        self.status_filter = QComboBox()
+        self.status_filter.addItem('All statuses', None)
+        for label, status in (('Installed', STATUS_INSTALLED),
+                              ('Needs repair', STATUS_NEEDS_REPAIR),
+                              ('Files missing', STATUS_MISSING),
+                              ('Stale record', STATUS_STALE),
+                              ('Corrupted', STATUS_CORRUPTED)):
+            self.status_filter.addItem(label, status)
+        self.status_filter.currentIndexChanged.connect(lambda index: self._refilter())
+        filters.addWidget(self.status_filter)
         filters.addStretch(1)
+        self.sort_combo = QComboBox()
+        for label, sort_key in (('Name (A–Z)', 'name-asc'), ('Name (Z–A)', 'name-desc'),
+                                ('Recently launched', 'recent'), ('Size (largest)', 'size')):
+            self.sort_combo.addItem(label, sort_key)
+        self.sort_combo.currentIndexChanged.connect(lambda index: self._refilter())
+        filters.addWidget(self.sort_combo)
         root.addLayout(filters)
 
         # List.
@@ -1065,24 +1139,52 @@ class ManagerWindow(QMainWindow):
     def _refilter(self):
         fmt = getattr(self, 'current_filter', None)
         text = self.search.text().strip().casefold()
+        status = self.status_filter.currentData()
+        sort_key = self.sort_combo.currentData() or 'name-asc'
         result = []
         for app in self.inventory:
             if fmt is not None and app['format'] != fmt:
                 continue
+            if status is not None and app['status'] != status:
+                continue
             if text and text not in app['name'].casefold() and text not in app['package_id'].casefold():
                 continue
             result.append(app)
-        self.filtered = result
+        self.filtered = self._sorted(result, sort_key)
         self._rebuild()
         self._set_status_count()
+
+    def _sorted(self, apps, sort_key):
+        """Apply the chosen ordering; favorites always sort to the top."""
+        def base(app):
+            return app['name'].casefold()
+
+        if sort_key == 'name-desc':
+            ordered = sorted(apps, key=base, reverse=True)
+        elif sort_key == 'recent':
+            def stamp(app):
+                last = app.get('last_launch') or {}
+                return last.get('started') or ''
+            ordered = sorted(apps, key=stamp, reverse=True)
+        elif sort_key == 'size':
+            def bulk(app):
+                size = app_disk_usage(app)
+                return (size is None, -(size or 0))
+            ordered = sorted(apps, key=bulk)
+        else:
+            ordered = sorted(apps, key=base)
+        pinned = [app for app in ordered if app['key'] in self.favorites]
+        rest = [app for app in ordered if app['key'] not in self.favorites]
+        return pinned + rest
 
     def _rebuild(self):
         self.list.clear()
         self.cards.clear()
         for app in self.filtered:
-            card = AppCard(app)
+            card = AppCard(app, pinned=app['key'] in self.favorites)
             card.open_requested = self._open_app
             card.details_requested = self._show_details
+            card.pin_requested = self._toggle_pin
             card.reinstall_requested = self._reinstall_app
             card.update_requested = self._update_app
             card.uninstall_requested = self._uninstall_app
@@ -1097,6 +1199,36 @@ class ManagerWindow(QMainWindow):
         loading = self.loader is not None and self.loader.isRunning()
         self.content_stack.setCurrentIndex(
             1 if (len(self.filtered) == 0 and not loading) else 0)
+
+    def _toggle_pin(self, app):
+        key = app['key']
+        if key in self.favorites:
+            self.favorites.discard(key)
+        else:
+            self.favorites.add(key)
+        try:
+            settings.update('favorites', sorted(self.favorites))
+        except OSError:
+            # Settings are best-effort; the pin still applies for this session.
+            pass
+        self._refilter()
+
+    def _set_theme(self, theme):
+        try:
+            settings.update('theme', theme)
+        except OSError:
+            pass
+        ui_style.apply_theme(QApplication.instance(), theme)
+        self._sync_theme_menu()
+        self._apply_style()
+        for card in self.cards.values():
+            card.setStyleSheet(ui_style.primary_button_stylesheet(card) +
+                               ui_style.ghost_button_stylesheet(card))
+
+    def _sync_theme_menu(self):
+        theme = settings.read().get('theme', 'auto')
+        for theme_id, action in self.theme_actions.items():
+            action.setChecked(theme_id == theme)
 
     # ── actions ──────────────────────────────────────────────────────────
 
