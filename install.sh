@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 #
-# AppInstall — one-command installer (stable releases, Arch/CachyOS first).
+# AppInstall — one-command installer (stable releases, native pacman and APT packages).
 #
-# Planned public command (available only after merge and validation):
+# Public command:
 #   curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash
 #
 # What this script does:
@@ -11,7 +11,7 @@
 #      never used).
 #   3. Downloads the package and its SHA256SUMS manifest and verifies the
 #      checksum before anything else happens.
-#   4. Installs with the native package manager (pacman). The script runs as
+#   4. Installs with the native package manager (pacman or APT). The script runs as
 #      the invoking user; only package-manager commands are elevated, with their
 #      stdin handed back to the terminal so `curl | bash` keeps working.
 #   5. Offers to install missing optional backends via pacman.
@@ -62,7 +62,7 @@ SUPPORTED_IDS="arch cachyos"
 # Optional backends offered after core installation (pacman package names).
 OPTIONAL_PKGS=(flatpak podman distrobox squashfs-tools fuse2 kdialog zenity libnotify)
 
-INSTALLER_VERSION="1.1.0"
+INSTALLER_VERSION="1.2.0"
 
 # ---------------------------------------------------------------------------
 # Flags / state. Defaults respect pre-existing environment values so the test
@@ -144,9 +144,7 @@ read_os_release() { # -> "id|id_like"
   printf '%s|%s\n' "$id" "$id_like"
 }
 
-# "family" groups distros by packaging ecosystem. Issuing anything but "arch"
-# is how this installer stays honest: it never installs Arch packages via
-# another package manager.
+# Group distributions by packaging ecosystem.
 detect_family() {
   local fields id rest
   if ! fields="$(read_os_release)"; then printf 'unknown\n'; return 0; fi
@@ -286,6 +284,7 @@ api_get() { # path -> stdout
 # resolve_release -> "tag|pkg_url|sums_url|pkg_name"
 resolve_release() {
   local json
+  local family="${1:-arch}"
   json="$(api_get "/repos/${REPO_SLUG}/releases/latest")" || return 4
   python3 -c '
 import json, re, sys
@@ -297,10 +296,14 @@ try:
         raise ValueError("not a stable release")
     if not re.fullmatch(r"v[0-9][A-Za-z0-9.+_-]*", tag):
         raise ValueError("invalid tag")
+    package_pattern = {
+        "arch": r"appinstall-[0-9][A-Za-z0-9.+_-]*-any\.pkg\.tar\.zst",
+        "debian": r"appinstall_[0-9][A-Za-z0-9.+~-]*_all\.deb",
+    }[sys.argv[2]]
     found = {}
     for asset in data["assets"]:
         name, url = asset["name"], asset["browser_download_url"]
-        if name == "SHA256SUMS" or re.fullmatch(r"appinstall-[0-9][A-Za-z0-9.+_-]*-any\.pkg\.tar\.zst", name):
+        if name == "SHA256SUMS" or re.fullmatch(package_pattern, name):
             expected = "https://github.com/aboodmohd/-AppInstall/releases/download/" + tag + "/" + name
             local_fixture = bool(sys.argv[1]) and urlparse(url).scheme == "file" and url.endswith("/" + name)
             if url != expected and not local_fixture:
@@ -310,10 +313,12 @@ try:
                 raise ValueError("ambiguous release assets")
             found[key] = (name, url)
     pkg, sums = found["pkg"], found["sums"]
+    if sys.argv[2] == "debian" and not pkg[0].startswith("appinstall_" + tag[1:] + "-"):
+        raise ValueError("Debian package version does not match release")
     print("|".join((tag, pkg[1], sums[1], pkg[0])))
 except (ValueError, KeyError, TypeError):
     sys.exit(4)
-' "$TEST_RELEASES_JSON" <<<"$json" || return 4
+' "$TEST_RELEASES_JSON" "$family" <<<"$json" || return 4
 }
 
 # ---------------------------------------------------------------------------
@@ -351,10 +356,24 @@ CHECKSUM
 # Existing installation and conflict handling
 # ---------------------------------------------------------------------------
 installed_version() { # -> version string, empty when absent
+  if [[ "${1:-arch}" == debian ]]; then
+    local status version
+    IFS='|' read -r status version < <(dpkg-query -W -f='${Status}|${Version}\n' appinstall 2>/dev/null) || return 0
+    [[ "$status" == 'install ok installed' || "$status" == 'hold ok installed' ]] && printf '%s\n' "$version"
+    return 0
+  fi
   pacman -Q appinstall 2>/dev/null | awk '{print $2}'
 }
 
 version_relation() { # a b -> a>b:1  a==b:0  a<b:-1  (empty comparison generic)
+  if [[ "${3:-arch}" == debian ]]; then
+    if dpkg --compare-versions "$1" eq "$2"; then printf 'eq\n'
+    elif dpkg --compare-versions "$1" gt "$2"; then printf 'gt\n'
+    elif dpkg --compare-versions "$1" lt "$2"; then printf 'lt\n'
+    else printf 'unk\n'
+    fi
+    return 0
+  fi
   if have_cmd vercmp; then
     local r
     r="$(vercmp "$1" "$2")" || r="?"
@@ -566,11 +585,6 @@ maybe_set_defaults() {
     info "Skipping file-association changes (--no-defaults)."
     return 0
   fi
-  local fam
-  fam="$(detect_family)"
-  if [[ "$fam" != "arch" ]]; then
-    return 0
-  fi
   if ! have_cmd xdg-mime; then
     warn "xdg-mime not found (xdg-utils). Cannot manage per-user defaults; skipping."
     return 0
@@ -673,6 +687,11 @@ rootless_podman_report() {
 # ---------------------------------------------------------------------------
 package_version_from_asset() { # appinstall-1.0.0-1-any.pkg.tar.zst -> 1.0.0-1
   local base="${1##*/}"
+  if [[ "$base" == appinstall_*_all.deb ]]; then
+    base="${base#appinstall_}"
+    printf '%s\n' "${base%_all.deb}"
+    return 0
+  fi
   base="${base%.pkg.tar.zst}"
   base="${base%-any}"
   printf '%s\n' "${base#appinstall-}"
@@ -680,7 +699,7 @@ package_version_from_asset() { # appinstall-1.0.0-1-any.pkg.tar.zst -> 1.0.0-1
 
 pkg_installed_state_hint() { # installed_version target_version -> words for dry-run
   if [[ -z "$1" ]]; then printf 'fresh install\n'; return 0; fi
-  case "$(version_relation "$1" "$2")" in
+  case "$(version_relation "$1" "$2" "${3:-arch}")" in
     eq) printf 'skip (already this version)\n' ;;
     gt) printf 'skip (installed %s is newer)\n' "$1" ;;
     *)  printf "upgrade %s -> %s\n" "$1" "$2" ;;
@@ -689,6 +708,14 @@ pkg_installed_state_hint() { # installed_version target_version -> words for dry
 
 install_package_file() { # verified pkg path
   local pkg="$1"
+  if [[ "${2:-arch}" == debian ]]; then
+    local flags=(--no-install-recommends)
+    [[ $ASSUME_YES -eq 1 ]] && flags+=(-y)
+    info "Installing package with APT: $(basename "$pkg")"
+    run_root apt-get "${flags[@]}" install "$pkg" || die 5 "APT installation failed. Review the package manager output."
+    [[ -e "$APP_BIN" ]] || die 5 "APT finished but $APP_BIN is missing."
+    return 0
+  fi
   info "Installing package: pacman -U $(basename "$pkg")"
   if [[ $TTY_OK -eq 1 ]]; then
     run_root pacman -U --needed -- "$pkg" || die 5 "pacman reported an error and the package was not installed. Review pacman's message; nothing else was changed by this script."
@@ -707,20 +734,27 @@ install_package_file() { # verified pkg path
 # Uninstall path (--uninstall)
 # ---------------------------------------------------------------------------
 uninstall_flow() {
+  local family="${1:-arch}"
+  local remove_command=(pacman -R)
+  [[ "$family" == debian ]] && remove_command=(apt-get remove)
   if [[ $DRY_RUN -eq 1 ]]; then
     info "[dry-run] would offer package removal and association restoration."
     return 0
   fi
   info "Removing AppInstall package and optionally restoring previous file associations."
   info "Your application records, containers, launchers, logs and settings under ~ are always preserved."
-  if ! ask "Remove the system package now (pacman -R appinstall)? AppInstall windows should be closed first." n; then
+  if ! ask "Remove the system package now (${remove_command[*]} appinstall)? AppInstall windows should be closed first." n; then
     info "Keeping the package; nothing was changed."
     return 0
   fi
-  if [[ ! -e "$APP_BIN" ]] && [[ -z "$(installed_version)" ]]; then
-    info "AppInstall does not appear to be installed via pacman; nothing to remove."
+  if [[ -z "$(installed_version "$family")" ]]; then
+    info "AppInstall does not appear to be installed through the native package manager; nothing to remove."
   else
-    if [[ $ASSUME_YES -eq 1 ]]; then
+    if [[ "$family" == debian ]]; then
+      local apt_flags=()
+      [[ $ASSUME_YES -eq 1 ]] && apt_flags+=(-y)
+      run_root apt-get "${apt_flags[@]}" remove appinstall || die 5 "APT removal failed."
+    elif [[ $ASSUME_YES -eq 1 ]]; then
       run_root pacman -R --noconfirm "appinstall" || die 5 "pacman -R failed; see pacman's output above."
     else
       run_root pacman -R "appinstall" || die 5 "pacman -R failed; see pacman's output above."
@@ -743,11 +777,11 @@ uninstall_flow() {
 # ---------------------------------------------------------------------------
 usage() {
   cat <<HELP
-AppInstall one-command installer (stable releases only; Arch Linux + CachyOS tested).
+AppInstall one-command installer (stable releases only; Arch Linux, CachyOS, Debian, Ubuntu, and Linux Mint).
 
   bash install.sh [flags]
 
-Public curl command is pending merge and validation.
+Downloads the package for the detected distribution.
 
 Flags:
   --yes, -y                answer yes to installer prompts (install, upgrade, optional backends; NOT defaults)
@@ -763,8 +797,8 @@ Flags:
   --version                print installer version
 
 Notes:
-  * Only Arch Linux and CachyOS are fully tested today. Other distros are
-    refused with manual instructions rather than risking a broken install.
+  * Optional backend installation is offered on Arch and CachyOS.
+  * On APT systems, only required dependencies are installed.
   * Stable GitHub releases only — drafts and prereleases are never used.
   * Per-user file association changes only; previous defaults are backed up.
 HELP
@@ -795,7 +829,7 @@ parse_flags() {
 # ---------------------------------------------------------------------------
 main() {
   info "AppInstall one-command installer ${INSTALLER_VERSION}"
-  info "Stable GitHub releases only; Arch Linux and CachyOS are the tested systems."
+  info "Stable GitHub releases only."
 
   # --- 1. environment ------------------------------------------------
   local family distro_id arch de
@@ -807,21 +841,26 @@ main() {
   log_write "start flags=$* family=${family} id=${distro_id} arch=${arch} de=${de}"
 
   # --- 2. support gate (STRICT: no untested installs by default) -------
-  if [[ "$family" != "arch" ]]; then
-    cat >&2 <<UNSUPPORTED
-This installer currently supports: Arch Linux and CachyOS (pacman) — both
-thoroughly tested. Your system is '${distro_id}' (family '${family}'), which has
-no tested one-command path yet.
-
-No package was downloaded and nothing was changed. On Debian/Ubuntu, Fedora
-and openSUSE you must NOT install the Arch pkg.tar.zst file. See INSTALL.md
-for manual source installation (install-user.sh) options.
-UNSUPPORTED
-    exit 2
-  fi
+  local install_command="pacman -U"
+  local package_tools=(pacman)
+  case "$distro_id" in
+    debian|ubuntu|linuxmint)
+      family=debian
+      install_command="apt-get --no-install-recommends install"
+      package_tools=(apt-get dpkg dpkg-query dpkg-deb)
+      if [[ $WITH_OPTIONAL -eq 1 ]]; then
+        die 2 "--with-optional is available on Arch and CachyOS. Install any optional backends you need through APT."
+      fi
+      ;;
+    *)
+      if [[ "$family" != arch ]]; then
+        die 2 "Unsupported distribution '$distro_id'. No package was downloaded and nothing was changed."
+      fi
+      ;;
+  esac
   local is_supported=0
   [[ " $SUPPORTED_IDS " == *" $distro_id "* ]] && is_supported=1
-  if ((is_supported == 0)); then
+  if [[ "$family" == arch ]] && ((is_supported == 0)); then
     if [[ $ALLOW_ARCH_LIKE -eq 1 ]]; then
       warn "Distro '${distro_id}' is arch-like but untested — continuing because --allow-arch-like was used. Install at your own risk."
     else
@@ -841,7 +880,7 @@ UNSUPPORTED
   if ((EUID == 0)); then
     die 2 "Run as your regular desktop user; only package-manager commands use sudo."
   fi
-  if ! need_cmds curl sha256sum pacman; then
+  if ! need_cmds curl sha256sum "${package_tools[@]}"; then
     exit 2
   fi
 
@@ -850,6 +889,9 @@ UNSUPPORTED
     die 2 "Noninteractive run without --yes: nothing was installed. Run from a terminal to answer prompts."
   fi
   if ! have_cmd python3; then
+    if [[ "$family" == debian ]]; then
+      die 2 "Install the distribution's python3 package, then retry."
+    fi
     if [[ $DRY_RUN -eq 1 ]]; then
       info "[dry-run] Python is required to validate release metadata; would offer pacman -S --needed python."
       return 0
@@ -871,7 +913,7 @@ UNSUPPORTED
   # --- 5. uninstall path ----------------------------------------------
   if [[ $UNINSTALL -eq 1 ]]; then
     prepare_tty
-    uninstall_flow
+    uninstall_flow "$family"
     info "Done."
     return 0
   fi
@@ -883,12 +925,16 @@ UNSUPPORTED
 
   # --- 7. resolve the latest stable release ---------------------------
   local installed_rel="" installed="0"
-  installed_rel="$(installed_version)" || true
+  installed_rel="$(installed_version "$family")" || true
   [[ -n "$installed_rel" ]] && installed=1
 
   info "Resolving the latest stable release from GitHub (drafts and prereleases are never used)…"
   local release tag pkg_url sums_url pkg_name
-  release="$(resolve_release)" || die 4 "GitHub API query for the latest stable release failed (network issue or rate limit). Optionally export GITHUB_TOKEN=<token> to raise the API rate limit, then retry."
+  if [[ "$family" == debian ]]; then
+    release="$(resolve_release "$family")" || die 4 "Could not resolve a verified Debian package from the latest stable release. Check the release assets or your network connection."
+  else
+    release="$(resolve_release "$family")" || die 4 "GitHub API query for the latest stable release failed (network issue or rate limit). Optionally export GITHUB_TOKEN=<token> to raise the API rate limit, then retry."
+  fi
   IFS='|' read -r tag pkg_url sums_url pkg_name <<<"$release"
   local pkg_ver
   pkg_ver="$(package_version_from_asset "$pkg_name")"
@@ -898,9 +944,11 @@ UNSUPPORTED
   if [[ $DRY_RUN -eq 1 ]]; then
     printf '[dry-run] would download:  %s\n' "$pkg_url"
     printf '[dry-run] would download:  %s\n' "$sums_url"
-    printf '[dry-run] then: verify SHA256SUMS; %s\n' "install with pacman -U $(pkg_installed_state_hint "$installed_rel" "$pkg_ver")"
-    audit_optional_backends
-    rootless_podman_report
+    printf '[dry-run] then: verify SHA256SUMS; %s\n' "install with $install_command $(pkg_installed_state_hint "$installed_rel" "$pkg_ver" "$family")"
+    if [[ "$family" == arch ]]; then
+      audit_optional_backends
+      rootless_podman_report
+    fi
     maybe_set_defaults
     printf '[dry-run] done — no changes were made.\n'
     return 0
@@ -909,9 +957,9 @@ UNSUPPORTED
   # --- 9. install decision -----------------------------------------------
   local already_current=0
   if ((installed == 1)); then
-    case "$(version_relation "$installed_rel" "$pkg_ver")" in
+    case "$(version_relation "$installed_rel" "$pkg_ver" "$family")" in
       eq)
-        info "AppInstall ${pkg_ver} (pacman) is already installed and is the latest stable. Nothing to install."
+        info "AppInstall ${pkg_ver} is already installed and is the latest stable. Nothing to install."
         already_current=1
         ;;
       gt)
@@ -952,14 +1000,21 @@ UNSUPPORTED
       exit 3
     fi
     info "Checksum verified."
-    install_package_file "${TMP_DIR}/${pkg_name}"
+    if [[ "$family" == debian ]]; then
+      local pkg_path="${TMP_DIR}/${pkg_name}"
+      [[ "$(dpkg-deb -f "$pkg_path" Package)" == appinstall &&
+         "$(dpkg-deb -f "$pkg_path" Version)" == "$pkg_ver" &&
+         "$(dpkg-deb -f "$pkg_path" Architecture)" == all ]] ||
+        die 3 "Debian package metadata did not match the selected release."
+    fi
+    install_package_file "${TMP_DIR}/${pkg_name}" "$family"
   fi
 
   # --- 10. optional backends ------------------------------------------
-  audit_optional_backends
-
-  # --- 11. rootless container readiness -------------------------------
-  rootless_podman_report
+  if [[ "$family" == arch ]]; then
+    audit_optional_backends
+    rootless_podman_report
+  fi
 
   # --- 12. desktop integration / file associations ---------------------
   maybe_set_defaults
@@ -971,7 +1026,7 @@ UNSUPPORTED
   fi
   info "All done."
   info "AppInstall version active: ${current}"
-  info "Installed with pacman; launcher: application menu → 'AppInstall'."
+  info "Launcher: application menu → 'AppInstall'."
   info "Open a supported file (.AppImage, .flatpak, .flatpakref, .flatpakrepo, .deb, .rpm) to preview it."
   info "Executable .AppImage files: some file managers may run them directly instead of opening the preview; right-click → 'Open With → AppInstall' when in doubt."
   info "To undo file-association changes at any time: $STATE_RESTORE_SCRIPT"

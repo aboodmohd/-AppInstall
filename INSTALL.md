@@ -1,53 +1,33 @@
 # AppInstall Installation Guide
 
-AppInstall 1.1.1 is the latest **published stable** application release:
-[`v1.1.1`](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.1.1).
-Version 1.1.2 is being prepared and is **not** published. Manual download
-URLs below refer to the released v1.1.1 only.
+## One-command installation
 
-## One-command installation (Arch/CachyOS)
-
-The separately versioned installer script `install.sh` (v1.1.0) is available
-on `main`. It installs only the latest **published stable** AppInstall
-package on tested Arch/CachyOS x86_64 desktops. Run as a regular user:
+Run the installer as your regular desktop user:
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash
 ```
 
-To review this checkout without installing anything:
+The installer selects a package from the latest stable GitHub release and
+checks its SHA-256. Arch Linux and CachyOS use pacman. Debian 13, Ubuntu 24.04
+and 26.04, and Linux Mint 22 use APT when the stable release includes a
+`.deb`. On APT systems, have Python 3 and curl available before running the
+command. Ubuntu needs the Universe repository enabled.
 
-```sh
-bash install.sh --dry-run
-```
+APT installs the selected `.deb` with `--no-install-recommends`. The package
+declares alternative Qt bindings so APT can satisfy the dependency from the
+distribution's repositories. Install optional backends separately as needed.
+On Arch and CachyOS, the installer offers optional backends after setup.
 
-Run as your regular desktop user with Bash, curl, coreutils, pacman and sudo.
-If Python is missing, setup asks to install it from your configured pacman
-repositories. Pacman installs required application dependencies, including
-PySide6. Optional backends are offered separately. Keep the system fully
-updated before installing packages; setup does not refresh databases alone.
-
-When run without `--dry-run`, the installer downloads and verifies
-the package plus `SHA256SUMS`, installs through
-`sudo pacman -U` (package installation and optional backend installation use root; the
-app itself never runs as root), offers missing optional backends, and asks for
-one clear confirmation before making AppInstall the default handler for
-supported package formats. Your previous per-user associations are backed up
-and restorable (`~/.local/share/appinstall/installer/restore-mime-defaults.sh`).
-
-Installer flags: `--yes` (answer install prompts), `--set-defaults` (opt into
-default handler changes noninteractively), `--no-defaults`, `--dry-run` (plan
-without changes), `--uninstall`. Re-running is safe and idempotent.
-
-Other distributions are not covered by this one-command installer yet — see
-"Install from source" below. Do not install the Arch `.pkg.tar.zst` package with
-another distribution's package manager.
+Use `--dry-run` to inspect the package selection and `--uninstall` to remove
+AppInstall. Use `--set-defaults` to opt into changing per-user file handlers
+or `--no-defaults` to keep them. Previous defaults are backed up.
 
 ## System requirements
 
 - Python 3
 - bash, coreutils, xdg-utils
-- PySide6 (graphical interface)
+- PySide6 or PyQt6 (graphical interface)
 - kdialog (KDE) or zenity (GNOME/Xfce) (fallback dialogs)
 - flatpak (Flatpak installation)
 - podman + distrobox (DEB/RPM containers via rootless Distrobox)
@@ -57,13 +37,13 @@ another distribution's package manager.
 
 ## Install from package (Arch/CachyOS)
 
-Download from the [`v1.1.1` release](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.1.1):
+Download from the [`v1.1.2` release](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.1.2):
 
 ```sh
-curl -LO https://github.com/aboodmohd/-AppInstall/releases/download/v1.1.1/appinstall-1.1.1-1-any.pkg.tar.zst
-curl -LO https://github.com/aboodmohd/-AppInstall/releases/download/v1.1.1/SHA256SUMS
-sha256sum -c SHA256SUMS   # must print: appinstall-1.1.1-1-any.pkg.tar.zst: OK
-sudo pacman -U appinstall-1.1.1-1-any.pkg.tar.zst
+curl -LO https://github.com/aboodmohd/-AppInstall/releases/download/v1.1.2/appinstall-1.1.2-1-any.pkg.tar.zst
+curl -LO https://github.com/aboodmohd/-AppInstall/releases/download/v1.1.2/SHA256SUMS
+sha256sum -c SHA256SUMS   # must print: appinstall-1.1.2-1-any.pkg.tar.zst: OK
+sudo pacman -U appinstall-1.1.2-1-any.pkg.tar.zst
 ```
 
 The one-command installer performs download + verification +

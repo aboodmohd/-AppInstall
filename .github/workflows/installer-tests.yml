@@ -65,11 +65,11 @@ jobs:
 
       - name: Refuse unsupported distribution with a clear message
         env:
-          APPINSTALL_TEST_OS_RELEASE: /tmp/fake-ubuntu-os-release
+          APPINSTALL_TEST_OS_RELEASE: /tmp/fake-fedora-os-release
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
-          printf 'NAME=Ubuntu\nID=ubuntu\nID_LIKE=debian\n' > "$APPINSTALL_TEST_OS_RELEASE"
+          printf 'NAME=Fedora\nID=fedora\n' > "$APPINSTALL_TEST_OS_RELEASE"
           runuser -u appuser -- env HOME=/home/appuser \
             APPINSTALL_TEST_OS_RELEASE="$APPINSTALL_TEST_OS_RELEASE" \
             bash -c "cd '$GITHUB_WORKSPACE' && ./install.sh --dry-run" \
@@ -78,8 +78,7 @@ jobs:
             cat /tmp/refusal.out /tmp/refusal.err >&2
             echo "::error::expected unsupported-distro exit 2, got $rc"; exit 1
           fi
-          grep -q "family 'debian'" /tmp/refusal.out /tmp/refusal.err
-          grep -q "install-user.sh" /tmp/refusal.out /tmp/refusal.err
+          grep -q "Unsupported distribution 'fedora'" /tmp/refusal.out /tmp/refusal.err
           if pacman -Q appinstall 2>/dev/null; then
             echo '::error::an unsupported distro must never install a package'; exit 1
           fi

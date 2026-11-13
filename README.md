@@ -12,17 +12,23 @@ Double-click a supported file, review its source and destination, confirm instal
 
 Managed applications now use monitored launchers. Startup failures show useful errors and logs; open **AppInstall → Application Diagnostics** or run `appinstall --diagnostics` for launch history and safe repair actions. See [Launch Diagnostics](LAUNCH_DIAGNOSTICS.md) for tested behavior and limits.
 
-## Install AppInstall (Arch Linux / CachyOS)
+## Install AppInstall
 
-**One-command installation** is available for tested **Arch Linux and CachyOS (x86_64)** desktops. Run this as your normal desktop user (not with `sudo`):
+**One-command installation** detects the host distribution (x86_64). Run this as your normal desktop user (not with `sudo`):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash
 ```
 
-The installer script is **v1.1.0**, but it installs the latest *published stable AppInstall package*, not an unreleased application version. The installer and the application have separate version numbers. It selects stable releases only, downloads the release package and its `SHA256SUMS`, verifies the checksum, and installs through pacman. It prompts before installing; when AppInstall is already up to date, it does not reinstall it.
+The installer downloads the package for your distro and verifies it against
+`SHA256SUMS`. Arch Linux and CachyOS use pacman. Debian 13, Ubuntu 24.04 and
+26.04, and Linux Mint 22 use APT once the latest stable release includes a
+`.deb`. Ubuntu needs the Universe repository for its Qt bindings.
 
-The installer also checks required dependencies and offers missing optional backends such as Flatpak, rootless Podman, Distrobox, squashfs-tools, fuse2, KDialog/Zenity and libnotify. It will **ask before changing your default file handlers** for AppImage, Flatpak, DEB and RPM (nine MIME types). That choice is optional, per-user only, and the previous defaults are backed up with a restoration script. It does not create Distrobox containers during setup.
+On APT systems, only the AppInstall `.deb` and its required dependencies
+are installed. Optional backends can be installed separately. On Arch and
+CachyOS, the installer offers missing optional backends. File association
+changes are optional and previous per-user defaults are backed up.
 
 Verify the installation or open the application manager:
 
@@ -39,7 +45,9 @@ curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.
 
 For a no-changes plan, run `curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash -s -- --dry-run`. The `--yes` flag allows unattended installation, but does **not** automatically change file defaults; use `--set-defaults` to opt in, or `--no-defaults` to leave them unchanged. See [INSTALL.md](INSTALL.md) for all flags and installation details.
 
-Only Arch Linux and CachyOS are supported by this one-command package installer today. Other distributions (Debian/Ubuntu, Fedora, openSUSE and others) should use the [source installation instructions](INSTALL.md) instead; never install an Arch `.pkg.tar.zst` on another distribution. DEB/RPM support within the AppInstall application uses Distrobox and is separate from the installer’s supported host distributions.
+For other distributions, see [source installation](INSTALL.md). Installing
+DEB/RPM apps inside AppInstall uses Distrobox and is separate from installing
+AppInstall itself.
 
 ## Native Debian-family package candidate
 
@@ -59,8 +67,7 @@ appinstall --version
 ```
 
 The APT package is removed with `sudo apt remove appinstall`. Ubuntu users
-need the Universe repository enabled. The one-command script above is for
-Arch Linux and CachyOS.
+need the Universe repository enabled. For a minimal manual install, add `--no-install-recommends` to the APT command.
 
 ## Install from source (alternative)
 
