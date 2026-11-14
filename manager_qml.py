@@ -95,26 +95,26 @@ STATUS_TONES = {
 class AppModel(QtCore.QAbstractListModel):
     """Installed apps for the QML list, reusing manager's record shape."""
 
-    KeyRole = QtCore.Qt.UserRole + 1
-    NameRole = QtCore.Qt.UserRole + 2
-    FormatRole = QtCore.Qt.UserRole + 3
-    FormatLabelRole = QtCore.Qt.UserRole + 4
-    VersionRole = QtCore.Qt.UserRole + 5
-    ContainerRole = QtCore.Qt.UserRole + 6
-    SizeTextRole = QtCore.Qt.UserRole + 7
-    StatusRole = QtCore.Qt.UserRole + 8
-    StatusLabelRole = QtCore.Qt.UserRole + 9
-    StatusToneRole = QtCore.Qt.UserRole + 10
-    ProblemsRole = QtCore.Qt.UserRole + 11
-    PinnedRole = QtCore.Qt.UserRole + 12
-    IconUrlRole = QtCore.Qt.UserRole + 13
-    InitialRole = QtCore.Qt.UserRole + 14
-    CanOpenRole = QtCore.Qt.UserRole + 15
-    CanUninstallRole = QtCore.Qt.UserRole + 16
-    CanUpdateRole = QtCore.Qt.UserRole + 17
-    IsContainerRole = QtCore.Qt.UserRole + 18
-    LastLaunchRole = QtCore.Qt.UserRole + 19
-    DescriptionRole = QtCore.Qt.UserRole + 20
+    KeyRole = QtCore.Qt.ItemDataRole.UserRole + 1
+    NameRole = QtCore.Qt.ItemDataRole.UserRole + 2
+    FormatRole = QtCore.Qt.ItemDataRole.UserRole + 3
+    FormatLabelRole = QtCore.Qt.ItemDataRole.UserRole + 4
+    VersionRole = QtCore.Qt.ItemDataRole.UserRole + 5
+    ContainerRole = QtCore.Qt.ItemDataRole.UserRole + 6
+    SizeTextRole = QtCore.Qt.ItemDataRole.UserRole + 7
+    StatusRole = QtCore.Qt.ItemDataRole.UserRole + 8
+    StatusLabelRole = QtCore.Qt.ItemDataRole.UserRole + 9
+    StatusToneRole = QtCore.Qt.ItemDataRole.UserRole + 10
+    ProblemsRole = QtCore.Qt.ItemDataRole.UserRole + 11
+    PinnedRole = QtCore.Qt.ItemDataRole.UserRole + 12
+    IconUrlRole = QtCore.Qt.ItemDataRole.UserRole + 13
+    InitialRole = QtCore.Qt.ItemDataRole.UserRole + 14
+    CanOpenRole = QtCore.Qt.ItemDataRole.UserRole + 15
+    CanUninstallRole = QtCore.Qt.ItemDataRole.UserRole + 16
+    CanUpdateRole = QtCore.Qt.ItemDataRole.UserRole + 17
+    IsContainerRole = QtCore.Qt.ItemDataRole.UserRole + 18
+    LastLaunchRole = QtCore.Qt.ItemDataRole.UserRole + 19
+    DescriptionRole = QtCore.Qt.ItemDataRole.UserRole + 20
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -159,7 +159,7 @@ class AppModel(QtCore.QAbstractListModel):
     def rowCount(self, parent=QtCore.QModelIndex()):
         return 0 if parent.isValid() else len(self._rows)
 
-    def data(self, index, role=QtCore.Qt.DisplayRole):
+    def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
         row = self._rows[index.row()] if index.isValid() else None
         if row is None:
             return None
