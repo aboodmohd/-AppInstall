@@ -16,6 +16,11 @@ source=('install.sh'
         'appinstall-appimage-review.desktop'
         'confirm.py'
         'manager.py'
+        'manager_qml.py'
+        'manager_ui/qmldir'
+        'manager_ui/Theme.qml'
+        'manager_ui/main.qml'
+        'manager_ui/AppCard.qml'
         'result_ui.py'
         'package_meta.py'
         'qt_compat.py'
@@ -70,6 +75,11 @@ b2sums=(
         '5a0a824810d4c4d7a8f7f2603f3c4623874eef4de55ee4b360ab0321ecfae8edf42a9443c134e10272fba0b96f89f74cd45473e6ac09c6493595c9ad0cf9c0e5'
         'aa2943ff6d844443cb68654103a1aadadea9c3b000dffe66ef0601999f12e9a6e5cd3b8ab0b7aa7f5c60bebb1fe872ff51aebec12722cce31f98b04194b39cc8'
         '51c114c3f6f826d680e1832baf68e2dd6ae713f87342afe359b4697612d15930c1b9d37553b9ed79f94c8f303c42108981f23168083563c0f27f94f97d9ed1d2'
+        'aa2d171cd1dee4f9a0845f5a53657e050bc650cfa8ede3edd804a68b29d7229f3277424136f8d91e3090ac20cbe3683337eb795ac9eeb3d72b1246c3c5dd45aa'
+        '45989cba16c5c75e2350ec185e4a0e86ed4f7646e8a612f6e1d1ef15c9a46a7048e1f47508440f549a2c1f154cdee45d30664de5a92acadae724e58995f0fa32'
+        'f73d961e0b4f6a14b6c2a07c56b868851d9809afd785e8493419aceb58223424c711b0b95155199eb5102bcc2e9195e4444a78b91d9f4d6a185c1280b3efca71'
+        '1c3cf5678cf75e338b477d5946f3518816f59cfd1f30750fa584dff67c97aa211096d3ea07d834e31d41f61f4cf70b091f88d9debad804b89b5ebe18f46d6acb'
+        'e837375816ee60b729bc31bc84e9dbe551c98985ec10c1ff77ae834f9bf07109fd9588271de1e366034e9411814cc759d7ae104ed3ebd7f662a941b7fd0e5799'
         '2e05cd589ad5fe269caf53e4f15585792cf0be6fdd18068609e903164d5b976eb4a9bccd789e2fbd13efa9a23fa8ddce50cde9c73bfe1a109620102379d7a7a4'
         'ed13786f49c5f7bda53e4a0abf93c8b0cc21eeb1b43509e4a91929b08fb58baaf2fc8922e0554fca4ec0642c3a0f3f08a7118d6b3f5b5064bd10251289c7f5b7'
         'ecb167e735b2eb0756fa05ff729caa8494ca1a1d886fe15402f0d2da31087a2e42ec54c1a6b18baca25c66322e5d9ee09fc65e662152604f857f3a0eea58bd83'
@@ -114,9 +124,15 @@ b2sums=(
 package() {
     install -Dm0644 "$srcdir/RELEASE_NOTES.md" "$pkgdir/usr/share/appinstall/RELEASE_NOTES.md"
     install -Dm0755 "$srcdir/install.sh" "$pkgdir/usr/bin/appinstall-installer"
-    for helper in container_backend.py container_ui.py launch_monitor.py manager.py result_ui.py runtime_probe.py diagnostics_core.py diagnostics_ui.py url_install.py url_dialog.py; do
+    for helper in container_backend.py container_ui.py launch_monitor.py manager.py manager_qml.py result_ui.py runtime_probe.py diagnostics_core.py diagnostics_ui.py url_install.py url_dialog.py; do
         install -Dm0644 "$srcdir/$helper" "$pkgdir/usr/bin/$helper"
     done
+    # QML prototype of the My Applications screen (manager_qml.py loads it
+    # from the directory next to the other helpers).
+    install -Dm0644 "$srcdir/manager_ui/qmldir" "$pkgdir/usr/bin/manager_ui/qmldir"
+    install -Dm0644 "$srcdir/manager_ui/Theme.qml" "$pkgdir/usr/bin/manager_ui/Theme.qml"
+    install -Dm0644 "$srcdir/manager_ui/main.qml" "$pkgdir/usr/bin/manager_ui/main.qml"
+    install -Dm0644 "$srcdir/manager_ui/AppCard.qml" "$pkgdir/usr/bin/manager_ui/AppCard.qml"
     install -Dm0644 "$srcdir/native_backend.py" "$pkgdir/usr/bin/native_backend.py"
     install -Dm0644 "$srcdir/appimage_backend.py" "$pkgdir/usr/bin/appimage_backend.py"
     install -Dm0644 "$srcdir/confirm.py" "$pkgdir/usr/bin/confirm.py"
