@@ -459,6 +459,11 @@ container_workflow() {
 
 install_native() { container_workflow "$1"; }
 
+batch_cancelled() {
+  [[ "${APPINSTALL_BATCH:-}" == 1 ]] && return 75
+  return 0
+}
+
 install_one() { # file
   local f=$1 t
   if [ ! -f "$f" ]; then
@@ -490,12 +495,12 @@ Only install files from sources you trust."
       rc=$?
       case "$rc" in
         0) : ;;
-        1) return 0 ;;
-        3) dialog_confirm "$confirm_text" || return 0 ;;
+        1) batch_cancelled; return $? ;;
+        3) dialog_confirm "$confirm_text" || { batch_cancelled; return $?; } ;;
         *) error_dialog 'The package details window could not open, so installation was cancelled. Install PySide6 or PyQt6 for graphical package details.'; return "$rc" ;;
       esac
     else
-      dialog_confirm "$confirm_text" || return 0
+      dialog_confirm "$confirm_text" || { batch_cancelled; return $?; }
     fi
   fi
   case "$t" in
@@ -595,6 +600,10 @@ main() {
     fi
   fi
 
+  if [[ "${APPINSTALL_BATCH:-}" == 1 && $# -eq 1 ]]; then
+    install_one "$1"
+    exit $?
+  fi
   rc=0
   for f in "$@"; do
     install_one "$f" || rc=1

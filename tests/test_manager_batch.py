@@ -245,11 +245,12 @@ class BatchDialogTests(DialogBase):
                  self.touch('c.AppImage')]
         with self.patch_command():
             dialog = self.make_dialog(
-                paths, stub_body='sleep 2; exit 0')
+                paths, stub_body='test "$APPINSTALL_BATCH" = 1 || exit 3; '
+                                 'case "$2" in *slow*) exit 75;; esac; exit 0')
             self.wait_for(lambda: dialog.queue.items[0].state ==
                           manager.BatchItem.RUNNING,
                           message='first item never started')
-            dialog._cancel(0)
+            self.assertFalse(dialog.rows[0][1].isEnabled())
             self.wait_for(lambda: (
                 dialog.queue.items[0].state == manager.BatchItem.CANCELLED and
                 dialog.queue.items[1].state == manager.BatchItem.INSTALLED and
@@ -289,24 +290,18 @@ class BatchDialogTests(DialogBase):
 
     # ── Close-path regressions ──────────────────────────────────────────
 
-    def test_close_cancels_active_review(self):
-        """Closing the dialog while a review runs marks that item Cancelled
-        and closes the dialog instead of letting the review install."""
+    def test_close_waits_for_active_review(self):
         paths = [self.touch('active.AppImage')]
         with self.patch_command():
-            dialog = self.make_dialog(
-                paths, stub_body='sleep 5; exit 0')
-            self.wait_for(lambda: dialog.queue.items[0].state ==
-                          manager.BatchItem.RUNNING,
-                          message='review never started')
+            dialog = self.make_dialog(paths, stub_body='sleep .2; exit 75')
+            with patch.object(manager.QMessageBox, 'information') as notice:
+                dialog.reject()
+                notice.assert_called_once()
+            self.assertTrue(dialog.isVisible())
+            self.wait_for(lambda: not dialog.queue.pending())
             dialog.reject()
-            self.wait_for(lambda: dialog.queue.items[0].state ==
-                          manager.BatchItem.CANCELLED,
-                          message='close did not cancel the active review')
-            self.wait_for(lambda: dialog.result() ==
-                          QtWidgets.QDialog.DialogCode.Rejected,
-                          message='dialog did not close')
-        self.assertEqual(dialog.rows[0][0].text(), 'Cancelled')
+        self.assertFalse(dialog.isVisible())
+        self.assertEqual(self.statuses(dialog), ['Cancelled'])
 
     def test_close_with_nothing_running_just_closes(self):
         """Closing after a review completed must not error or re-run."""
@@ -350,12 +345,12 @@ class ManagerBatchCloseTests(DialogBase):
                           manager.BatchItem.RUNNING,
                           message='review never started')
             self.assertIs(self.window.batch_dialog, dialog)
+            with patch.object(manager.QMessageBox, 'information'):
+                self.assertFalse(self.window.close())
+            self.wait_for(lambda: not dialog.queue.pending())
             dialog.reject()
             self.wait_for(lambda: self.window.batch_dialog is None,
                           message='manager did not clear batch dialog')
-            self.wait_for(lambda: dialog.queue.items[0].state ==
-                          manager.BatchItem.CANCELLED,
-                          message='active review not cancelled on close')
         self.assertTrue(dialog.isHidden() or dialog.result() ==
                         QtWidgets.QDialog.DialogCode.Rejected)
 
