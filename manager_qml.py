@@ -417,8 +417,13 @@ class Bridge(QtCore.QObject):
 
     def applyTheme(self):
         theme = settings.read().get('theme', 'auto')
-        hint = QtGui.QGuiApplication.styleHints().colorScheme()
-        system_dark = hint == QtCore.Qt.ColorScheme.Dark
+        hints = QtGui.QGuiApplication.styleHints()
+        if hasattr(hints, 'colorScheme'):
+            system_dark = hints.colorScheme() == QtCore.Qt.ColorScheme.Dark
+        else:
+            # Qt 6.4 (Ubuntu 24.04) predates QStyleHints.colorScheme.
+            palette = QtGui.QGuiApplication.palette()
+            system_dark = palette.color(QtGui.QPalette.ColorRole.Window).lightness() < 128
         self._dark = (theme == 'dark') or (theme == 'auto' and system_dark)
         self.darkChanged.emit(self._dark)
         self.themeChanged.emit()
