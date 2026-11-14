@@ -17,10 +17,14 @@ source=('install.sh'
         'confirm.py'
         'manager.py'
         'manager_qml.py'
-        'manager_ui/qmldir'
-        'manager_ui/Theme.qml'
-        'manager_ui/main.qml'
-        'manager_ui/AppCard.qml'
+        # QML prototype files. Like the icon sources above, the repo keeps
+        # them under manager_ui/ and exposes them through distinct root-level
+        # symlinks, because makepkg resolves every local source by its
+        # basename at $startdir/ and cannot read subdirectory sources.
+        'manager-ui-qmldir'
+        'manager-ui-Theme.qml'
+        'manager-ui-main.qml'
+        'manager-ui-AppCard.qml'
         'result_ui.py'
         'package_meta.py'
         'qt_compat.py'
@@ -129,10 +133,10 @@ package() {
     done
     # QML prototype of the My Applications screen (manager_qml.py loads it
     # from the directory next to the other helpers).
-    install -Dm0644 "$srcdir/manager_ui/qmldir" "$pkgdir/usr/bin/manager_ui/qmldir"
-    install -Dm0644 "$srcdir/manager_ui/Theme.qml" "$pkgdir/usr/bin/manager_ui/Theme.qml"
-    install -Dm0644 "$srcdir/manager_ui/main.qml" "$pkgdir/usr/bin/manager_ui/main.qml"
-    install -Dm0644 "$srcdir/manager_ui/AppCard.qml" "$pkgdir/usr/bin/manager_ui/AppCard.qml"
+    install -Dm0644 "$srcdir/manager-ui-qmldir" "$pkgdir/usr/bin/manager_ui/qmldir"
+    install -Dm0644 "$srcdir/manager-ui-Theme.qml" "$pkgdir/usr/bin/manager_ui/Theme.qml"
+    install -Dm0644 "$srcdir/manager-ui-main.qml" "$pkgdir/usr/bin/manager_ui/main.qml"
+    install -Dm0644 "$srcdir/manager-ui-AppCard.qml" "$pkgdir/usr/bin/manager_ui/AppCard.qml"
     install -Dm0644 "$srcdir/native_backend.py" "$pkgdir/usr/bin/native_backend.py"
     install -Dm0644 "$srcdir/appimage_backend.py" "$pkgdir/usr/bin/appimage_backend.py"
     install -Dm0644 "$srcdir/confirm.py" "$pkgdir/usr/bin/confirm.py"
