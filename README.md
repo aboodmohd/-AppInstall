@@ -128,6 +128,44 @@ appinstall --yes --install-url https://example.com/releases/application.AppImage
 ```
 `--yes` bypasses confirmation (scripts only). Cancellation with `Ctrl+C` removes the partial download.
 
+## My Applications preview (opt-in)
+
+AppInstall ships a second, explicitly launched view of the installed
+applications: **My Applications (Preview)**. It renders the same
+inventory as the widgets manager in the system WebView
+(WebKitGTK) — plain TypeScript compiled to JavaScript, plus HTML and
+CSS. There is no Electron, no frontend framework, and no browser
+runtime in the package; the page is drawn by the WebKitGTK your
+distribution already ships.
+
+![My Applications preview, light theme](docs/screenshots/manager-web-light.png)
+
+![My Applications preview, dark theme](docs/screenshots/manager-web-dark.png)
+
+The preview covers browsing only: search, status and format filters,
+sorting, and favorites. Favorites and the theme are written through to
+the same settings file the widgets manager uses, so both views agree.
+Opening, uninstalling and updating applications stay in the widgets
+manager (`appinstall --manage`), which remains the default UI.
+
+Run it from a source checkout with:
+
+```sh
+python3 manager_web.py
+```
+
+Native packages install it as `/usr/bin/manager_web.py` and add a
+**My Applications (Preview)** entry to the application menu. The
+Arch package depends on `python-gobject` and `webkit2gtk-4.1`; the
+Debian-family package depends on `python3-gi`, `gir1.2-gtk-3.0` and
+`gir1.2-webkit2-4.1`.
+
+The preview serves its data from a loopback HTTP server bound to
+`127.0.0.1` on an ephemeral port. Every API request must carry a
+per-session token that is handed to the page in the URL fragment (so it
+never reaches the server log) and sent back in a custom header, and a
+request from a foreign `Origin` is refused.
+
 ## CLI
 
 ```sh
