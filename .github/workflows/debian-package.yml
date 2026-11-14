@@ -60,7 +60,7 @@ jobs:
           cd /dist
           sha256sum -c SHA256SUMS
           package=(/dist/*.deb)
-          apt-get install -y --no-install-recommends curl python3 sudo desktop-file-utils
+          apt-get install -y --no-install-recommends curl python3 sudo desktop-file-utils xvfb xauth python3-gi gir1.2-gtk-3.0 gir1.2-webkit2-4.1
           useradd --create-home --shell /bin/bash appinstall-ci
           printf '%s\n' 'appinstall-ci ALL=(root) NOPASSWD: /usr/bin/apt-get, /usr/bin/true' > /etc/sudoers.d/appinstall-ci
           chmod 0440 /etc/sudoers.d/appinstall-ci
@@ -118,6 +118,21 @@ jobs:
           # A missing Qt Quick runtime dependency fails the job right here.
           runuser -u appinstall-ci -- env QT_QPA_PLATFORM=offscreen \
             python3 /usr/lib/appinstall/manager_qml.py --smoke
+
+          # The My Applications WebView preview must render from the
+          # installed package, with the system's WebKitGTK. A missing
+          # runtime dependency or a broken frontend fails the job here.
+          install -d -o appinstall-ci -g appinstall-ci /tmp/appinstall-preview/data/appinstall
+          install -d -o appinstall-ci -g appinstall-ci /tmp/appinstall-preview/state
+          printf '%s\n' '{"appimage:smoke": {"kind": "appimage", "name": "Smoke Test App", "version": "1.0.0"}}' \
+            > /tmp/appinstall-preview/data/appinstall/launchers.json
+          chown appinstall-ci:appinstall-ci /tmp/appinstall-preview/data/appinstall/launchers.json
+          runuser -u appinstall-ci -- env \
+            XDG_DATA_HOME=/tmp/appinstall-preview/data \
+            XDG_STATE_HOME=/tmp/appinstall-preview/state \
+            WEBKIT_DISABLE_SANDBOX_THIS_IS_DANGEROUS=1 \
+            APPINSTALL_SMOKE_EXPECT_APPS=1 \
+            xvfb-run -a python3 /usr/bin/manager_web.py --smoke
 
           mkdir -p /home/appinstall-ci/Applications
           printf '%s\n' 'preserve user data' > /home/appinstall-ci/Applications/keep

@@ -7,7 +7,11 @@ arch=('any')
 url="https://github.com/aboodmohd/-AppInstall"
 license=('MIT')
 depends=('bash' 'coreutils' 'xdg-utils' 'python' 'pyside6' 'curl'
-         'qt6-declarative')
+         # The QML My Applications screen renders with Qt Quick.
+         'qt6-declarative'
+         # The My Applications WebView preview renders in the system
+         # WebKitGTK: no browser runtime is shipped with AppInstall.
+         'python-gobject' 'webkit2gtk-4.1')
 optdepends=('polkit: graphical update authentication' 'flatpak: Flatpak installation' 'kdialog: KDE dialogs' 'zenity: GNOME and Xfce dialogs' 'libnotify: notifications' 'fuse2: AppImage mounting' 'squashfs-tools: passive AppImage preview' 'podman: rootless DEB/RPM containers' 'distrobox: DEB/RPM integration' 'libarchive: package inspection' 'binutils: optional static ELF dependency checks')
 backup=()
 
@@ -15,6 +19,7 @@ source=('install.sh'
         'appinstall'
         'appinstall.desktop'
         'appinstall-appimage-review.desktop'
+        'appinstall-my-applications.desktop'
         'confirm.py'
         'manager.py'
         'manager_qml.py'
@@ -26,6 +31,18 @@ source=('install.sh'
         'manager-ui-Theme.qml'
         'manager-ui-main.qml'
         'manager-ui-AppCard.qml'
+        'manager_web.py'
+        # WebView preview files. The compiled frontend lives under
+        # webpreview/ and is exposed through distinct root-level symlinks,
+        # because makepkg resolves every local source by its basename at
+        # $startdir/ and cannot read subdirectory sources.
+        'webpreview-index.html'
+        'webpreview-app.css'
+        'webpreview-main.js'
+        'webpreview-api.js'
+        'webpreview-render.js'
+        'webpreview-types.js'
+        'webpreview-view-model.js'
         'result_ui.py'
         'package_meta.py'
         'qt_compat.py'
@@ -78,6 +95,7 @@ b2sums=(
         '83296b09c1636cf6dcde455086817b9843fd5b4d485223dc7a2a250d677b528438fbd6eb5b2c6296a609651b212f3c7b06f0c447b0a510be5c818988bc2a1bd0'
         'f8da2822ad2a5638b9f7932728727fc624fae695db8cc30470783e1f7e26e719d1fa8624e0533ebcfd1713f99935d7752d0b8b3c46d90c06f2ff034f8b307d59'
         '5a0a824810d4c4d7a8f7f2603f3c4623874eef4de55ee4b360ab0321ecfae8edf42a9443c134e10272fba0b96f89f74cd45473e6ac09c6493595c9ad0cf9c0e5'
+        '00b2b23df683fa5d4be0452fcc97a5bdbad912eff1e52a340fca14827e3129caa3cfbfc595e553fdb7090a5404e750fb81ae8f11b356adf3998b62c75800fa46'
         'aa2943ff6d844443cb68654103a1aadadea9c3b000dffe66ef0601999f12e9a6e5cd3b8ab0b7aa7f5c60bebb1fe872ff51aebec12722cce31f98b04194b39cc8'
         '51c114c3f6f826d680e1832baf68e2dd6ae713f87342afe359b4697612d15930c1b9d37553b9ed79f94c8f303c42108981f23168083563c0f27f94f97d9ed1d2'
         'be7fc2046e5289d9be93a785d24adb4d9d43f6c0d87fb86dedcbb9ccd788d63f15892f4d6f3baf6fb471deb8ea2deb2ad0af9c28b808054663d8ddec14efb44b'
@@ -85,6 +103,14 @@ b2sums=(
         'f73d961e0b4f6a14b6c2a07c56b868851d9809afd785e8493419aceb58223424c711b0b95155199eb5102bcc2e9195e4444a78b91d9f4d6a185c1280b3efca71'
         '03cb543feaf6b4c282f1dc255f090e1aa74646e47fdd333e86e6206b82c0d9832d57a1f7863c045fe2dfae2917125ad0a1d64c8549af9bae60e28a6e1602ed6c'
         'e837375816ee60b729bc31bc84e9dbe551c98985ec10c1ff77ae834f9bf07109fd9588271de1e366034e9411814cc759d7ae104ed3ebd7f662a941b7fd0e5799'
+        '6871bc3c0310a5b46063fb1f444f0a8ad806477e81a9667a5565aac62ff0325b64bb781e3a43e1b73c71fd12da4db33c3590dcba173eac53831e6dd1da26ad68'
+        'e02da646cd127bae15c39e0408fc5af9aab3cab321536e51b39487b2b30aa624e95f022c410d1e905a86046a535a5f465d1ce3abf145966a07261b4c7b9ae9c0'
+        '721c42e92db054b5f723d3a26648de87c0ceb9485f6874a4b9e1e8c800f80d211f7bbfab91301c639d7b9ad1ae34f9eb5dab0bdde7a9bbc1156da00309443d94'
+        '6444a209e0dfe41d321bc4f4548812fba8fbf4c4d89d95a2c6c969e83573fe7a16e4cd19b5116990d7290aa9d7c3e57209a342e1dbadfae2472e2e4837d7c138'
+        '726b04199ecbee287ad8d2ab7717468fde0c3d6deaad032a9b5b5f3aee6c9d4e7d7a0c7364253906c48e72f166fef9e55cd0545cb773fd7f9f8f0e68c324c466'
+        '1c3169ffd0a66f991742bb793ba3bfa7a9e9a9ba9f6e216d0af34c3a011043b62716db61cf75b39a4088f142bb1e76b855a84479f320c125065f2f9f32d40250'
+        '8e6615c8c9cb63572c5e1c0bf71b2c3841866e85e45bedac74e219b7cb5710d6d5356e4e53f950412d60397ff0908d762a3c69e0a90fbc627309c92a098506a6'
+        '6d2cecf81bc4e2d81e1ce3051c80d8dfeadcd1b101e900b0ae00276630f54eef1cd1d49bfea95ef0108281bf6a287ea4039a0483767c29b9f6842ad27e7cb5c7'
         '2e05cd589ad5fe269caf53e4f15585792cf0be6fdd18068609e903164d5b976eb4a9bccd789e2fbd13efa9a23fa8ddce50cde9c73bfe1a109620102379d7a7a4'
         'ed13786f49c5f7bda53e4a0abf93c8b0cc21eeb1b43509e4a91929b08fb58baaf2fc8922e0554fca4ec0642c3a0f3f08a7118d6b3f5b5064bd10251289c7f5b7'
         'ecb167e735b2eb0756fa05ff729caa8494ca1a1d886fe15402f0d2da31087a2e42ec54c1a6b18baca25c66322e5d9ee09fc65e662152604f857f3a0eea58bd83'
@@ -100,13 +126,13 @@ b2sums=(
         '91e72a7e9bed260673d1f7fbeb7f7f8f80128e2acbe4b863ef22a39216d640939dac2e8353e6ec93e2bb50febfa157d4100466b148f7ffe234deb9d0b779a1ca'
         '40312bd4605b692791c1910d2126108ea84f34400131c4e03f00ae257c8d773523da493f687046d3c38a85d7231133bbb789a6f88d8f484e26d17bd5a8226307'
         'bb3f9b8d6a3916a3cb249ca5201489c1e3259fbf5f579b6a70b6f23400f45c91fc1d46cace131c4a825392f728b6ec731d5803ce8c9f36c99e1b405a77e3ff2a'
-        'd6ccc4dd9c61ccb6cd6cfae8506f368a03cbdf316a3ca4d2e70d98a48b958668830bcde700edeb6e2391ded24e27ad8d32b4e83671c3e301247b9f56e6876626'
+        '755ef5f55f3ee103f30c27dfb51a8ae56db64bf2aee74517b3b7edf8cbd5248285d3df041ed5c4ebba6ea09f0cd0955663a8d30259f86f31a940b5dd12fa8f2d'
         'fb989f8ee11448944229f9268b47ac9c645191f1cf58943837b3215dd596decf989bd023d8bf7b1444f5d3be36aa58059e86e8693d192c606d6c3fe43ec47c77'
         'aa57bc6a30118876bba2d2360383e2bb13b43738dc8d87296f7cfa53df1c19c3b2348dd1a4ffb00199a8a06a0f0dbf285edd7e33edffad02e98a9f07c29fb72d'
         'eb7caf4bc1e66f0db898e56dd98926b96b7afbf5b1a561aff75f06e93bbe0ad45f169230f0938c76d9770ce82b4895295a7c47e94b1fbd1b7a70c455dbd0ad4a'
         'e165190992822c00578f44fdbd420820fbe71b9d33b8810fe5e79173fd5420ff20e5ea9734fd6ec4b0edbea09cf9b224bb6235ceddf723698cd67ceaa0474259'
         '9ac94577648ced89a8ff26e735a9ff37acdb237e65c1f04446d182de3dda91b82add7ee0d43d62011e160897addc6fb1f5ceb7f7b7e80f992341abd8504db63b'
-        '01fdb146ae319d157bcf6d449e36d012ef5bd660f13f246bcb0963f0c0b3daa44aa53bce26fe58bb13ff6b2888e03f6340efc59f3b0a6ac25660398e12f5a873'
+        '7865125cd6ca8322adf359ae595e451c495ab1a8dc463f59fb5c786102620f587fce6f369b3df130fceb89de21663cb3f4c17fb15a0cf3f578788dd3dfd6b885'
         'f81bde25bcd98914ac1f7ed02040c78836cee033d5e66c63eff310a614f42ce595e50a9f239f1b112e31271f8eeb1cbde602d501352075ee9b5121e5877c3466'
         'ce04bc2194dd2ca59bedc16047090e361d9c06a1fafc6ce47814966a6d16a70046a547505221f0507e744a669e69cef356cdf6117920a15b4821332b2a792844'
         'c4f23c2cffc1ee91985059cff9d29d27f5629ade85d8819565f1fdec0a871b345b63f517cc9521241a3006a77410dae3c9dac887a765db0b6f3a3f97ccdaadc9'
@@ -140,6 +166,21 @@ package() {
     install -Dm0644 "$srcdir/manager-ui-AppCard.qml" "$pkgdir/usr/bin/manager_ui/AppCard.qml"
     install -Dm0644 "$srcdir/native_backend.py" "$pkgdir/usr/bin/native_backend.py"
     install -Dm0644 "$srcdir/appimage_backend.py" "$pkgdir/usr/bin/appimage_backend.py"
+    # WebView preview of the My Applications screen. The frontend is
+    # compiled TypeScript; the package ships the compiled output, never
+    # a browser runtime.
+    install -Dm0755 "$srcdir/manager_web.py" "$pkgdir/usr/bin/manager_web.py"
+    install -Dm0644 "$srcdir/webpreview-index.html" \
+        "$pkgdir/usr/share/appinstall/webpreview/index.html"
+    install -Dm0644 "$srcdir/webpreview-app.css" \
+        "$pkgdir/usr/share/appinstall/webpreview/app.css"
+    for script in main api render types view-model; do
+        install -Dm0644 "$srcdir/webpreview-${script}.js" \
+            "$pkgdir/usr/share/appinstall/webpreview/js/${script}.js"
+    done
+    # Opt-in launcher: the widgets manager stays the default UI.
+    install -Dm0644 "$srcdir/appinstall-my-applications.desktop" \
+        "$pkgdir/usr/share/applications/appinstall-my-applications.desktop"
     install -Dm0644 "$srcdir/confirm.py" "$pkgdir/usr/bin/confirm.py"
     install -Dm0644 "$srcdir/package_meta.py" "$pkgdir/usr/bin/package_meta.py"
     install -Dm0644 "$srcdir/qt_compat.py" "$pkgdir/usr/bin/qt_compat.py"
