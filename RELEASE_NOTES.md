@@ -1,6 +1,7 @@
 # AppInstall v1.4.0
 
-Managed-app update checks: auto (TTL-cached ~12h) plus manual Check now.
+AppInstall checks for its own stable updates on startup (about every 12 hours) and on demand.
+Managed Flatpak apps can be updated individually from My Applications.
 Desktop notifications for available updates (notify-send, headless-safe).
 Settings module, theme toggle (auto/light/dark), favorites, package size.
 Drag-and-drop batch install with per-file results and cancel.

@@ -301,7 +301,10 @@ class BatchQueue:
         if item.state != BatchItem.RUNNING:
             return  # Cancelled mid-review keeps its Cancelled verdict.
         item.exit_code = exit_code
-        item.state = BatchItem.INSTALLED if exit_code == 0 else BatchItem.FAILED
+        if exit_code == 75:
+            item.state = BatchItem.CANCELLED
+        else:
+            item.state = BatchItem.INSTALLED if exit_code == 0 else BatchItem.FAILED
 
     def cancel(self, index):
         item = self.items[index]
@@ -625,6 +628,7 @@ def diagnostics_for(app):
 
 from qt_compat import QtCore, Signal
 Qt = QtCore.Qt
+QProcessEnvironment = QtCore.QProcessEnvironment
 QProcess = QtCore.QProcess
 QThread = QtCore.QThread
 QTimer = QtCore.QTimer
@@ -1101,11 +1105,8 @@ def _show_log(path, parent):
 class BatchQueueDialog(QDialog):
     """Modeless progress list for a drag-and-drop batch install.
 
-    One file runs at a time through the normal `appinstall FILE` review so
-    confirm dialogs never overlap. Every file keeps its own row and result;
-    cancelling a queued row skips it, cancelling the running row closes that
-    review and the queue moves on with the remaining files. Closing the
-    dialog never kills a running review — it is an independent app window.
+    One file runs at a time. Cancel an active review in its own window
+    so the backend can finish any transaction already in progress.
     """
 
     def __init__(self, queue, parent=None):
@@ -1113,7 +1114,6 @@ class BatchQueueDialog(QDialog):
         self.queue = queue
         self.process = None
         self._active_index = None
-        self._kill_timer = None
         self.rows = {}
         self._closed = False
         self.setWindowTitle('Installing Files')
@@ -1148,7 +1148,7 @@ class BatchQueueDialog(QDialog):
         wrapper.setSizeHint(row.sizeHint())
         self.list.addItem(wrapper)
         self.list.setItemWidget(wrapper, row)
-        active = item.state in (BatchItem.QUEUED, BatchItem.RUNNING)
+        active = item.state == BatchItem.QUEUED
         cancel.setEnabled(active)
         cancel.setVisible(active)
         self.rows[index] = (status, cancel)
@@ -1171,7 +1171,7 @@ class BatchQueueDialog(QDialog):
         item = self.queue.items[index]
         status, cancel = self.rows[index]
         status.setText(self._status_text(item))
-        active = item.state in (BatchItem.QUEUED, BatchItem.RUNNING)
+        active = item.state == BatchItem.QUEUED
         cancel.setEnabled(active)
         cancel.setVisible(active)
 
@@ -1189,28 +1189,16 @@ class BatchQueueDialog(QDialog):
             self._run_next()
 
     def reject(self):
-        """Close button (X / Escape / the Close button) cancels the active
-        review, marks it Cancelled, then shuts the dialog. The terminated
-        review becomes an independent orphan process; the queue never starts
-        the next item after a close."""
-        if self._active_index is not None:
-            self.queue.cancel(self._active_index)
-            self._refresh(self._active_index)
         if self.process is not None:
-            self.process.terminate()
+            QMessageBox.information(self, 'AppInstall',
+                                    'Close the active package review before closing the queue.')
+            return
         self._closed = True
-        self.process = None
-        self._active_index = None
-        super().reject()
-
-    def _force_kill_and_close(self):
-        self._kill_timer = None
-        if self.process is not None:
-            self.process.kill()
-            self._closed = True
         super().reject()
 
     def _run_next(self):
+        if self.process is not None:
+            return
         if self._closed:
             self.process = None
             self._active_index = None
@@ -1227,12 +1215,12 @@ class BatchQueueDialog(QDialog):
         self.process = QProcess(self)
         self.process.finished.connect(self._on_finished)
         self.process.errorOccurred.connect(self._on_process_error)
+        env = QProcessEnvironment.systemEnvironment()
+        env.insert("APPINSTALL_BATCH", "1")
+        self.process.setProcessEnvironment(env)
         self.process.start(str(_appinstall_command()), ['--', str(item.path)])
 
     def _on_finished(self, exit_code=None, status=None):
-        if self._kill_timer is not None:
-            self._kill_timer.stop()
-            self._kill_timer = None
         process = self.process
         self.process = None
         if self._active_index is None:
@@ -1240,6 +1228,8 @@ class BatchQueueDialog(QDialog):
         index = self._active_index
         self._active_index = None
         code = process.exitCode() if exit_code is None else exit_code
+        if status == QProcess.ExitStatus.CrashExit:
+            code = -1
         self.queue.finished(index, code)
         self._refresh(index)
         self._run_next()
@@ -1250,26 +1240,9 @@ class BatchQueueDialog(QDialog):
             self._on_finished(-1)
 
     def _cancel(self, index):
-        item = self.queue.items[index]
-        if item.state not in (BatchItem.QUEUED, BatchItem.RUNNING):
-            return
-        running = item.state == BatchItem.RUNNING
-        self.queue.cancel(index)
-        self._refresh(index)
-        if running and self.process is not None:
-            self.process.terminate()
-            kill_timer = QTimer(self)
-            kill_timer.setSingleShot(True)
-            kill_timer.timeout.connect(self._force_kill)
-            kill_timer.start(3000)
-            self._kill_timer = kill_timer
-        elif not self.queue.busy():
-            self._run_next()
-
-    def _force_kill(self):
-        self._kill_timer = None
-        if self.process is not None:
-            self.process.kill()
+        if self.queue.items[index].state == BatchItem.QUEUED:
+            self.queue.cancel(index)
+            self._refresh(index)
 
 
 class HealthDialog(QDialog):
@@ -1979,6 +1952,10 @@ class ManagerWindow(QMainWindow):
         message.exec()
 
     def closeEvent(self, event):
+        if self.batch_dialog is not None and self.batch_dialog.process is not None:
+            self.batch_dialog.reject()
+            event.ignore()
+            return
         if self.update_operation == 'install':
             event.ignore()
             return

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Container workflow (deb/rpm via Distrobox) in the shared AppInstall interface."""
 import json
+import os
 from pathlib import Path
 import sys
 try:
@@ -77,6 +78,7 @@ class Workflow(QDialog):
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.args=args; self.engine=None; self.info=None; self.job=None; self.jobs=[]
         self.shot=shot; self.retry_callback=None
+        self.batch_result = 75
         self.setWindowTitle('AppInstall'); self.setWindowIcon(QIcon.fromTheme('appinstall')); self.setMinimumWidth(640); self.resize(660,540)
         layout=QVBoxLayout(self); layout.setContentsMargins(26,24,24,20); layout.setSpacing(12)
         header=QHBoxLayout(); header.setSpacing(16)
@@ -120,7 +122,7 @@ class Workflow(QDialog):
         self.work(self.read,self.preview,'Validating package')
     def closeEvent(self,event):
         if any(job.isRunning() for job in self.jobs): event.ignore()
-        else: event.accept()
+        else: super().closeEvent(event)
     def reject(self):
         if not any(job.isRunning() for job in self.jobs): super().reject()
     def work(self,callback,success,label=''):
@@ -145,6 +147,8 @@ class Workflow(QDialog):
         self.bar.hide(); self.stage_label.setText(''); self.close_button.setEnabled(True)
         job.deleteLater()
     def failure(self,message):
+        if self.batch_result != 0:
+            self.batch_result = 1
         self.logs.appendPlainText(message)
         self.description.setText('Operation failed. Review the problem summary below.')
         name, headline = failure_context(self.args, self.info)
@@ -204,6 +208,7 @@ class Workflow(QDialog):
         self.work(lambda:self.engine.install(self.info,choose),self.installed,'Installing application')
     def installed(self,record):
         if not record: return
+        self.batch_result = 0
         self.info=record
         if len(record.get('candidates',[]))>1 and not record.get('exports'):
             selected,ok=QInputDialog.getItem(self,'Choose application','Select the primary application to add to your menu:',record['candidates'],0,False)
@@ -250,4 +255,9 @@ if __name__=='__main__':
     window=Workflow(args,shot); window.show()
     if shot:
         QTimer.singleShot(600, lambda: (window.grab().save(shot), QApplication.quit()))
+    if os.environ.get("APPINSTALL_BATCH") == "1":
+        result = [75]
+        window.finished.connect(lambda _: result.__setitem__(0, window.batch_result))
+        app.exec()
+        sys.exit(result[0])
     sys.exit(app.exec())
