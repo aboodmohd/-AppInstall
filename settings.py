@@ -8,6 +8,7 @@ with 0600 permissions inside a 0700 directory, matching the registry files.
 """
 import json
 import os
+import re
 import uuid
 from pathlib import Path
 
@@ -39,6 +40,15 @@ def _sanitize(values):
         result['last_update_check'] = int(last_check)
     else:
         result['last_update_check'] = DEFAULTS['last_update_check']
+    cached = values.get('update_check_result')
+    if isinstance(cached, dict):
+        tag = cached.get('tag')
+        checked_at = cached.get('checked_at')
+        if (isinstance(tag, str) and
+                (tag == '' or re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag)) and
+                isinstance(checked_at, int) and checked_at > 0 and
+                checked_at == result['last_update_check']):
+            result['update_check_result'] = {'checked_at': checked_at, 'tag': tag}
     return result
 
 

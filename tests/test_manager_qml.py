@@ -392,7 +392,46 @@ class BridgeUpdateTests(QmlManagerBase):
         manager_qml.settings.update('last_update_check', int(time.time()))
         self.bridge.checkUpdates(False)
         self.process.start.assert_not_called()
-        self.assertEqual(self.bridge._update_status, 'AppInstall is up to date')
+        self.assertEqual(self.bridge.updateStatus, 'Update status has not been checked')
+        self.assertTrue(self.bridge.actionVisible)
+
+    def test_reopening_restores_successful_check_result(self):
+        for output, tag, status in (
+            (b'APPINSTALL_UPDATE=v1.4.1\n', 'v1.4.1', 'AppInstall v1.4.1 is available'),
+            (b'', '', 'AppInstall is up to date'),
+        ):
+            with self.subTest(tag=tag):
+                self.process.readAll.return_value = QtCore.QByteArray(output)
+                self.bridge._update_operation = 'check'
+                self.bridge._update_finished(0, QtCore.QProcess.ExitStatus.NormalExit)
+                reopened = manager_qml.Bridge(self.anchor)
+                with patch.object(reopened._update_process, 'start') as start, \
+                     patch.object(reopened, '_notify_update') as notify:
+                    reopened.checkUpdates(False)
+                start.assert_not_called()
+                notify.assert_not_called()
+                self.assertEqual(reopened.updateTag, tag)
+                self.assertEqual(reopened.updateStatus, status)
+                self.assertTrue(reopened.actionVisible)
+
+    def test_reopening_after_failed_check_is_neutral_and_manual_check_works(self):
+        # A failure must also invalidate an earlier cached success.
+        self.process.readAll.return_value = QtCore.QByteArray(
+            b'APPINSTALL_UPDATE=v1.4.1\n')
+        self.bridge._update_operation = 'check'
+        self.bridge._update_finished(0, QtCore.QProcess.ExitStatus.NormalExit)
+        self.bridge._update_operation = 'check'
+        self.process.readAll.return_value = QtCore.QByteArray(b'network failure')
+        self.bridge._update_finished(1, QtCore.QProcess.ExitStatus.NormalExit)
+        reopened = manager_qml.Bridge(self.anchor)
+        with patch.object(reopened._update_process, 'start') as start:
+            reopened.checkUpdates(False)
+            start.assert_not_called()
+            self.assertEqual(reopened.updateTag, '')
+            self.assertEqual(reopened.updateStatus, 'Update status has not been checked')
+            self.assertTrue(reopened.actionVisible)
+            reopened.checkUpdates(True)
+            start.assert_called_once()
 
     def test_auto_check_runs_once_the_ttl_elapses(self):
         elapsed = int(manager.UPDATE_TTL_SECONDS) + 60

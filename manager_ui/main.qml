@@ -428,7 +428,7 @@ ApplicationWindow {
                 }
                 Button {
                     id: updateCheckButton
-                    text: qsTr("Check now")
+                    text: qsTr("Check for Updates")
                     visible: bridge.updateTag === "" && bridge.actionVisible
                     font.pixelSize: 13
                     implicitHeight: 30

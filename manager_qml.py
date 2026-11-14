@@ -592,14 +592,18 @@ class Bridge(QtCore.QObject):
         if self._update_operation or self._update_tag:
             return
         if not manual:
-            last_check = settings.read().get('last_update_check', 0)
+            preferences = settings.read()
+            last_check = preferences.get('last_update_check', 0)
             if time.time() - last_check < manager.UPDATE_TTL_SECONDS:
-                # Within the 12h TTL: surface the last known state only.
+                cached = preferences.get('update_check_result')
+                self._update_tag = cached['tag'] if cached else ''
                 if self._update_tag:
                     self._update_status = 'AppInstall ' + self._update_tag + ' is available'
-                    self.updateTagChanged.emit(self._update_tag)
-                else:
+                elif cached:
                     self._update_status = 'AppInstall is up to date'
+                else:
+                    self._update_status = 'Update status has not been checked'
+                self.updateTagChanged.emit(self._update_tag)
                 self.updateStatusChanged.emit(self._update_status)
                 return
         if not self._update_helper.is_file():
@@ -635,12 +639,19 @@ class Bridge(QtCore.QObject):
         self.updateActionVisibleChanged.emit(True)
         ok = exit_code == 0 and exit_status == QtCore.QProcess.ExitStatus.NormalExit
         if operation == 'check':
-            # Record the check so automatic checks respect the 12h TTL.
+            match = re.search(r'^APPINSTALL_UPDATE=(v[0-9]+\.[0-9]+\.[0-9]+)$', output, re.M)
+            # Store the timestamp and result together; failures invalidate
+            # any earlier success rather than implying "up to date".
             try:
-                settings.update('last_update_check', int(time.time()))
+                preferences = settings.read()
+                checked_at = int(time.time())
+                preferences['last_update_check'] = checked_at
+                preferences['update_check_result'] = (
+                    {'checked_at': checked_at, 'tag': match[1] if match else ''}
+                    if ok else None)
+                settings.write(preferences)
             except OSError:
                 pass
-            match = re.search(r'^APPINSTALL_UPDATE=(v[0-9]+\.[0-9]+\.[0-9]+)$', output, re.M)
             if ok and match:
                 self._update_tag = match[1]
                 self._update_status = 'AppInstall ' + match[1] + ' is available'
@@ -663,6 +674,10 @@ class Bridge(QtCore.QObject):
                 self.updateStatusChanged.emit(self._update_status)
                 return
             self._update_tag = ''
+            try:
+                settings.update('update_check_result', None)
+            except OSError:
+                pass
             self.updateTagChanged.emit('')
             self._update_status = 'AppInstall ' + tag + ' installed. Reopen AppInstall to use it.'
             self.updateStatusChanged.emit(self._update_status)
