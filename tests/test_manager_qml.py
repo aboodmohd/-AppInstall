@@ -12,8 +12,10 @@ QProcess.
 import importlib.util
 import json
 import os
+import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -22,6 +24,8 @@ from PySide6 import QtCore, QtQml
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+from qt_compat import QtWidgets  # noqa: E402  (path first, then Qt modules)
 
 spec = importlib.util.spec_from_file_location('manager', ROOT / 'manager.py')
 manager = importlib.util.module_from_spec(spec)
@@ -65,6 +69,9 @@ class QmlManagerBase(unittest.TestCase):
             'XDG_DATA_HOME': str(self.root / 'data'),
             'XDG_STATE_HOME': str(self.root / 'state'),
             'QT_QPA_PLATFORM': 'offscreen',
+            # Auto update checks are a production feature; tests drive the
+            # slots directly and must never touch the real helper.
+            'APPINSTALL_DISABLE_UPDATE_TIMER': '1',
         })
         self.environment.start()
         from qt_compat import QtWidgets
@@ -367,7 +374,8 @@ class BridgeUpdateTests(QmlManagerBase):
         args = self.process.start.call_args[0]
         self.assertEqual(args[1], [str(self.bridge._update_helper),
                                    '--desktop-update', 'v1.4.1'])
-        self.bridge._update_finished(0, QtCore.QProcess.ExitStatus.NormalExit)
+        with patch.object(QtWidgets, 'QMessageBox'):
+            self.bridge._update_finished(0, QtCore.QProcess.ExitStatus.NormalExit)
         self.assertIn('installed', self.bridge._update_status)
         self.assertEqual(self.bridge.updateTag, '')
 
@@ -380,6 +388,74 @@ class BridgeUpdateTests(QmlManagerBase):
         # The banner stays visible so the action remains reachable.
         self.assertTrue(self.bridge.updateTag)
 
+    def test_auto_check_respects_the_ttl(self):
+        manager_qml.settings.update('last_update_check', int(time.time()))
+        self.bridge.checkUpdates(False)
+        self.process.start.assert_not_called()
+        self.assertEqual(self.bridge._update_status, 'AppInstall is up to date')
+
+    def test_auto_check_runs_once_the_ttl_elapses(self):
+        elapsed = int(manager.UPDATE_TTL_SECONDS) + 60
+        manager_qml.settings.update('last_update_check', int(time.time()) - elapsed)
+        self.bridge.checkUpdates(False)
+        self.process.start.assert_called_once()
+
+    def test_check_records_last_update_check_for_the_ttl(self):
+        self.bridge._update_operation = 'check'
+        self.bridge._update_finished(0, QtCore.QProcess.ExitStatus.NormalExit)
+        self.assertGreater(manager_qml.settings.read().get('last_update_check', 0), 0)
+
+    def test_available_update_notifies_per_user_settings(self):
+        manager_qml.settings.update('notifications', True)
+        self.process.readAll.return_value = QtCore.QByteArray(
+            b'APPINSTALL_UPDATE=v1.4.1\n')
+        self.bridge._update_operation = 'check'
+        with patch.object(manager_qml.subprocess, 'run') as run:
+            self.bridge._update_finished(0, QtCore.QProcess.ExitStatus.NormalExit)
+        run.assert_called_once()
+        self.assertIn('notify-send', run.call_args[0][0])
+
+    def test_notifications_disabled_means_no_notify_send(self):
+        manager_qml.settings.update('notifications', False)
+        self.process.readAll.return_value = QtCore.QByteArray(
+            b'APPINSTALL_UPDATE=v1.4.1\n')
+        self.bridge._update_operation = 'check'
+        with patch.object(manager_qml.subprocess, 'run') as run:
+            self.bridge._update_finished(0, QtCore.QProcess.ExitStatus.NormalExit)
+        run.assert_not_called()
+
+    def test_install_success_shows_whats_new_from_packaged_notes(self):
+        self.bridge._update_tag = 'v1.4.1'
+        self.process.readAll.return_value = QtCore.QByteArray(
+            b'APPINSTALL_UPDATED=v1.4.1\n')
+        self.bridge.installUpdate()
+        with patch.object(QtWidgets, 'QMessageBox') as box, \
+             patch.object(manager_qml, 'release_notes', return_value='# Notes\n'):
+            self.bridge._update_finished(0, QtCore.QProcess.ExitStatus.NormalExit)
+        title = box.return_value.setText.call_args[0][0]
+        self.assertTrue(title.startswith('What’s new in AppInstall v1.4.1'))
+        box.return_value.setDetailedText.assert_called_once_with('# Notes\n')
+
+    def test_install_success_without_packaged_notes_uses_release_url(self):
+        self.bridge._update_tag = 'v1.4.1'
+        self.process.readAll.return_value = QtCore.QByteArray(
+            b'APPINSTALL_UPDATED=v1.4.1\n')
+        self.bridge.installUpdate()
+        with patch.object(QtWidgets, 'QMessageBox') as box, \
+             patch.object(manager_qml, 'RELEASE_NOTES_PATH',
+                          Path('/nonexistent/appinstall/RELEASE_NOTES.md')):
+            self.bridge._update_finished(0, QtCore.QProcess.ExitStatus.NormalExit)
+        detailed = box.return_value.setDetailedText.call_args[0][0]
+        self.assertIn('releases/tag/v1.4.1', detailed)
+
+    def test_manual_check_failure_shows_details(self):
+        self.process.readAll.return_value = QtCore.QByteArray(b'boom\n')
+        self.bridge.checkUpdates(True)
+        with patch.object(QtWidgets, 'QMessageBox') as box:
+            self.bridge._update_finished(1, QtCore.QProcess.ExitStatus.CrashExit)
+        self.assertEqual(self.bridge._update_status, 'Could not check for updates')
+        self.assertIn('boom', box.return_value.setDetailedText.call_args[0][0])
+
 
 class ThemeTests(QmlManagerBase):
     def test_theme_setting_persists_and_flips_dark(self):
@@ -389,6 +465,96 @@ class ThemeTests(QmlManagerBase):
         self.assertTrue(self.bridge.dark)
         self.bridge.setTheme('light')
         self.assertFalse(self.bridge.dark)
+
+
+class HelperResolutionTests(unittest.TestCase):
+    """The updater helper: packaged installer first, install.sh in a
+    source checkout, PATH as the last resort."""
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.base = Path(self.temp.name)
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def resolve(self):
+        with patch.object(manager_qml, '__file__',
+                          str(self.base / 'manager_qml.py')):
+            return manager_qml.find_update_helper()
+
+    def test_prefers_the_packaged_installer(self):
+        (self.base / 'appinstall-installer').write_text('#!/bin/sh\n')
+        helper = self.resolve()
+        self.assertEqual(helper, self.base / 'appinstall-installer')
+        self.assertTrue(helper.is_file())
+
+    def test_source_checkout_falls_back_to_install_sh(self):
+        (self.base / 'install.sh').write_text('#!/bin/sh\n')
+        self.assertEqual(self.resolve(), self.base / 'install.sh')
+
+    def test_path_lookup_is_the_last_resort(self):
+        with patch.object(manager_qml.shutil, 'which',
+                          return_value='/opt/bin/appinstall-installer'):
+            self.assertEqual(self.resolve(),
+                             Path('/opt/bin/appinstall-installer'))
+
+    def test_missing_helper_returns_the_adjacent_candidate(self):
+        # PATH may carry a real appinstall-installer (a system install);
+        # isolate it so the 'nothing found' branch is what is tested.
+        with patch.dict(os.environ, {'PATH': ''}):
+            helper = self.resolve()
+        self.assertEqual(helper.name, 'appinstall-installer')
+        self.assertFalse(helper.is_file())
+
+
+class CloseGuardTests(QmlManagerBase):
+    def test_idle_close_is_allowed(self):
+        self.assertTrue(self.bridge.allowClose())
+
+    def test_install_update_blocks_closing(self):
+        self.bridge._update_operation = 'install'
+        self.assertFalse(self.bridge.allowClose())
+        self.assertIn('updating', self.bridge._status_text)
+
+    def test_running_check_is_killed_then_close_allowed(self):
+        self.bridge._update_operation = 'check'
+        self.bridge._update_process.kill = Mock()
+        self.bridge._update_process.waitForFinished = Mock()
+        self.assertTrue(self.bridge.allowClose())
+        self.bridge._update_process.kill.assert_called_once_with()
+        self.bridge._update_process.waitForFinished.assert_called_once_with(1000)
+
+    def test_batch_with_running_pipeline_rejects_close_once(self):
+        dialog = Mock()
+        dialog.process = object()
+        self.bridge._batch_dialog = dialog
+        self.assertFalse(self.bridge.allowClose())
+        dialog.reject.assert_called_once_with()
+
+    def test_batch_without_pipeline_does_not_block(self):
+        dialog = Mock()
+        dialog.process = None
+        self.bridge._batch_dialog = dialog
+        self.assertTrue(self.bridge.allowClose())
+
+
+class SmokeLaunchTests(unittest.TestCase):
+    def test_smoke_flag_loads_the_window_and_exits_zero(self):
+        with tempfile.TemporaryDirectory() as home:
+            env = dict(os.environ)
+            env.update({
+                'QT_QPA_PLATFORM': 'offscreen',
+                'XDG_DATA_HOME': str(Path(home) / 'data'),
+                'XDG_STATE_HOME': str(Path(home) / 'state'),
+                'APPINSTALL_DISABLE_UPDATE_TIMER': '1',
+            })
+            result = subprocess.run(
+                [sys.executable, str(ROOT / 'manager_qml.py'), '--smoke'],
+                capture_output=True, text=True, timeout=120, env=env,
+                cwd=str(ROOT))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('QML smoke', result.stdout)
 
 
 class InventoryLoadTests(QmlManagerBase):

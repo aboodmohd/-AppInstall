@@ -24,19 +24,16 @@ ApplicationWindow {
         function onDarkChanged() { Theme.mode = bridge.dark ? "dark" : "light" }
     }
 
-    // Same cadence as the widgets window: auto check 1.2s after open, then
-    // every 4h; the TTL gate lives in the bridge (manager.UPDATE_TTL_SECONDS).
-    Timer {
-        interval: 1200
-        running: true
-        repeat: false
-        onTriggered: bridge.checkUpdates(false)
-    }
-    Timer {
-        interval: 4 * 60 * 60 * 1000
-        running: true
-        repeat: true
-        onTriggered: bridge.checkUpdates(false)
+    // Auto update checks live in the bridge (QTimer + APPINSTALL
+    // _DISABLE_UPDATE_TIMER + helper gates); the QML layer never spawns
+    // network work on its own.
+
+    // Close guard: a running batch pipeline is cancelled first, an
+    // AppInstall upgrade blocks closing, a running check is killed.
+    onClosing: (close) => {
+        if (!bridge.allowClose()) {
+            close.accepted = false
+        }
     }
 
     // ── drag and drop: same acceptance rules and batch dialog as the
@@ -396,7 +393,9 @@ ApplicationWindow {
         // ── update banner ────────────────────────────────────────────
         Rectangle {
             id: updateBanner
-            visible: bridge.updateTag !== ""
+            // Visible whenever there is something to act on: an available
+            // tag, a running check/install, or the last status line.
+            visible: bridge.updateTag !== "" || bridge.updateStatus !== ""
             Layout.fillWidth: true
             Layout.leftMargin: 16
             Layout.rightMargin: 16
@@ -404,7 +403,7 @@ ApplicationWindow {
             implicitHeight: 44
             radius: 9
             color: Theme.colors.surface
-            border.color: Theme.colors.accent
+            border.color: bridge.updateTag !== "" ? Theme.colors.accent : Theme.colors.border
             border.width: 1
 
             RowLayout {
@@ -415,7 +414,7 @@ ApplicationWindow {
 
                 Rectangle {
                     width: 8; height: 8; radius: 4
-                    color: Theme.colors.accent
+                    color: bridge.updateTag !== "" ? Theme.colors.accent : Theme.colors.textSecondary
                     Layout.alignment: Qt.AlignVCenter
                 }
                 Label {
@@ -428,8 +427,33 @@ ApplicationWindow {
                     textFormat: Text.PlainText
                 }
                 Button {
+                    id: updateCheckButton
+                    text: qsTr("Check now")
+                    visible: bridge.updateTag === "" && bridge.actionVisible
+                    font.pixelSize: 13
+                    implicitHeight: 30
+                    implicitWidth: Math.max(contentItem.implicitWidth + 20, 110)
+
+                    background: Rectangle {
+                        radius: 7
+                        color: "transparent"
+                        border.color: updateCheckButton.enabled ? Theme.colors.border : "transparent"
+                        border.width: 1
+                        Behavior on border.color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
+                    }
+                    contentItem: Label {
+                        text: updateCheckButton.text
+                        font.pixelSize: 13
+                        color: Theme.colors.textSecondary
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: bridge.checkUpdates(true)
+                }
+                Button {
                     id: updateBannerButton
                     text: qsTr("Update AppInstall")
+                    visible: bridge.updateTag !== ""
                     font.pixelSize: 13
                     font.weight: Font.Medium
                     implicitHeight: 30

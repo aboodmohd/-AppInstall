@@ -11,7 +11,11 @@ UninstallDialog, AppDetailsDialog, HealthDialog), never through a copy.
 Run with:  python3 manager_qml.py
 """
 import os
+import re
+import shutil
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 from qt_compat import QtCore, QtGui, QtWidgets
@@ -27,6 +31,40 @@ import manager
 import settings
 
 QML_DIR = Path(__file__).resolve().with_name('manager_ui')
+
+
+def find_update_helper():
+    """Locate the AppInstall self-updater for this kind of checkout.
+
+    Native packages ship appinstall-installer next to this module; a source
+    checkout only has install.sh (same --desktop-check/--desktop-update
+    protocol). PATH is the last resort. Returns the candidate path even when
+    missing so callers can treat 'no helper' as 'update UI unavailable'.
+    """
+    here = Path(__file__).resolve().parent
+    adjacent = here / 'appinstall-installer'
+    if adjacent.is_file():
+        return adjacent
+    local = here / 'install.sh'
+    if local.is_file():
+        return local
+    found = shutil.which('appinstall-installer')
+    if found:
+        return Path(found)
+    return adjacent
+
+
+RELEASE_NOTES_PATH = Path('/usr/share/appinstall/RELEASE_NOTES.md')
+
+
+def release_notes(tag):
+    """What's new text for a freshly installed tag: the packaged release
+    notes when present, otherwise the GitHub release URL."""
+    try:
+        return RELEASE_NOTES_PATH.read_text(encoding='utf-8')
+    except (OSError, UnicodeError):
+        return 'https://github.com/aboodmohd/-AppInstall/releases/tag/' + tag
+
 
 
 # ── status presentation ────────────────────────────────────────────────────
@@ -256,6 +294,11 @@ class Bridge(QtCore.QObject):
     themeChanged = QtCore.Signal()
     updateStatusChanged = QtCore.Signal(str)
     updateActionVisibleChanged = QtCore.Signal(bool)
+
+    @QtCore.Property(bool, notify=updateActionVisibleChanged)
+    def actionVisible(self):
+        return self._update_action_visible
+
     darkChanged = QtCore.Signal(bool)
     updateTagChanged = QtCore.Signal(str)
 
@@ -275,7 +318,18 @@ class Bridge(QtCore.QObject):
         self._update_process = QtCore.QProcess(self)
         self._update_process.setProcessChannelMode(QtCore.QProcess.ProcessChannelMode.MergedChannels)
         self._update_process.finished.connect(self._update_finished)
-        self._update_helper = Path(__file__).with_name('install.sh')
+        self._update_helper = find_update_helper()
+        self._update_manual = False
+        # Same cadence as the widgets window: a check ~1.2s after launch,
+        # then every 4h. The 12h TTL gate inside checkUpdates keeps the real
+        # network cadence at one automatic check per 12 hours.
+        if self._update_helper.is_file() and \
+                os.environ.get('APPINSTALL_DISABLE_UPDATE_TIMER') != '1':
+            QtCore.QTimer.singleShot(1200, lambda: self.checkUpdates(False))
+            self._update_timer = QtCore.QTimer(self)
+            self._update_timer.setInterval(4 * 60 * 60 * 1000)
+            self._update_timer.timeout.connect(lambda: self.checkUpdates(False))
+            self._update_timer.start()
 
     # ── exposed properties ───────────────────────────────────────────────
 
@@ -526,9 +580,25 @@ class Bridge(QtCore.QObject):
 
     @QtCore.Slot(bool)
     def checkUpdates(self, manual=True):
-        if self._update_operation:
+        if self._update_operation or self._update_tag:
+            return
+        if not manual:
+            last_check = settings.read().get('last_update_check', 0)
+            if time.time() - last_check < manager.UPDATE_TTL_SECONDS:
+                # Within the 12h TTL: surface the last known state only.
+                if self._update_tag:
+                    self._update_status = 'AppInstall ' + self._update_tag + ' is available'
+                    self.updateTagChanged.emit(self._update_tag)
+                else:
+                    self._update_status = 'AppInstall is up to date'
+                self.updateStatusChanged.emit(self._update_status)
+                return
+        if not self._update_helper.is_file():
+            self._update_status = 'Update check is unavailable in this installation'
+            self.updateStatusChanged.emit(self._update_status)
             return
         self._update_operation = 'check'
+        self._update_manual = manual
         self._update_status = 'Checking for updates…'
         self.updateStatusChanged.emit(self._update_status)
         self._update_action_visible = False
@@ -555,20 +625,27 @@ class Bridge(QtCore.QObject):
         self._update_action_visible = True
         self.updateActionVisibleChanged.emit(True)
         ok = exit_code == 0 and exit_status == QtCore.QProcess.ExitStatus.NormalExit
-        import re
         if operation == 'check':
+            # Record the check so automatic checks respect the 12h TTL.
+            try:
+                settings.update('last_update_check', int(time.time()))
+            except OSError:
+                pass
             match = re.search(r'^APPINSTALL_UPDATE=(v[0-9]+\.[0-9]+\.[0-9]+)$', output, re.M)
             if ok and match:
                 self._update_tag = match[1]
                 self._update_status = 'AppInstall ' + match[1] + ' is available'
                 self.updateTagChanged.emit(match[1])
                 self.updateStatusChanged.emit(self._update_status)
+                self._notify_update(match[1])
             elif ok:
                 self._update_status = 'AppInstall is up to date'
                 self.updateStatusChanged.emit(self._update_status)
             else:
                 self._update_status = 'Could not check for updates'
                 self.updateStatusChanged.emit(self._update_status)
+                if self._update_manual:
+                    self._show_update_details('Update check failed', output)
         elif operation == 'install':
             tag = self._update_tag
             if not ok or ('APPINSTALL_UPDATED=' + tag) not in output.splitlines():
@@ -580,9 +657,63 @@ class Bridge(QtCore.QObject):
             self.updateTagChanged.emit('')
             self._update_status = 'AppInstall ' + tag + ' installed. Reopen AppInstall to use it.'
             self.updateStatusChanged.emit(self._update_status)
+            self._show_update_details('What’s new in AppInstall ' + tag,
+                                      release_notes(tag))
+
+    def _notify_update(self, tag):
+        """Best-effort desktop notification, honouring the user setting."""
+        if not settings.read().get('notifications', False):
+            return
+        try:
+            subprocess.run(
+                ['notify-send', 'AppInstall',
+                 'Version ' + tag + ' is available'],
+                capture_output=True, timeout=5)
+        except (OSError, subprocess.SubprocessError):
+            pass
+
+    def _show_update_details(self, title, text):
+        """Same dialog the widgets window uses for update details/notes."""
+        message = QtWidgets.QMessageBox(self.anchor)
+        message.setWindowTitle('AppInstall')
+        message.setTextFormat(QtCore.Qt.TextFormat.PlainText)
+        message.setText(title)
+        message.setDetailedText(text[-12000:])
+        if title.startswith('What’s new'):
+            message.setInformativeText(text[:2500])
+        message.exec()
+
+    # ── close guard: the widgets window's closeEvent, as a slot ─────────
+
+    @QtCore.Slot(result=bool)
+    def allowClose(self):
+        """True when the window may close now. A batch review with a running
+        pipeline is cancelled first (the close is ignored once); an
+        AppInstall upgrade in progress blocks closing; a running update
+        check is killed, then the close proceeds."""
+        if self._batch_dialog is not None and \
+                getattr(self._batch_dialog, 'process', None) is not None:
+            self._batch_dialog.reject()
+            return False
+        if self._update_operation == 'install':
+            self._set_status('AppInstall is updating. Closing is blocked until it finishes.')
+            return False
+        if self._update_operation == 'check':
+            self._update_process.kill()
+            self._update_process.waitForFinished(1000)
+        return True
 
 
 def main():
+    args = sys.argv[1:]
+    smoke = '--smoke' in args
+    if smoke:
+        sys.argv = [sys.argv[0]] + [a for a in args if a != '--smoke']
+        # Deterministic headless run for CI: no windowing system required,
+        # and the auto update checks must never touch the network.
+        os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
+        os.environ['APPINSTALL_DISABLE_UPDATE_TIMER'] = '1'
+
     app = QtWidgets.QApplication(sys.argv)
     app.setApplicationName('AppInstall')
     app.setOrganizationName('AppInstall')
@@ -592,16 +723,29 @@ def main():
     bridge.applyTheme()
     bridge.refresh()
 
+    def _log_qml_message(mode, context, message):
+        # QML errors would otherwise be silent on a failed engine.load.
+        print('QML: ' + message, file=sys.stderr, flush=True)
+
+    QtCore.qInstallMessageHandler(_log_qml_message)
     engine = QtQml.QQmlApplicationEngine()
     engine.rootContext().setContextProperty('bridge', bridge)
     engine.rootContext().setContextProperty('appsModel', bridge.model)
     engine.addImportPath(str(QML_DIR.parent))
     engine.load(str(QML_DIR / 'main.qml'))
     if not engine.rootObjects():
+        if smoke:
+            print('QML smoke: main.qml failed to load', flush=True)
+            sys.exit(4)
         sys.exit(1)
 
     window = engine.rootObjects()[0]
     window.setIcon(QtGui.QIcon.fromTheme('appinstall'))
+    if smoke:
+        # The scene came up with no missing QML modules: quit cleanly.
+        print('QML smoke: main.qml loaded', flush=True)
+        QtCore.QTimer.singleShot(300, app.quit)
+        sys.exit(app.exec())
     sys.exit(app.exec())
 
 
