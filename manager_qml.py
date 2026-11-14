@@ -26,6 +26,10 @@ except ModuleNotFoundError as error:
     if error.name != "PySide6":
         raise
     from PyQt6 import QtQml  # type: ignore
+    # Keep the QML declarations compatible with the distro's PyQt6 binding.
+    QtCore.Signal = QtCore.pyqtSignal
+    QtCore.Slot = QtCore.pyqtSlot
+    QtCore.Property = QtCore.pyqtProperty
 
 import manager
 import settings
