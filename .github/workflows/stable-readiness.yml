@@ -92,6 +92,11 @@ jobs:
           pacman -U --noconfirm --needed "$package"
           test "$(appinstall --version)" = "appinstall $expected"
           pacman -Q appinstall
+          # QML manager prototype must come up from the installed package.
+          # A missing Qt Quick runtime dependency fails the job right here.
+          runuser -u appbuild -- env QT_QPA_PLATFORM=offscreen \
+            APPINSTALL_DISABLE_UPDATE_TIMER=1 \
+            python3 /usr/bin/manager_qml.py --smoke
           pacman -U --noconfirm "$package"
           test "$(appinstall --version)" = "appinstall $expected"
           pacman -R --noconfirm appinstall

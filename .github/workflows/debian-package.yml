@@ -114,6 +114,11 @@ jobs:
           assert app.exec() == 0
           PY
 
+          # QML manager prototype must come up from the installed package.
+          # A missing Qt Quick runtime dependency fails the job right here.
+          runuser -u appinstall-ci -- env QT_QPA_PLATFORM=offscreen \
+            python3 /usr/lib/appinstall/manager_qml.py --smoke
+
           mkdir -p /home/appinstall-ci/Applications
           printf '%s\n' 'preserve user data' > /home/appinstall-ci/Applications/keep
           apt-get install -y --no-install-recommends --reinstall "${package[0]}"

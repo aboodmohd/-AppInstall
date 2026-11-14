@@ -26,7 +26,7 @@ Architecture: all
 Section: utils
 Priority: optional
 Maintainer: Abood <abood@localhost>
-Depends: bash, coreutils, curl, python3, xdg-utils, python3-pyside6.qtwidgets | python3-pyqt6
+Depends: bash, coreutils, curl, python3, xdg-utils, python3-pyside6.qtwidgets | python3-pyqt6, python3-pyside6.qtquick | python3-pyqt6.qtquick, python3-pyside6.qtqml | python3-pyqt6.qtqml, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-templates, qml6-module-qtquick-window, qml6-module-qtqml-workerscript
 Recommends: desktop-file-utils, shared-mime-info, libarchive-tools, zenity | kdialog
 Suggests: pkexec, flatpak, podman, distrobox, squashfs-tools, binutils, libfuse2t64, libnotify-bin
 Homepage: $url

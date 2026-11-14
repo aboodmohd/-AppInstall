@@ -55,6 +55,16 @@ class DefaultsTests(SettingsBase):
 
 
 class SanitizeTests(SettingsBase):
+    def test_cached_update_requires_matching_timestamp_and_valid_tag(self):
+        for cached in (
+            {'checked_at': 99, 'tag': 'v1.4.1'},
+            {'checked_at': 100, 'tag': 'invalid'},
+            'invalid',
+        ):
+            with self.subTest(cached=cached):
+                settings.write({'last_update_check': 100, 'update_check_result': cached})
+                self.assertNotIn('update_check_result', settings.read())
+
     def test_malformed_keys_fall_back(self):
         self.path().parent.mkdir(parents=True)
         self.path().write_text(json.dumps({
