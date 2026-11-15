@@ -344,6 +344,7 @@ ApplicationWindow {
                 delegate: ItemDelegate {
                     id: statusDelegate
                     required property var model
+                    required property int index
                     width: statusFilter.width
                     contentItem: Label {
                         text: statusDelegate.model.label
@@ -412,6 +413,7 @@ ApplicationWindow {
                 delegate: ItemDelegate {
                     id: sortDelegate
                     required property var model
+                    required property int index
                     width: sortCombo.width
                     contentItem: Label {
                         text: sortDelegate.model.label
