@@ -37,6 +37,13 @@ appinstall --version
 appinstall --manage
 ```
 
+The Qt Quick/QML **My Applications** window is the default as of the v1.5.0
+candidate. For the previous Qt Widgets interface, run
+`appinstall --manage --widgets`. Both interfaces use the same managed
+application records. Status and Sort controls support keyboard and mouse
+selection. Until v1.5.0 is published, the one-command installer continues
+to install the latest *published* stable version (currently v1.4.0).
+
 To **uninstall the AppInstall package** and optionally restore previous file associations (your managed applications, containers and user data are preserved), run:
 
 ```bash
