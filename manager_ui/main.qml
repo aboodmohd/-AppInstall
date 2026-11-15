@@ -605,8 +605,15 @@ ApplicationWindow {
                 // feedback lives in hover/press color and the status line.
 
                 delegate: AppCard {
+                    required property int index
                     width: appList.width
                     activeFocusOnTab: true
+                    onActiveFocusChanged: {
+                        if (activeFocus) {
+                            appList.currentIndex = index
+                            appList.positionViewAtIndex(index, ListView.Contain)
+                        }
+                    }
                     Keys.onUpPressed: (event) => appList.moveCardFocus(-1, event)
                     Keys.onDownPressed: (event) => appList.moveCardFocus(1, event)
                 }
@@ -622,7 +629,10 @@ ApplicationWindow {
                 function focusCard(index) {
                     if (index < 0 || index >= appsModel.rowCount()) return
                     currentIndex = index
-                    var item = itemAtIndex(index)
+                    positionViewAtIndex(index, ListView.Contain)
+                    // Realize delegates before focusing an offscreen target.
+                    forceLayout()
+                    var item = currentItem
                     if (item) item.forceActiveFocus()
                 }
 
@@ -679,7 +689,7 @@ ApplicationWindow {
     } // grabRoot
 
     // Format segmented control: checkable chip, selected state is the web
-    // design's accent outline + accent text, visible focus ring. Exclusive
+    // design's accent outline + readable text, visible focus ring. Exclusive
     // through formatGroup.
     component CheckButton: Button {
         id: chip
@@ -695,9 +705,10 @@ ApplicationWindow {
 
         background: Rectangle {
             radius: 14
-            color: chip.pressed ? Theme.colors.pressed
-                 : chip.hovered ? Theme.colors.hover
-                 : "transparent"
+            // QML hex colors use ARGB; keep these overlays explicitly RGBA.
+            color: Theme.mode === "dark"
+                 ? Qt.rgba(1, 1, 1, chip.pressed ? 0.10 : chip.hovered ? 0.05 : 0)
+                 : Qt.rgba(0, 0, 0, chip.pressed ? 0.08 : chip.hovered ? 0.04 : 0)
             border.color: chip.visualFocus ? Theme.colors.focusRing
                         : chip.checked ? Theme.colors.accent
                         : Theme.colors.border
@@ -711,7 +722,7 @@ ApplicationWindow {
             text: chip.checkText
             font.pixelSize: 13
             font.weight: chip.checked ? Font.DemiBold : Font.Medium
-            color: chip.checked ? Theme.colors.accent : Theme.colors.textSecondary
+            color: chip.checked ? Theme.colors.text : Theme.colors.textSecondary
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
         }

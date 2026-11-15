@@ -22,6 +22,7 @@ Item {
                      + model.formatLabel + (model.version ? " " + model.version : "")
                      + ", " + model.statusLabel
                      + (showProblems ? ". Problems: " + model.problems : "")
+    Accessible.description: qsTr("Enter: Open; Space: Details; Menu or Shift+F10: More actions")
 
     Rectangle {
         id: cardSurface
@@ -95,6 +96,8 @@ Item {
 
                 Label {
                     id: nameLabel
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: implicitWidth
                     text: model.name
                     elide: Text.ElideRight
                     font.pixelSize: 15
@@ -275,6 +278,9 @@ Item {
                 // Menus are high-frequency: they open instantly, no animation.
                 onClicked: moreMenu.popup(moreButton, 0, moreButton.height + 4)
                 Accessible.name: "More actions for " + model.name
+                ToolTip.visible: hovered
+                ToolTip.delay: 400
+                ToolTip.text: card.Accessible.description
             }
 
             // Favorite toggle at the card's edge, as in the web design:
@@ -382,7 +388,13 @@ Item {
 
     // Keyboard paths for the card (the card is the focus unit): Enter
     // opens the app, Space shows its details — the two visible buttons —
-    // and the Menu key opens the ⋯ menu. All instant, no animation.
+    // and Menu or Shift+F10 opens the ⋯ menu. All instant, no animation.
+    Keys.onPressed: (event) => {
+        if (event.key === Qt.Key_F10 && event.modifiers === Qt.ShiftModifier) {
+            moreMenu.popup(moreButton, 0, moreButton.height + 4)
+            event.accepted = true
+        }
+    }
     Keys.onReturnPressed: (event) => {
         if (model.canOpen) { bridge.openApp(model.key); event.accepted = true }
     }
