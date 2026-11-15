@@ -153,6 +153,55 @@ class ReleaseResolutionTests(unittest.TestCase):
                 self.assertEqual(rc, 0, err)
                 self.assertEqual(line.split("|")[-1], expected)
 
+    def test_fedora_selects_only_rpm_from_mixed_release(self):
+        data = json.loads(json.dumps(self.RELEASE_JSON))
+        for name in ("appinstall_1.0.0-1_all.deb",
+                     "appinstall-1.0.0-1.noarch.rpm"):
+            data["assets"].append({
+                "name": name,
+                "browser_download_url":
+                    "https://github.com/aboodmohd/-AppInstall/releases/download/v1.0.0/" + name,
+            })
+        rc, line, err = self.resolve(data, "fedora")
+        self.assertEqual(rc, 0, err)
+        self.assertTrue(line.endswith("|appinstall-1.0.0-1.noarch.rpm"))
+
+    def test_fedora_refuses_release_without_native_rpm(self):
+        rc, line, _ = self.resolve(self.RELEASE_JSON, "fedora")
+        self.assertEqual((rc, line), (4, ""))
+
+    def test_fedora_rejects_mismatched_tag_untrusted_url_and_duplicate(self):
+        for mutation in ("tag", "url", "duplicate"):
+            with self.subTest(mutation=mutation):
+                data = json.loads(json.dumps(self.RELEASE_JSON))
+                name = "appinstall-1.0.0-1.noarch.rpm"
+                url = "https://github.com/aboodmohd/-AppInstall/releases/download/v1.0.0/" + name
+                data["assets"].append({"name": name, "browser_download_url": url})
+                if mutation == "tag":
+                    data["assets"][-1]["name"] = "appinstall-1.1.0-1.noarch.rpm"
+                    data["assets"][-1]["browser_download_url"] = url.replace(name, "appinstall-1.1.0-1.noarch.rpm")
+                elif mutation == "url":
+                    data["assets"][-1]["browser_download_url"] = "https://example.org/" + name
+                else:
+                    data["assets"].append(data["assets"][-1])
+                rc, _, _ = self.resolve(data, "fedora")
+                self.assertEqual(rc, 4)
+
+    def test_fedora_dnf_install_with_consent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            binary = Path(tmp) / "appinstall"
+            binary.touch()
+            rc, out, err = run_sourced(
+                'APP_BIN="$TEST_BIN"; ASSUME_YES=1; '
+                'run_root() { printf "%s\\n" "$@"; }; '
+                'install_package_file /tmp/appinstall-1.0.0-1.noarch.rpm fedora',
+                env_extra={"TEST_BIN": str(binary)},
+            )
+            self.assertEqual(rc, 0, err)
+            self.assertEqual(out.splitlines()[-4:], [
+                "dnf", "-y", "install", "/tmp/appinstall-1.0.0-1.noarch.rpm",
+            ])
+
     def test_apt_fails_when_release_only_has_arch_package(self):
         rc, line, _ = self.resolve(self.RELEASE_JSON, "debian")
         self.assertEqual((rc, line), (4, ""))
@@ -276,6 +325,37 @@ class PackageVersionTests(unittest.TestCase):
             with self.subTest(name=name):
                 rc, out, _ = run_sourced(f"package_version_from_asset '{name}'")
                 self.assertEqual((rc, out.strip()), (0, expected))
+
+
+class FedoraVersionTests(unittest.TestCase):
+    def test_rpm_basename_yields_version(self):
+        rc, out, err = run_sourced(
+            "package_version_from_asset 'appinstall-1.5.0-1.noarch.rpm'")
+        self.assertEqual((rc, out.strip()), (0, "1.5.0-1"), err)
+
+    def test_rpm_native_compare(self):
+        for outcome, expected in (("-1", "lt"), ("0", "eq"), ("1", "gt")):
+            with self.subTest(result=outcome):
+                rc, out, err = run_sourced(
+                    f'rpm() {{ test "$1" = --eval; printf "%s\\n" {outcome}; }}; '
+                    'version_relation 1.5.0-1 1.6.0-1 fedora')
+                self.assertEqual((rc, out.strip()), (0, expected), err)
+
+    def test_rpm_comparison_rejects_unsafe_metadata(self):
+        rc, out, err = run_sourced(
+            "version_relation \"1.0.0'evil\" 1.1.0-1 fedora")
+        self.assertEqual((rc, out.strip()), (0, "unk"), err)
+
+    def test_only_fedora_44_passes_version_gate(self):
+        for version in ("43", "45", "999"):
+            with self.subTest(version=version):
+                with tempfile.TemporaryDirectory() as tmp:
+                    config = write_os_release(
+                        tmp, f"ID=fedora\\nVERSION_ID={version}\\n")
+                    rc, out, err = run_sourced(
+                        "main", env_extra={"APPINSTALL_TEST_OS_RELEASE": config})
+                    self.assertEqual(rc, 2, (out, err))
+                    self.assertIn("Only Fedora 44", err)
 
 
 class MimeStateTests(unittest.TestCase):
