@@ -304,6 +304,41 @@ class BridgeEntryPointsTests(QmlManagerBase):
             self.bridge.reexportLauncher('appimage:example')
         reexport.assert_called_once_with(self.apps[0])
 
+    def test_toggle_pin_writes_settings_and_updates_the_model(self):
+        index = self.model.index(0, 0)
+        self.assertFalse(self.model.data(index, self.model.PinnedRole))
+        self.bridge.togglePin('appimage:example')
+        self.assertTrue(self.model.data(index, self.model.PinnedRole))
+        self.assertEqual(manager_qml.settings.read().get('favorites'),
+                         ['appimage:example'])
+        self.bridge.togglePin('appimage:example')
+        self.assertFalse(self.model.data(index, self.model.PinnedRole))
+        self.assertEqual(manager_qml.settings.read().get('favorites'), [])
+
+
+class BridgeInstallTests(QmlManagerBase):
+    """Header install actions reuse the widgets window's exact flows."""
+
+    def setUp(self):
+        super().setUp()
+        self.apps = self.load_inventory([
+            ('appimage:example', self.stage_installed_appimage('appimage:example', 'Example App')),
+        ])
+
+    def test_install_from_file_opens_the_existing_picker(self):
+        with patch.object(manager.ui_style, 'open_package') as open_package:
+            self.bridge.installFromFile()
+        open_package.assert_called_once_with(self.anchor)
+
+    def test_install_from_url_uses_the_existing_url_dialog(self):
+        with patch.object(manager, 'UrlInstallDialog') as dialog:
+            instance = dialog.return_value
+            self.bridge.installFromUrl()
+        dialog.assert_called_once_with(self.anchor)
+        instance.exec.assert_called_once()
+        # installed → the normal inventory refresh, as in the widgets window.
+        instance.installed.connect.assert_called_once_with(self.bridge.refresh)
+
 
 class BridgeDropTests(QmlManagerBase):
     def setUp(self):
