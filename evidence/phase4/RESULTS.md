@@ -12,6 +12,7 @@ No screenshots were claimed without being actually rendered. Git history documen
 - **container_ui.py preview (forced dark)**: captured 19869 bytes
 - **manager list (light)**: captured 53716 bytes
 - **manager list (dark)**: captured 56071 bytes
+- **manager list (live KDE Wayland)**: captured 54500 bytes — actual desktop session, all 5 apps "Managed — installed"
 - **manager details dialog**: captured 31353 bytes
-- **manager_qml.py list (light)**: captured 76314 bytes
-- **manager_qml.py list (dark)**: captured 76314 bytes
+- **manager_qml.py list (light)**: captured 78097 bytes
+- **manager_qml.py list (dark)**: captured 78800 bytes
