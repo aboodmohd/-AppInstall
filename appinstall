@@ -16,6 +16,8 @@ APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/pixmaps"
 NO_OPEN=0
 ASSUME_YES=0
+USE_WIDGETS=0
+MANAGE=0
 
 _progress_pid=""
 _qdbus=""
@@ -34,7 +36,9 @@ Usage: appinstall [options] FILE [FILE...]
 
 Options:
   --diagnostics         open Application Diagnostics
-  --manage              open the Installed Applications Manager
+  --manage              open the Installed Applications Manager (QML by default;
+                        use --widgets for the legacy Widgets interface)
+  --widgets             force the legacy Widgets manager interface
   --container-info ID    view a container package (e.g. deb:example)
   --container-remove ID  confirm removal of a container package
   --container-launch ID  open a container package
@@ -535,16 +539,8 @@ main() {
           error_dialog 'PySide6 or PyQt6 is required for Application Diagnostics. Launch logs are saved under the user state directory.'
         fi
         exit "$drc" ;;
-      --manage)
-        local manager="$(dirname -- "$(realpath -- "$0")")/manager.py"
-        [ -f "$manager" ] || manager="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/manager.py"
-        [ -f "$manager" ] || { error_dialog 'The application manager module is missing. Reinstall AppInstall to repair it.'; return 1; }
-        python3 "$manager"
-        local mrc=$?
-        if [ "$mrc" -eq 3 ]; then
-          error_dialog 'PySide6 or PyQt6 is required for the Installed Applications Manager.'
-        fi
-        exit "$mrc" ;;
+      --manage) MANAGE=1 ;;
+      --widgets) USE_WIDGETS=1 ;;
       --list)       do_list; exit 0 ;;
       --yes) ASSUME_YES=1 ;;
       --nolaunch)   NO_OPEN=1 ;;
@@ -573,10 +569,38 @@ main() {
     shift
   done
 
-  # no file given: open the Installed Applications Manager
+  # --manage / --widgets: open the Installed Applications Manager.
+  # QML (manager_qml.py) is the default UI; --widgets selects the legacy
+  # Widgets interface (manager.py). --manage can appear before or after
+  # --widgets; both orders are honoured.
+  if [ "$MANAGE" -eq 1 ]; then
+    if [ "$USE_WIDGETS" -eq 1 ]; then
+      manager="$(dirname -- "$(realpath -- "$0")")/manager.py"
+    else
+      manager="$(dirname -- "$(realpath -- "$0")")/manager_qml.py"
+    fi
+    [ -f "$manager" ] || manager="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/$(basename -- "$manager")"
+    if [ -f "$manager" ]; then
+      python3 "$manager"
+      local mrc=$?
+      if [ "$mrc" -eq 3 ]; then
+        error_dialog 'PySide6 or PyQt6 is required for the Installed Applications Manager.'
+      fi
+      exit "$mrc"
+    fi
+    error_dialog 'The application manager module is missing. Reinstall AppInstall to repair it.'
+    exit 1
+  fi
+
+  # no file given: open the Installed Applications Manager (QML by default;
+  # --widgets selects the legacy Widgets interface).
   if [ $# -eq 0 ]; then
-    local manager="$(dirname -- "$(realpath -- "$0")")/manager.py"
-    [ -f "$manager" ] || manager="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/manager.py"
+    if [ "$USE_WIDGETS" -eq 1 ]; then
+      manager="$(dirname -- "$(realpath -- "$0")")/manager.py"
+    else
+      manager="$(dirname -- "$(realpath -- "$0")")/manager_qml.py"
+    fi
+    [ -f "$manager" ] || manager="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/$(basename -- "$manager")"
     if [ -f "$manager" ]; then
       python3 "$manager"
       local mrc=$?

@@ -18,8 +18,8 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 from ci_wayland_smoke import (
-    check_app_window, check_manager_capture, qt_platform_probe,
-    stop_process, wait_for_socket,
+    check_app_window, check_manager_capture, check_manager_qml_capture,
+    qt_platform_probe, stop_process, wait_for_socket,
 )
 
 SOCKET = "wayland-appinstall-kwin-ci"
@@ -123,6 +123,7 @@ def main():
                     check_app_window("--manage", "My Applications", env)
                     check_app_window("--diagnostics", "Application Diagnostics", env)
                     check_manager_capture(env, root / "manager-kwin-wayland.png")
+                    check_manager_qml_capture(env, root / "manager-qml-kwin-wayland.png")
                     assert_qt_capture(
                         "url_dialog.py", root / "url-dialog-kwin-wayland.png",
                         env, "Install from URL",

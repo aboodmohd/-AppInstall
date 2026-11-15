@@ -26,6 +26,8 @@ SCREENSHOTS = {
     "manager list (dark)": "manager-list-dark.png",
     "manager list (live KDE Wayland)": "manager-live-wayland.png",
     "manager details dialog": "manager-details.png",
+    "manager_qml.py list (light)": "manager-qml-list-light.png",
+    "manager_qml.py list (dark)": "manager-qml-list-dark.png",
 }
 SCRIPTED = set(SCREENSHOTS.values()) - {"manager-live-wayland.png"}
 REPORT_ROW = re.compile(r"^- \*\*(.+?)\*\*: captured (\d+) bytes(?:\s.*)?$")
@@ -61,8 +63,8 @@ def verify_evidence():
             f"unexpected={sorted(files - expected)}"
         )
     report = (EVIDENCE / "RESULTS.md").read_text()
-    if "seven offscreen" not in report.lower() or "live kde wayland" not in report.lower():
-        raise ValueError("Evidence report must distinguish seven offscreen captures from live KDE Wayland")
+    if "nine offscreen" not in report.lower() or "live kde wayland" not in report.lower():
+        raise ValueError("Evidence report must distinguish nine offscreen captures from live KDE Wayland")
     rows = {}
     for line in report.splitlines():
         match = REPORT_ROW.fullmatch(line)
@@ -92,7 +94,7 @@ def verify_evidence():
             raise ValueError(f"{name} is not referenced by the capture script")
         print(f"PASS evidence: {name} ({len(data)} bytes; {width}x{height}; "
               f"sha256={hashlib.sha256(data).hexdigest()})")
-    print("PASS: eight screenshot files match their documented byte sizes")
+    print("PASS: ten screenshot files match their documented byte sizes")
     print("INFO: screenshot history and file hashes do not prove redistribution rights")
 
 

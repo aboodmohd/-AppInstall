@@ -80,7 +80,7 @@ pacman -Qq appinstall >/dev/null
 [[ -f /usr/share/applications/appinstall.desktop ]]
 [[ -f /usr/share/licenses/appinstall/LICENSE ]]
 cmp -s LICENSE /usr/share/licenses/appinstall/LICENSE
-[[ -f /usr/bin/manager.py && -f /usr/bin/diagnostics_ui.py ]]
+[[ -f /usr/bin/manager.py && -f /usr/bin/manager_qml.py && -f /usr/bin/diagnostics_ui.py ]]
 [[ ! -e "$data/applications/appinstall.desktop" ]]
 [[ ! -e "$home/.local/bin/appinstall" ]]
 [[ ! -e "$data/appinstall/associations.json" ]]

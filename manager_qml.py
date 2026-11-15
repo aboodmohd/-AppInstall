@@ -21,11 +21,11 @@ from pathlib import Path
 from qt_compat import QtCore, QtGui, QtWidgets
 
 try:
-    from PySide6 import QtQml
+    from PySide6 import QtQml, QtQuick
 except ModuleNotFoundError as error:
     if error.name != "PySide6":
         raise
-    from PyQt6 import QtQml  # type: ignore
+    from PyQt6 import QtQml, QtQuick  # type: ignore
     # Keep the QML declarations compatible with the distro's PyQt6 binding.
     QtCore.Signal = QtCore.pyqtSignal
     QtCore.Slot = QtCore.pyqtSlot
@@ -311,7 +311,10 @@ class Bridge(QtCore.QObject):
         super().__init__(parent)
         self.anchor = anchor  # hidden QWidget used to parent the existing dialogs
         self._model = AppModel(self)
-        self._dark = False
+        # APPINSTALL_UI_DARK=1 forces dark mode for evidence capture,
+        # overriding settings and system preference.
+        env_dark = os.environ.get('APPINSTALL_UI_DARK')
+        self._dark = env_dark == '1' if env_dark is not None else False
         self._loading = False
         self._status_text = 'Loading…'
         self._reduced_motion = os.environ.get('APPINSTALL_REDUCED_MOTION') == '1'
@@ -417,15 +420,20 @@ class Bridge(QtCore.QObject):
         self.applyTheme()
 
     def applyTheme(self):
-        theme = settings.read().get('theme', 'auto')
-        hints = QtGui.QGuiApplication.styleHints()
-        if hasattr(hints, 'colorScheme'):
-            system_dark = hints.colorScheme() == QtCore.Qt.ColorScheme.Dark
+        # APPINSTALL_UI_DARK=1 forces dark mode for evidence capture,
+        # overriding settings and system preference.
+        if os.environ.get('APPINSTALL_UI_DARK') == '1':
+            self._dark = True
         else:
-            # Qt 6.4 (Ubuntu 24.04) predates QStyleHints.colorScheme.
-            palette = QtGui.QGuiApplication.palette()
-            system_dark = palette.color(QtGui.QPalette.ColorRole.Window).lightness() < 128
-        self._dark = (theme == 'dark') or (theme == 'auto' and system_dark)
+            theme = settings.read().get('theme', 'auto')
+            hints = QtGui.QGuiApplication.styleHints()
+            if hasattr(hints, 'colorScheme'):
+                system_dark = hints.colorScheme() == QtCore.Qt.ColorScheme.Dark
+            else:
+                # Qt 6.4 (Ubuntu 24.04) predates QStyleHints.colorScheme.
+                palette = QtGui.QGuiApplication.palette()
+                system_dark = palette.color(QtGui.QPalette.ColorRole.Window).lightness() < 128
+            self._dark = (theme == 'dark') or (theme == 'auto' and system_dark)
         self.darkChanged.emit(self._dark)
         self.themeChanged.emit()
 
@@ -746,8 +754,26 @@ class Bridge(QtCore.QObject):
 def main():
     args = sys.argv[1:]
     smoke = '--smoke' in args
-    if smoke:
-        sys.argv = [sys.argv[0]] + [a for a in args if a != '--smoke']
+    shot = None
+    if '--screenshot' in args:
+        index = args.index('--screenshot')
+        if index + 1 < len(args):
+            shot = args[index + 1]
+    if smoke or shot is not None:
+        # Strip Qt-incompatible flags before constructing QApplication.
+        filtered = []
+        skip_next = False
+        for a in args:
+            if skip_next:
+                skip_next = False
+                continue
+            if a == '--smoke':
+                continue
+            if a == '--screenshot':
+                skip_next = True
+                continue
+            filtered.append(a)
+        sys.argv = [sys.argv[0]] + filtered
         # Deterministic headless run for CI: no windowing system required,
         # and the auto update checks must never touch the network.
         os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -780,20 +806,21 @@ def main():
 
     window = engine.rootObjects()[0]
     window.setIcon(QtGui.QIcon.fromTheme('appinstall'))
-    shot = None
-    if '--screenshot' in args:
-        index = args.index('--screenshot')
-        if index + 1 < len(args):
-            shot = args[index + 1]
     if shot:
         # Same delayed-grab contract as the widgets window's --screenshot:
         # wait for the async inventory load to land, then save the window
-        # image and quit. The grab itself is declared in main.qml
-        # (saveWindowShot): the QML engine hands back the plain QWindow
-        # wrapper, which has no grabWindow(), while QML-declared functions
-        # stay callable through the dynamic metaobject.
+        # image and quit. Uses QQuickWindow.grabWindow() which renders via
+        # the scene graph and works on both X11 and Wayland compositors
+        # (Weston, KWin) without requiring a native window handle.
         def grab():
-            window.saveWindowShot(shot)
+            pixmap = window.grabWindow()
+            if pixmap.isNull():
+                print('ERROR: screenshot capture failed (null pixmap)', flush=True)
+                app.quit()
+                sys.exit(1)
+            pixmap.save(shot)
+            print('DEBUG: screenshot saved to', shot, flush=True)
+            app.quit()
         QtCore.QTimer.singleShot(1500, grab)
     elif smoke:
         # The scene came up with no missing QML modules: quit cleanly.
