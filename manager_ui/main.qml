@@ -366,6 +366,17 @@ ApplicationWindow {
                         color: Theme.colors.surface
                         border.color: Theme.colors.border
                     }
+                    contentItem: ListView {
+                        model: statusFilter.delegateModel
+                        currentIndex: statusFilter.currentIndex
+                        highlight: Rectangle {
+                            color: Theme.colors.hover
+                            radius: 5
+                        }
+                        highlightFollowsCurrentItem: true
+                        clip: true
+                        width: statusFilter.width
+                    }
                 }
                 Accessible.name: qsTr("Status filter")
             }
@@ -433,6 +444,17 @@ ApplicationWindow {
                         radius: 8
                         color: Theme.colors.surface
                         border.color: Theme.colors.border
+                    }
+                    contentItem: ListView {
+                        model: sortCombo.delegateModel
+                        currentIndex: sortCombo.currentIndex
+                        highlight: Rectangle {
+                            color: Theme.colors.hover
+                            radius: 5
+                        }
+                        highlightFollowsCurrentItem: true
+                        clip: true
+                        width: sortCombo.width
                     }
                 }
                 Accessible.name: qsTr("Sort order")
