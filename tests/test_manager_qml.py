@@ -190,6 +190,35 @@ class AppModelTests(QmlManagerBase):
                          'appimage:beta')
         self.assertTrue(self.model.data(self.model.index(0, 0), self.model.PinnedRole))
 
+    def test_can_open_true_when_launcher_exists(self):
+        """Record with a real desktop file: Open enabled."""
+        self.load_inventory([
+            ('appimage:example', self.stage_installed_appimage('appimage:example', 'Example App')),
+        ])
+        index = self.model.index(0, 0)
+        self.assertTrue(self.model.data(index, self.model.CanOpenRole))
+
+    def test_can_open_true_for_stale_record_with_usable_launcher(self):
+        """Stale status but a real launcher: Open still enabled."""
+        raw = self.stage_installed_appimage(
+            'appimage:stale-launchable', 'Stale Launchable')
+        raw['status'] = 'stale'
+        self.load_inventory([('appimage:stale-launchable', raw)])
+        index = self.model.index(0, 0)
+        self.assertEqual(self.model.data(index, self.model.StatusRole), 'stale')
+        self.assertTrue(self.model.data(index, self.model.CanOpenRole))
+
+    def test_can_open_false_for_stale_record_without_launcher(self):
+        """Stale record with no usable launcher: Open disabled, Details available."""
+        raw = dict(format='appimage', name='Stale App', version='1.0',
+                   desktop='/nonexistent/stale.desktop',
+                   icon='', icon_name='stale', container=None,
+                   manifest=None, target='/nonexistent/stale.AppImage',
+                   description='', status='stale')
+        self.load_inventory([('appimage:stale', raw)])
+        index = self.model.index(0, 0)
+        self.assertFalse(self.model.data(index, self.model.CanOpenRole))
+
 
 class BridgeEntryPointsTests(QmlManagerBase):
     def setUp(self):
@@ -711,12 +740,22 @@ class QmlInteractionTests(QmlManagerBase):
     def test_long_name_keeps_actions_inside_narrow_window(self):
         card = self.card()
         self.assertTrue(self.evaluate('nameLabel.truncated', card))
-        for button in ('openButton', 'detailsButton', 'moreButton', 'pinButton'):
+        # All three right-side actions fit inside the card at 720px.
+        for button in ('openButton', 'detailsButton', 'moreButton'):
             self.assertTrue(self.evaluate(
                 f'{button}.mapToItem(card, 0, 0).x + {button}.width <= card.width', card), button)
+        # The favorite star sits beside the name and fits within the card.
+        self.assertTrue(self.evaluate(
+            'pinButton.mapToItem(card, 0, 0).x + pinButton.width <= card.width', card))
+        # Short names show in full; only genuinely long names elide.
         self.evaluate('appList.focusCard(1)')
         QtTest.QTest.qWait(30)
-        self.assertAlmostEqual(self.evaluate('statusChip.x - nameLabel.x - nameLabel.width', self.card()), 8, delta=1)
+        self.assertFalse(self.evaluate('nameLabel.truncated', self.card()))
+        # Favorite is right after the name, status chip right after favorite.
+        self.assertAlmostEqual(
+            self.evaluate('pinButton.x - nameLabel.x - nameLabel.width', self.card()), 8, delta=1)
+        self.assertAlmostEqual(
+            self.evaluate('statusChip.x - pinButton.x - pinButton.width', self.card()), 8, delta=1)
 
     def test_tab_then_arrows_tracks_focused_card_and_scrolls(self):
         self.evaluate('appList.focusCard(0)')
