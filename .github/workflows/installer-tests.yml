@@ -63,13 +63,13 @@ jobs:
           chmod 0440 /etc/sudoers.d/appuser
           chown -R appuser:appuser "$GITHUB_WORKSPACE"
 
-      - name: Refuse unsupported distribution with a clear message
+      - name: Refuse unsupported Fedora version with a clear message
         env:
           APPINSTALL_TEST_OS_RELEASE: /tmp/fake-fedora-os-release
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
-          printf 'NAME=Fedora\nID=fedora\n' > "$APPINSTALL_TEST_OS_RELEASE"
+          printf 'NAME=Fedora\nID=fedora\nVERSION_ID=43\n' > "$APPINSTALL_TEST_OS_RELEASE"
           runuser -u appuser -- env HOME=/home/appuser \
             APPINSTALL_TEST_OS_RELEASE="$APPINSTALL_TEST_OS_RELEASE" \
             bash -c "cd '$GITHUB_WORKSPACE' && ./install.sh --dry-run" \
@@ -78,7 +78,7 @@ jobs:
             cat /tmp/refusal.out /tmp/refusal.err >&2
             echo "::error::expected unsupported-distro exit 2, got $rc"; exit 1
           fi
-          grep -q "Unsupported distribution 'fedora'" /tmp/refusal.out /tmp/refusal.err
+          grep -q "Only Fedora 44 is verified" /tmp/refusal.out /tmp/refusal.err
           if pacman -Q appinstall 2>/dev/null; then
             echo '::error::an unsupported distro must never install a package'; exit 1
           fi
