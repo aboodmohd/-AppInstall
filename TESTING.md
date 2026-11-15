@@ -30,10 +30,16 @@ The published `v1.0.0-beta.1` release was qualified with **121 passing tests, 0 
 ## Live GUI testing
 
 The Installed Applications Manager can be tested on a live KDE Wayland
-session:
+session. QML is the default UI:
 
 ```sh
-QT_QPA_PLATFORM=wayland python3 manager.py
+QT_QPA_PLATFORM=wayland python3 manager_qml.py
+```
+
+The legacy Widgets interface remains available with `--widgets`:
+
+```sh
+appinstall --manage --widgets
 ```
 
 Manual verification checklist (see `KNOWN_LIMITATIONS.md`):
@@ -53,7 +59,7 @@ python3 tools/ui_evidence.py
 ```
 
 Captures light/dark screenshots of confirm.py, container_ui.py, and
-manager.py into `evidence/phase4/`.
+manager_qml.py into `evidence/phase4/`.
 
 ## Performance
 
