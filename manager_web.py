@@ -336,6 +336,8 @@ class PreviewHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         route = urlparse(self.path).path
+        if os.environ.get('APPINSTALL_WEBVIEW_DEBUG') == '1':
+            print('WebView request: POST ' + route, file=sys.stderr, flush=True)
         if not self._authorized():
             return
         if route == '/api/favorite':
