@@ -1,0 +1,231 @@
+name: Publish approved AppInstall v1.6.0 verified three-format release
+on:
+  push:
+    branches:
+      - release/v1.6.0-publication-20261115
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: appinstall-v1.6.0-release-publication
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'aboodmohd/-AppInstall' && github.ref == 'refs/heads/release/v1.6.0-publication-20261115'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: aboodmohd/-AppInstall
+      FINAL_SHA: d9f3798b2e43a1e2d8ac6a748b42d5f421d0d74d
+      AUDIT_SHA: f4fb9fa1995a6868654a3c8039c0fef5fecd321c
+      ARCH_SHA: 8ea32c891447a69c475ad51de4b6d1378dd1db3da4cdd1af23621e4539c3c624
+      DEB_SHA: 3b20680799921594e68eab0d60427bf3c94cd9ef91e212309e3f69616e9bcba4
+      RPM_SHA: cdf574327bf6c2a1736e46563889e60ed3f3170acce8453fcd4f46ed1eff2092
+    steps:
+      - name: Checkout the exact approved final main source
+        uses: actions/checkout@v4
+        with:
+          ref: d9f3798b2e43a1e2d8ac6a748b42d5f421d0d74d
+          persist-credentials: false
+
+      - name: Fail closed on source, CI, tag, release or license-disclosure mismatch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FINAL_SHA"
+          test "$(gh api "repos/$GH_REPO/branches/main" --jq '.commit.sha')" = "$FINAL_SHA"
+          grep -qx 'pkgver=1.6.0' PKGBUILD
+          grep -qx 'pkgrel=1' PKGBUILD
+          grep -qx 'VERSION="1.6.0"' appinstall
+          grep -q '^# AppInstall v1.6.0' RELEASE_NOTES.md
+          grep -q 'Fedora 44' RELEASE_NOTES.md
+          grep -q 'not a security sandbox' RELEASE_NOTES.md
+          grep -q 'not a' DEPENDENCY_LICENSE_AUDIT.md
+          test "$(gh api "repos/$GH_REPO/releases/latest" --jq '.tag_name')" = 'v1.5.0'
+          test "$(gh api "repos/$GH_REPO/actions/runs/43748984204" --jq '.conclusion')" = success
+          test "$(gh api "repos/$GH_REPO/actions/runs/43748984204" --jq '.head_sha')" = "$AUDIT_SHA"
+          for run in 43748604787 43748604804 43748604814 43748604901 43748604803; do
+            test "$(gh api "repos/$GH_REPO/actions/runs/$run" --jq .head_sha)" = "$FINAL_SHA"
+            test "$(gh api "repos/$GH_REPO/actions/runs/$run" --jq .conclusion)" = success
+          done
+          if gh api "repos/$GH_REPO/git/ref/tags/v1.6.0" > /dev/null 2>&1; then
+            echo 'ABORT: tag v1.6.0 already exists' >&2
+            exit 1
+          fi
+          count="$(gh api "repos/$GH_REPO/releases?per_page=100" --jq '[.[] | select(.tag_name == "v1.6.0")] | length')"
+          test "$count" = 0 || { echo 'ABORT: release v1.6.0 already exists' >&2; exit 1; }
+          echo 'PASS: release target, final CI, audit, and reserved tag.'
+
+      - name: Download independently verified final-main release bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir release
+          gh run download 43748984204 \
+            --name appinstall-v1.6.0-verified-final-main \
+            --dir release
+          (cd release && sha256sum --check --strict SHA256SUMS)
+          printf '%s  %s\n' "$ARCH_SHA" release/appinstall-1.6.0-1-any.pkg.tar.zst | sha256sum --check --strict -
+          printf '%s  %s\n' "$DEB_SHA" release/appinstall_1.6.0-1_all.deb | sha256sum --check --strict -
+          printf '%s  %s\n' "$RPM_SHA" release/appinstall-1.6.0-1.noarch.rpm | sha256sum --check --strict -
+          test "$(find release -maxdepth 1 -type f | wc -l)" -eq 5
+          grep -Fxq "Exact source commit: $FINAL_SHA" release/RELEASE_VERIFICATION.txt
+          grep -Fq 'Native Fedora 44 GNOME/KDE desktop acceptance: NOT PERFORMED' release/RELEASE_VERIFICATION.txt
+
+      - name: Prepare accurate publication notes and verification record
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp RELEASE_NOTES.md release-notes-published.md
+          cat >> release-notes-published.md <<'NOTE'
+
+          ## Verification and disclosure
+
+          The Arch, Debian and Fedora packages were independently verified
+          against the exact final source commit, with SHA-256 integrity checks
+          and 17/17 final CI jobs successful (552 tests, 0 failures, 2 skips).
+          The owner verified the native v1.6.0 upgrade and both QML/Widgets
+          managers on CachyOS KDE. Fedora 44 installation and QML smoke were
+          tested in a disposable CI container only; **no live Fedora GNOME/KDE
+          desktop acceptance is claimed**. Third-party package compatibility
+          varies, and Distrobox is not a security sandbox.
+
+          The repository's dependency/license technical audit is limited
+          and an outstanding human review for any externally sourced code or
+          artwork is documented. This release is not an independent legal
+          clearance or warranty of rights.
+
+          The downloadable SHA256SUMS provides checksums, not cryptographic
+          publisher signatures. Preserve prior verified packages when upgrading.
+          NOTE
+          cat > release/RELEASE_VERIFICATION.txt <<VERIFY
+          AppInstall v1.6.0 - final public release verification
+          Source repository: https://github.com/$GH_REPO
+          Exact source commit: $FINAL_SHA
+          Final-main CI: 11/11 workflows, 17/17 jobs successful; 552 tests, 0 failures, 2 skipped
+          Independent three-format audit: Actions run 43748984204, passed
+          Arch CI run: 43748604787
+          Debian CI run: 43748604804
+          Fedora CI run: 43748604814
+          Arch package SHA256: $ARCH_SHA
+          Debian package SHA256: $DEB_SHA
+          Fedora RPM SHA256: $RPM_SHA
+          Audit confirmed metadata and byte-for-byte source payload match for main CLI/QML modules.
+          Fedora RPM modifies the Bash interpreter path during native rpmbuild; remaining CLI contents match exact source.
+          Real CachyOS desktop v1.6.0: owner reported successful upgrade, 81/81 unaltered files, and working QML/Widgets interface.
+          Fedora 44: CI-only DNF install/QML offscreen acceptance; no real Fedora GNOME/KDE desktop testing.
+          App compatibility is package/system dependent; Distrobox is not a security sandbox.
+          Human review for any externally sourced code/artwork remains open per DEPENDENCY_LICENSE_AUDIT.md.
+          Checksums validate downloads but do not constitute publisher signatures.
+          Package hashes and source were checked before publication; published assets reverified after publication.
+          Published v1.5.0 packages and tag remain unchanged.
+          VERIFY
+          (cd release && sha256sum --check --strict SHA256SUMS)
+          test "$(find release -maxdepth 1 -type f | wc -l)" -eq 5
+          echo 'Verified release notes and five distinct assets prepared.'
+
+      - name: Create UNPUBLISHED draft and upload exact audited assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create v1.6.0 \
+            release/appinstall-1.6.0-1-any.pkg.tar.zst \
+            release/appinstall_1.6.0-1_all.deb \
+            release/appinstall-1.6.0-1.noarch.rpm \
+            release/SHA256SUMS \
+            release/RELEASE_VERIFICATION.txt \
+            --target "$FINAL_SHA" \
+            --title 'AppInstall v1.6.0' \
+            --notes-file release-notes-published.md \
+            --draft
+
+      - name: Verify unpublished draft target and every GitHub-recorded asset checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api "repos/$GH_REPO/releases?per_page=100" > releases.json
+          draft_id="$(jq -r '[.[] | select(.tag_name == "v1.6.0" and .draft == true) | .id] | if length == 1 then .[0] else empty end' releases.json)"
+          test -n "$draft_id"
+          echo "DRAFT_ID=$draft_id" >> "$GITHUB_ENV"
+          gh api "repos/$GH_REPO/releases/$draft_id" > draft.json
+          jq -e \
+            --arg source "$FINAL_SHA" \
+            --arg arch "sha256:$ARCH_SHA" \
+            --arg deb "sha256:$DEB_SHA" \
+            --arg rpm "sha256:$RPM_SHA" \
+            '
+              .tag_name == "v1.6.0"
+              and .name == "AppInstall v1.6.0"
+              and .draft == true and .prerelease == false
+              and .target_commitish == $source
+              and (.assets | length == 5)
+              and ([.assets[].name] | sort) ==
+                (["appinstall-1.6.0-1-any.pkg.tar.zst","appinstall_1.6.0-1_all.deb",
+                  "appinstall-1.6.0-1.noarch.rpm","SHA256SUMS","RELEASE_VERIFICATION.txt"] | sort)
+              and ([.assets[] | select(.name=="appinstall-1.6.0-1-any.pkg.tar.zst") | .digest] == [$arch])
+              and ([.assets[] | select(.name=="appinstall_1.6.0-1_all.deb") | .digest] == [$deb])
+              and ([.assets[] | select(.name=="appinstall-1.6.0-1.noarch.rpm") | .digest] == [$rpm])
+              and ([.assets[] | select(.name=="SHA256SUMS") | .digest] | length == 1)
+              and ([.assets[] | select(.name=="RELEASE_VERIFICATION.txt") | .digest] | length == 1)
+              and (.body | contains("no live Fedora GNOME/KDE"))
+              and (.body | contains("outstanding human review"))
+            ' draft.json
+          for file in SHA256SUMS RELEASE_VERIFICATION.txt; do
+            expect="sha256:$(sha256sum "release/$file" | cut -d' ' -f1)"
+            recorded="$(jq -r --arg filename "$file" '.assets[] | select(.name==$filename) | .digest' draft.json)"
+            test "$recorded" = "$expect"
+          done
+          echo 'PASS: unpublished draft target, five assets and disclosure verified.'
+
+      - name: Publish verified draft only after all release gates pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$DRAFT_ID"
+          gh api -X PATCH "repos/$GH_REPO/releases/$DRAFT_ID" \
+            -F draft=false -f make_latest=true \
+            --jq '{id,tag_name,draft,published_at,target_commitish}'
+
+      - name: Verify public release, exact tag, public downloads and v1.5.0 unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            if gh api "repos/$GH_REPO/releases/tags/v1.6.0" > published.json 2>/dev/null; then break; fi
+            sleep 2
+          done
+          jq -e \
+            --arg source "$FINAL_SHA" \
+            --argjson id "$DRAFT_ID" \
+            --arg arch "sha256:$ARCH_SHA" \
+            --arg deb "sha256:$DEB_SHA" \
+            --arg rpm "sha256:$RPM_SHA" \
+            '
+              .id == $id and .tag_name == "v1.6.0"
+              and .draft == false and .prerelease == false
+              and .target_commitish == $source
+              and (.assets | length == 5)
+              and ([.assets[] | select(.name=="appinstall-1.6.0-1-any.pkg.tar.zst") | .digest] == [$arch])
+              and ([.assets[] | select(.name=="appinstall_1.6.0-1_all.deb") | .digest] == [$deb])
+              and ([.assets[] | select(.name=="appinstall-1.6.0-1.noarch.rpm") | .digest] == [$rpm])
+            ' published.json
+          test "$(gh api "repos/$GH_REPO/git/ref/tags/v1.6.0" --jq '.object.sha')" = "$FINAL_SHA"
+          test "$(gh api "repos/$GH_REPO/releases/latest" --jq '.tag_name')" = v1.6.0
+          mkdir -p "$RUNNER_TEMP/public-download"
+          gh release download v1.6.0 \
+            --dir "$RUNNER_TEMP/public-download" \
+            --pattern '*.pkg.tar.zst' --pattern '*.deb' --pattern '*.rpm' \
+            --pattern SHA256SUMS --pattern RELEASE_VERIFICATION.txt
+          (cd "$RUNNER_TEMP/public-download" && sha256sum --check --strict SHA256SUMS)
+          cmp release/SHA256SUMS "$RUNNER_TEMP/public-download/SHA256SUMS"
+          cmp release/RELEASE_VERIFICATION.txt "$RUNNER_TEMP/public-download/RELEASE_VERIFICATION.txt"
+          gh api "repos/$GH_REPO/releases/446244312" > previous.json
+          jq -e '
+            .tag_name == "v1.5.0" and .draft == false and (.assets | length == 4)
+            and ([.assets[] | select(.name=="appinstall-1.5.0-1-any.pkg.tar.zst") | .digest] ==
+              ["sha256:ea2a22f8bc7551c4f1d588194272dc7ea9c8728812f32fe47bcb6a9411fbd6b9"])
+            and ([.assets[] | select(.name=="appinstall_1.5.0-1_all.deb") | .digest] ==
+              ["sha256:aff78c6bf6628233daae6b75d9cf2fd8bca5a1d90ad887f775acb9103a7ae7ab"])
+          ' previous.json
+          echo 'PASS: v1.6.0 PUBLIC, LATEST, tagged to exact main, all five downloads checked, v1.5.0 intact.'
