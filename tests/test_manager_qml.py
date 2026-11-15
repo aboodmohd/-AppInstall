@@ -20,7 +20,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from PySide6 import QtCore, QtQml
+from PySide6 import QtCore, QtQml, QtQuick, QtTest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -658,6 +658,128 @@ class InventoryLoadTests(QmlManagerBase):
     def test_load_failure_reports_in_status(self):
         self.bridge._load_failed('registry unreadable')
         self.assertIn('Could not load inventory', self.bridge._status_text)
+
+
+class QmlInteractionTests(QmlManagerBase):
+    def setUp(self):
+        super().setUp()
+        self.load_inventory([
+            (f'appimage:app{i}', self.stage_installed_appimage(
+                f'appimage:app{i}', f'{i:02d} ' + ('Long name ' * 30 if i == 0 else 'App')))
+            for i in range(40)
+        ])
+        self.engine = QtQml.QQmlApplicationEngine()
+        self.engine.rootContext().setContextProperty('bridge', self.bridge)
+        self.engine.rootContext().setContextProperty('appsModel', self.model)
+        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
+        self.window = self.engine.rootObjects()[0]
+        self.window.setWidth(720)
+        self.window.setHeight(600)
+        self.window.show()
+        QtTest.QTest.qWait(100)
+
+    def tearDown(self):
+        self.window.close()
+        self.engine.deleteLater()
+        QtCore.QCoreApplication.sendPostedEvents(None, QtCore.QEvent.DeferredDelete)
+        super().tearDown()
+
+    def evaluate(self, expression, scope=None):
+        scope = scope or self.window
+        expr = QtQml.QQmlExpression(QtQml.qmlContext(scope), scope, expression)
+        value, _ = expr.evaluate()
+        self.assertFalse(expr.hasError(), expr.error().toString())
+        return value
+
+    def card(self):
+        # A child belongs to AppCard's own component context (its private ids),
+        # whereas the delegate root belongs to main.qml's delegate context.
+        return self.evaluate('appList.currentItem').childItems()[0]
+
+    def press(self, key):
+        QtTest.QTest.keyClick(self.window, key)
+        QtTest.QTest.qWait(30)
+
+    def assert_current_visible(self, index):
+        self.assertEqual(self.evaluate('appList.currentIndex'), index)
+        self.assertTrue(self.evaluate('appList.currentItem.activeFocus'))
+        self.assertTrue(self.evaluate('appList.currentItem.y >= appList.contentY - 1'
+                                     ' && appList.currentItem.y + appList.currentItem.height'
+                                     ' <= appList.contentY + appList.height + 1'))
+
+    def test_long_name_keeps_actions_inside_narrow_window(self):
+        card = self.card()
+        self.assertTrue(self.evaluate('nameLabel.truncated', card))
+        for button in ('openButton', 'detailsButton', 'moreButton', 'pinButton'):
+            self.assertTrue(self.evaluate(
+                f'{button}.mapToItem(card, 0, 0).x + {button}.width <= card.width', card), button)
+        self.evaluate('appList.focusCard(1)')
+        QtTest.QTest.qWait(30)
+        self.assertAlmostEqual(self.evaluate('statusChip.x - nameLabel.x - nameLabel.width', self.card()), 8, delta=1)
+
+    def test_tab_then_arrows_tracks_focused_card_and_scrolls(self):
+        self.evaluate('appList.focusCard(0)')
+        self.press(QtCore.Qt.Key_Tab)
+        self.assert_current_visible(1)
+        self.press(QtCore.Qt.Key_Down)
+        self.assert_current_visible(2)
+        for index in range(3, 15):
+            self.press(QtCore.Qt.Key_Tab)
+            self.assert_current_visible(index)
+        self.press(QtCore.Qt.Key_Up)
+        self.assert_current_visible(13)
+
+    def test_end_home_focus_offscreen_delegates(self):
+        self.evaluate('appList.focusCard(0)')
+        self.press(QtCore.Qt.Key_End)
+        self.assert_current_visible(39)
+        self.press(QtCore.Qt.Key_Home)
+        self.assert_current_visible(0)
+
+    def test_card_context_menu_keyboard_shortcuts(self):
+        for key, modifiers in ((QtCore.Qt.Key_Menu, QtCore.Qt.NoModifier),
+                               (QtCore.Qt.Key_F10, QtCore.Qt.ShiftModifier)):
+            self.evaluate('appList.focusCard(0)')
+            QtTest.QTest.keyClick(self.window, key, modifiers)
+            QtTest.QTest.qWait(30)
+            self.assertTrue(self.evaluate('moreMenu.visible', self.card()), str(key))
+            self.evaluate('moreMenu.close()', self.card())
+
+    def test_card_describes_keyboard_actions(self):
+        description = self.evaluate('card.Accessible.description', self.card())
+        for action in ('Enter', 'Open', 'Space', 'Details', 'Menu', 'Shift+F10'):
+            self.assertIn(action, description)
+
+    def test_checked_filter_text_contrast_in_both_themes_and_states(self):
+        def luminance(channels):
+            linear = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+                      for c in channels]
+            return sum(c * weight for c, weight in zip(linear, (0.2126, 0.7152, 0.0722)))
+
+        for theme in ('light', 'dark'):
+            self.evaluate(f'Theme.mode = "{theme}"')
+            chip = self.evaluate('formatGroup.buttons[0]')
+            point = chip.mapToScene(QtCore.QPointF(chip.width() / 2, chip.height() / 2)).toPoint()
+            for state in ('normal', 'hover', 'pressed'):
+                with self.subTest(theme=theme, state=state):
+                    QtTest.QTest.mouseMove(self.window, QtCore.QPoint(1, 1) if state == 'normal' else point)
+                    if state == 'pressed':
+                        QtTest.QTest.mousePress(self.window, QtCore.Qt.LeftButton, pos=point)
+                    QtTest.QTest.qWait(220)
+                    self.assertTrue(chip.property('checked'))
+                    self.assertEqual(chip.property('hovered'), state != 'normal')
+                    foreground = chip.property('contentItem').property('color')
+                    background = chip.property('background').property('color')
+                    base = self.window.property('color')
+                    alpha = background.alphaF()
+                    blended = [a * alpha + b * (1 - alpha) for a, b in
+                               zip(background.getRgbF()[:3], base.getRgbF()[:3])]
+                    values = (luminance(foreground.getRgbF()[:3]), luminance(blended))
+                    ratio = (max(values) + 0.05) / (min(values) + 0.05)
+                    self.assertGreaterEqual(ratio, 4.5, f'{theme} {state}: {ratio:.2f}:1')
+                    if state == 'pressed':
+                        QtTest.QTest.mouseRelease(self.window, QtCore.Qt.LeftButton, pos=point)
 
 
 class QmlInstantiationTests(QmlManagerBase):
