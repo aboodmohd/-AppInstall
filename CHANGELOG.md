@@ -1,5 +1,24 @@
 # AppInstall Changelog
 
+## 1.5.0 — QML manager becomes the default
+
+- The redesigned Qt Quick/QML **My Applications** interface is now the default
+  for `appinstall --manage` and launching AppInstall without file arguments.
+  Use `appinstall --manage --widgets` for the legacy Widgets interface.
+- Preserve the existing installer backends, managed applications, favorites,
+  desktop integration and user settings when switching interfaces.
+- Correct KDE Wayland QML runtime problems with delegate indices, hover state,
+  unavailable icon paths and custom control content.
+- Replace the unresponsive status and sort ComboBoxes with explicitly clickable
+  popup menus supporting mouse and keyboard selection; filter and sorting
+  changes update the inventory.
+- Fix accidental bright-yellow hovered application cards by correcting Qt's
+  `#AARRGGBB` color tokens, and use restrained neutral hover styling.
+- Add QML/Wayland smoke and dropdown interaction regression tests, verify
+  packaged QML resources and preserve the Widgets fallback.
+- Release qualification is limited to tested samples; AppImage, Flatpak,
+  DEB/RPM and desktop behavior depend on the user's system and packages.
+
 ## 1.4.0
 
 - AppInstall checks for its own stable updates on startup (about every 12 hours) and on demand.

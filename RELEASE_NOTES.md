@@ -1,17 +1,49 @@
-# AppInstall v1.4.0
+# AppInstall v1.5.0
 
-AppInstall checks for its own stable updates on startup (about every 12 hours) and on demand.
-Managed Flatpak apps can be updated individually from My Applications.
-Desktop notifications for available updates (notify-send, headless-safe).
-Settings module, theme toggle (auto/light/dark), favorites, package size.
-Drag-and-drop batch install with per-file results and cancel.
-Container health & repair for DEB/RPM container apps.
-Uninstall cleanup with explicit per-path checkboxes; nothing silently deleted.
+AppInstall v1.5.0 updates the **My Applications** interface. The Qt Quick/QML
+manager is now the default when you run `appinstall --manage` or open AppInstall
+without an installation request. The previous Qt Widgets manager remains
+available through `appinstall --manage --widgets`.
 
-To get the updater for the first time, run the existing one-command
-installer. The in-app updater supports native Arch and Debian-family
-packages. Use the terminal installer if your desktop has no polkit agent.
+## What's new
 
-CI exercised real pacman and APT upgrades with simulated authorization.
-A real CachyOS KDE test confirmed the password prompt, successful upgrade,
-and completion dialog.
+- A redesigned, keyboard-accessible application list with search, format chips,
+  installed-state filtering, sorting, favorites, package sizes, and available
+  actions for each managed application.
+- Status and Sort menus now open reliably on tested KDE Wayland sessions and
+  update the visible application list when an option is selected.
+- Corrected KDE QML startup/runtime warnings for delegate indices, hover state,
+  unsupported icon URLs, and ComboBox content compatibility.
+- Corrected Qt alpha-color notation that made hovered cards bright yellow.
+  Hover feedback is now neutral in light and dark modes.
+- The application records, source-format install actions, Diagnostics,
+  existing desktop file associations, and legacy Widgets manager are retained.
+
+## Supported and tested environments
+
+- On the owner's CachyOS KDE Wayland desktop, both menus and the neutral hover
+  behavior were reported working after PR #69. This is real-device UI acceptance,
+  not a new end-to-end test of every installer backend.
+- GitHub CI tests isolated X11, Weston Wayland, virtual KWin Wayland, Arch,
+  Fedora, and Debian-family packaging. These environments do not certify every
+  real desktop or third-party AppImage, Flatpak, DEB, or RPM.
+- DEB/RPM apps use rootless Distrobox containers, not a security sandbox.
+
+## Upgrade and rollback
+
+Before upgrading, back up your AppInstall settings, application/launcher
+records, and MIME associations. Verify the release's `SHA256SUMS` manifest
+against the downloaded package and inspect the package before installation.
+
+Arch / CachyOS: `sudo pacman -U ./appinstall-1.5.0-1-any.pkg.tar.zst`
+
+Debian-family: `sudo apt install ./appinstall_1.5.0-1_all.deb`
+
+After installing, verify `appinstall --version`, `appinstall --manage`,
+`appinstall --manage --widgets`, and existing managed applications. Retain a
+verified v1.4.0 package as a rollback option; restoring older package code
+does not undo unrelated application transactions.
+
+Release packages and their SHA-256 hashes must be verified against the
+published `SHA256SUMS` asset before installation. See
+[UPGRADE.md](UPGRADE.md) for upgrade and rollback guidance.

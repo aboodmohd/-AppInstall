@@ -1,39 +1,42 @@
 # AppInstall Upgrade Guide
 
-## Current status — v1.1.2 approval pending
+## Upgrading from v1.4.0 to v1.5.0
 
-The latest **published** stable AppInstall release is
-[v1.1.1](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.1.1).
-The v1.1.2 maintenance bug fix is merged and has passed automated CI plus
-owner-reported qBittorrent desktop testing, but **v1.1.2 has not yet been
-tagged or published**.
+[v1.4.0](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.4.0)
+was published before the QML-default interface, KDE dropdown fixes, and
+hover-color corrections were merged. These changes belong to v1.5.0.
+Do **not** treat the published v1.4.0 packages as containing them.
 
-The independently versioned `install.sh` script remains v1.1.0 and always
-resolves the latest **published stable application**, so it must not be
-treated as a way to obtain unpublished v1.1.2.
+The independently versioned `install.sh` identifies itself as v1.2.0
+at the time of this upgrade guide. It resolves the latest **published**
+stable application release, not an unpublished candidate branch.
 
-### Preparing a safe v1.1.1 → v1.1.2 upgrade
+### Safe v1.4.0 → v1.5.0 upgrade checklist
 
-1. Keep the published v1.1.1 package and its SHA256SUMS as a rollback copy.
-   Verify the manifest before treating the old package as known good.
-2. Back up application launch records, user desktop entries, and MIME
-   settings; also retain personal files and installed-app data.
-3. Before installing a **reviewed** v1.1.2 build, verify its exact
-   SHA256SUMS and inspect `pacman -Qip` and `pacman -Qlp`.
-4. Update with `sudo pacman -U <verified-v1.1.2-package>` only after
-   deciding to test that package. This changes the installed application.
-5. Verify `appinstall --version`, `pacman -Qkk appinstall`, the previously
-   failing KDE desktop shortcut, My Applications status/Open, and Diagnostics.
-6. If necessary, roll back with `sudo pacman -U
-   <verified-v1.1.1-package>` and verify managed apps and user data.
-   On the actual user's system, no rollback was needed for the reported test.
+1. Keep a verified copy of the published v1.4.0 package and its SHA256SUMS for
+   rollback. Never reuse its checksum for a rebuilt v1.5.0 package.
+2. Back up managed application records, launchers, settings, and user MIME
+   defaults, and verify that the backup contains the expected files.
+3. Once the final v1.5.0 package is built from the *approved* source commit,
+   verify its SHA256SUMS and inspect `pacman -Qip` and `pacman -Qlp`
+   (Arch/CachyOS) or `dpkg-deb -I` (Debian-family).
+4. On Arch/CachyOS, install with
+   `sudo pacman -U ./appinstall-1.5.0-1-any.pkg.tar.zst`; on supported
+   Debian-family systems, use
+   `sudo apt install ./appinstall_1.5.0-1_all.deb`.
+   Installation changes system packages and requires the user's consent.
+5. Confirm `appinstall --version` returns `appinstall 1.5.0`, package file
+   integrity is clean, and `appinstall --manage` opens the QML manager.
+   Verify Status, Sort, favorite/open/details actions, neutral hover colors,
+   and `appinstall --manage --widgets` fallback.
+6. Verify previously managed applications and user MIME defaults were
+   preserved. If rollback is necessary, reinstall the **verified published**
+   v1.4.0 package and recheck records and file associations.
 
-**Acceptance evidence:** The owner reported the v1.1.2 qBittorrent shortcut,
-manager and Diagnostics tests passing on real CachyOS KDE, with zero altered
-package files. PR #46's **disposable Arch** CI also verified v1.1.1 ->
-v1.1.2 -> v1.1.1 package rollback, including preservation of unrelated
-files and MIME defaults. These do not establish complete all-format manual
-compatibility or an owner-system rollback.
+The owner's earlier real CachyOS KDE acceptance verified the UI interactions
+in a pre-release development build. It did not establish full end-to-end
+AppImage/Flatpak/DEB/RPM lifecycle compatibility. Validate the exact v1.5.0
+release artifacts and check the published source-to-package hashes separately.
 
 ### Avoid mixed source and system installations
 

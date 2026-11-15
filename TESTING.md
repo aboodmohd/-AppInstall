@@ -43,6 +43,12 @@ appinstall --manage --widgets
 ```
 
 Manual verification checklist (see `KNOWN_LIMITATIONS.md`):
+- QML is the default manager; `--widgets` opens the legacy manager
+- Status dropdown opens and filters by installed, missing, and stale state
+- Sort dropdown opens and changes name ordering and size ordering
+- Keyboard opens the menus and selects or dismisses options
+- Hovered application cards remain neutral rather than bright yellow
+- Existing settings, favorites, application records and MIME defaults persist
 - Search filters installed applications
 - Package-format filters work
 - Open launches the correct application
