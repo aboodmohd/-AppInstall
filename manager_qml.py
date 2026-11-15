@@ -531,6 +531,20 @@ class Bridge(QtCore.QObject):
         self._guard(manager.reexport_launcher, key,
                     'Launcher re-export failed', refresh=True)
 
+    @QtCore.Slot()
+    def installFromFile(self):
+        """Same handler as the widgets window's header: the package picker
+        routes the selection through the normal CLI package review."""
+        manager.ui_style.open_package(self.anchor)
+
+    @QtCore.Slot()
+    def installFromUrl(self):
+        """Same handler as the widgets window's header: UrlInstallDialog
+        downloads, previews and installs through the normal backends."""
+        dialog = manager.UrlInstallDialog(self.anchor)
+        dialog.installed.connect(self.refresh)
+        dialog.exec()
+
     def _guard(self, action, key, failure, refresh=False):
         """Run a backend action; report failures in the status line."""
         try:
@@ -765,11 +779,25 @@ def main():
 
     window = engine.rootObjects()[0]
     window.setIcon(QtGui.QIcon.fromTheme('appinstall'))
-    if smoke:
+    shot = None
+    if '--screenshot' in args:
+        index = args.index('--screenshot')
+        if index + 1 < len(args):
+            shot = args[index + 1]
+    if shot:
+        # Same delayed-grab contract as the widgets window's --screenshot:
+        # wait for the async inventory load to land, then save the window
+        # image and quit. The grab itself is declared in main.qml
+        # (saveWindowShot): the QML engine hands back the plain QWindow
+        # wrapper, which has no grabWindow(), while QML-declared functions
+        # stay callable through the dynamic metaobject.
+        def grab():
+            window.saveWindowShot(shot)
+        QtCore.QTimer.singleShot(1500, grab)
+    elif smoke:
         # The scene came up with no missing QML modules: quit cleanly.
         print('QML smoke: main.qml loaded', flush=True)
         QtCore.QTimer.singleShot(300, app.quit)
-        sys.exit(app.exec())
     sys.exit(app.exec())
 
 

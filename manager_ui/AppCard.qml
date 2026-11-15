@@ -94,16 +94,7 @@ Item {
                 spacing: 8
 
                 Label {
-                    text: "★"
-                    visible: model.pinned
-                    font.pixelSize: 14
-                    color: Theme.colors.accent
-                    Layout.alignment: Qt.AlignVCenter
-                }
-
-                Label {
                     id: nameLabel
-                    Layout.fillWidth: true
                     text: model.name
                     elide: Text.ElideRight
                     font.pixelSize: 15
@@ -117,6 +108,8 @@ Item {
                 }
 
                 // Status chip: dot + label, tone from the backend status.
+                // Sits right after the name, as in the web design; the
+                // filler keeps long names from pushing it to the edge.
                 Rectangle {
                     id: statusChip
                     radius: 9
@@ -147,6 +140,8 @@ Item {
                     Accessible.role: Accessible.StaticText
                     Accessible.name: model.statusLabel
                 }
+
+                Item { Layout.fillWidth: true }
             }
 
             Label {
@@ -167,7 +162,7 @@ Item {
             Label {
                 visible: card.showProblems
                 Layout.fillWidth: true
-                text: "⚠ " + model.problems
+                text: model.problems
                 elide: Text.ElideRight
                 font.pixelSize: 12
                 color: Theme.colors.danger
@@ -188,6 +183,9 @@ Item {
                 id: openButton
                 enabled: model.canOpen
                 text: qsTr("Open")
+                // The card is the Tab stop (whole-item keyboard model);
+                // buttons stay mouse/touch-only so Tab crosses the list.
+                activeFocusOnTab: false
                 font.pixelSize: 13
                 font.weight: Font.Medium
                 implicitWidth: Math.max(contentItem.implicitWidth + 24, 76)
@@ -217,6 +215,7 @@ Item {
             Button {
                 id: detailsButton
                 text: qsTr("Details")
+                activeFocusOnTab: false
                 font.pixelSize: 13
                 implicitWidth: Math.max(contentItem.implicitWidth + 24, 76)
                 implicitHeight: 30
@@ -248,6 +247,7 @@ Item {
             Button {
                 id: moreButton
                 text: "⋮"
+                activeFocusOnTab: false
                 font.pixelSize: 16
                 implicitWidth: 30
                 implicitHeight: 30
@@ -277,8 +277,58 @@ Item {
                 Accessible.name: "More actions for " + model.name
             }
 
+            // Favorite toggle at the card's edge, as in the web design:
+            // filled accent star when pinned, quiet outline star otherwise.
+            // Same togglePin entry point the widgets window uses.
+            Button {
+                id: pinButton
+                text: model.pinned ? "★" : "☆"
+                activeFocusOnTab: false
+                font.pixelSize: 17
+                implicitWidth: 32
+                implicitHeight: 30
+                hoverEnabled: true
+
+                background: Rectangle {
+                    radius: 7
+                    color: pinButton.pressed ? Theme.colors.pressed
+                         : pinButton.hovered ? Theme.colors.hover
+                         : "transparent"
+                    border.color: pinButton.visualFocus ? Theme.colors.focusRing : "transparent"
+                    border.width: pinButton.visualFocus ? 2 : 0
+                    scale: pinButton.pressed ? 0.97 : 1.0
+
+                    Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
+                    Behavior on scale { NumberAnimation { duration: Theme.pressMs; easing.type: Easing.OutCubic } }
+                }
+                contentItem: Label {
+                    text: pinButton.text
+                    font: pinButton.font
+                    color: model.pinned ? Theme.colors.accent : Theme.colors.textSecondary
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+                onClicked: bridge.togglePin(model.key)
+                Accessible.name: (model.pinned
+                                  ? qsTr("Remove %1 from favorites").arg(model.name)
+                                  : qsTr("Add %1 to favorites").arg(model.name))
+                Accessible.role: Accessible.Button
+            }
+
             Menu {
                 id: moreMenu
+
+                // Favorite toggle in the menu too: the card is the keyboard
+                // focus unit (Enter opens, Menu opens this menu), so the
+                // star button alone would leave favorites mouse-only.
+                MenuItem {
+                    text: model.pinned ? qsTr("Remove from Favorites")
+                                       : qsTr("Add to Favorites")
+                    checkable: true
+                    checked: model.pinned
+                    onTriggered: bridge.togglePin(model.key)
+                }
+                MenuSeparator { contentItem: Rectangle { implicitHeight: 1; color: Theme.colors.border } }
 
                 MenuItem {
                     text: qsTr("Reinstall")
@@ -330,13 +380,17 @@ Item {
         }
     }
 
-    // Enter opens, Space toggles the action menu — the two most frequent
-    // keyboard paths, both instant (no animation on keyboard actions).
+    // Keyboard paths for the card (the card is the focus unit): Enter
+    // opens the app, Space shows its details — the two visible buttons —
+    // and the Menu key opens the ⋯ menu. All instant, no animation.
     Keys.onReturnPressed: (event) => {
         if (model.canOpen) { bridge.openApp(model.key); event.accepted = true }
     }
     Keys.onEnterPressed: (event) => {
         if (model.canOpen) { bridge.openApp(model.key); event.accepted = true }
+    }
+    Keys.onSpacePressed: (event) => {
+        bridge.showDetails(model.key); event.accepted = true
     }
     Keys.onMenuPressed: (event) => {
         moreMenu.popup(moreButton, 0, moreButton.height + 4)
