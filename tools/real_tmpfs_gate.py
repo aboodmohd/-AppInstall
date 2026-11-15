@@ -114,8 +114,9 @@ def main(raw_mount):
     must_pass(result, "Initial clean source registration")
     installed = home / ".local/bin/appinstall"
     manager = state / "manager.py"
+    manager_qml = state / "manager_qml.py"
     associations = state / "associations.json"
-    tracked = [installed, manager, mime, associations, registry, unrelated]
+    tracked = [installed, manager, manager_qml, mime, associations, registry, unrelated]
     before = {path: (path.read_bytes(), stat.S_IMODE(path.stat().st_mode))
               for path in tracked}
     if b"application/vnd.flatpak=appinstall.desktop;" not in before[mime][0]:

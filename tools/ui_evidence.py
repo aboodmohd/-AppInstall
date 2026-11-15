@@ -25,6 +25,7 @@ EVIDENCE = ROOT / 'evidence' / 'phase4'
 CONFIRM = ROOT / 'confirm.py'
 CONTAINER = ROOT / 'container_ui.py'
 MANAGER = ROOT / 'manager.py'
+MANAGER_QML = ROOT / 'manager_qml.py'
 
 
 def tar_gz(files):
@@ -138,6 +139,14 @@ def main():
     mdark = EVIDENCE / 'manager-list-dark.png'
     mdetails = EVIDENCE / 'manager-details.png'
     results.extend(capture_manager(mlight, mdark, mdetails))
+
+    # manager_qml.py — QML default UI (real inventory)
+    qml_light = EVIDENCE / 'manager-qml-list-light.png'
+    qml_dark = EVIDENCE / 'manager-qml-list-dark.png'
+    result = run_screenshot(MANAGER_QML, qml_light, [], {})
+    results.append(('manager_qml.py list (light)', qml_light, result.returncode))
+    result = run_screenshot(MANAGER_QML, qml_dark, [], {'APPINSTALL_UI_DARK': '1'})
+    results.append(('manager_qml.py list (dark)', qml_dark, result.returncode))
 
     report = ['# Phase 4 + Phase 5 GUI Evidence — AppInstall 1.0 Beta\n',
               'Captured under `QT_QPA_PLATFORM=offscreen` (headless).',

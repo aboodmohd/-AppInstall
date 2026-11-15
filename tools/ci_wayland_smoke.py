@@ -145,6 +145,29 @@ def check_manager_capture(env, path):
     )
 
 
+def check_manager_qml_capture(env, path):
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "manager_qml.py"), "--screenshot", str(path)],
+        cwd=str(ROOT), env=env, capture_output=True, text=True, timeout=25,
+    )
+    if result.returncode:
+        raise RuntimeError(
+            "QML manager screenshot under Wayland failed: " +
+            (result.stderr + result.stdout)[-7000:]
+        )
+    data = path.read_bytes()
+    if len(data) < 1000 or data[:8] != b"\x89PNG\r\n\x1a\n" or data[12:16] != b"IHDR":
+        raise RuntimeError("QML manager Wayland screenshot has invalid PNG header/length")
+    width, height = struct.unpack(">II", data[16:24])
+    if width < 500 or height < 400:
+        raise RuntimeError(f"Unexpected QML manager screenshot size: {width}x{height}")
+    print(
+        f"PASS: My Applications (QML) rendered a {width}x{height} PNG "
+        "through native Wayland Qt (discarded after test)",
+        flush=True,
+    )
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--compositor", choices=("weston", "sway"), default="weston")
@@ -222,6 +245,7 @@ def main():
                     for flag, label in COMMANDS:
                         check_app_window(flag, label, env)
                     check_manager_capture(env, root / "manager-wayland.png")
+                    check_manager_qml_capture(env, root / "manager-qml-wayland.png")
                     for path in (
                         root / "data/appinstall/containers/registry.json",
                         root / "home/Applications",
