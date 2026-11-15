@@ -47,12 +47,16 @@ jobs:
       - name: Verify CLI dispatch and graphical window startup on Xvfb
         env:
           QT_DEBUG_PLUGINS: '1'
+          MESA_SHADER_CACHE_DISABLE: '1'
         run: |
           xvfb-run -a -s "-screen 0 1280x800x24" python tools/ci_x11_gui_smoke.py
 
       - name: Verify AppInstall windows in i3
+        env:
+          MESA_SHADER_CACHE_DISABLE: '1'
         run: |
           xvfb-run -a -s "-screen 0 1280x800x24" bash -euc '
+            export MESA_SHADER_CACHE_DISABLE=1
             config="$(mktemp)"
             i3 -c "$config" &
             wm=$!
@@ -67,8 +71,11 @@ jobs:
           '
 
       - name: Verify AppInstall windows with XFCE's window manager
+        env:
+          MESA_SHADER_CACHE_DISABLE: '1'
         run: |
           xvfb-run -a -s "-screen 0 1280x800x24" dbus-run-session -- bash -euc '
+            export MESA_SHADER_CACHE_DISABLE=1
             xfwm4 --compositor=off &
             wm=$!
             cleanup() { kill "$wm" 2>/dev/null || true; }
@@ -83,7 +90,10 @@ jobs:
           '
 
       - name: Compare mocked DEB/RPM GUI shutdown without and with Qt workers
+        env:
+          MESA_SHADER_CACHE_DISABLE: '1'
         run: |
+          export MESA_SHADER_CACHE_DISABLE=1
           # Test dialogs/cleanup without QThread first, then same UI with jobs.
           # Both commands must exit 0, including Python interpreter shutdown.
           # Test with no worker and no unused Open button callback first.

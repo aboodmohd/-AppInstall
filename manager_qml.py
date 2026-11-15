@@ -21,11 +21,11 @@ from pathlib import Path
 from qt_compat import QtCore, QtGui, QtWidgets
 
 try:
-    from PySide6 import QtQml
+    from PySide6 import QtQml, QtQuick
 except ModuleNotFoundError as error:
     if error.name != "PySide6":
         raise
-    from PyQt6 import QtQml  # type: ignore
+    from PyQt6 import QtQml, QtQuick  # type: ignore
     # Keep the QML declarations compatible with the distro's PyQt6 binding.
     QtCore.Signal = QtCore.pyqtSignal
     QtCore.Slot = QtCore.pyqtSlot
@@ -809,15 +809,11 @@ def main():
     if shot:
         # Same delayed-grab contract as the widgets window's --screenshot:
         # wait for the async inventory load to land, then save the window
-        # image and quit. Uses QGuiApplication.primaryScreen().grabWindow()
-        # because QML's grabToImage() returns null images offscreen.
-        # On Wayland, window.winId() is 0 (no native window handle), so
-        # grabWindow(0) captures the entire compositor output instead.
+        # image and quit. Uses QQuickWindow.grabWindow() which renders via
+        # the scene graph and works on both X11 and Wayland compositors
+        # (Weston, KWin) without requiring a native window handle.
         def grab():
-            from PySide6.QtGui import QGuiApplication
-            screen = QGuiApplication.primaryScreen()
-            win = window.winId()
-            pixmap = screen.grabWindow(win if win else 0)
+            pixmap = window.grabWindow()
             if pixmap.isNull():
                 print('ERROR: screenshot capture failed (null pixmap)', flush=True)
                 app.quit()
