@@ -1,6 +1,6 @@
 # AppInstall Changelog
 
-## 1.5.0 — QML manager becomes the default (release candidate)
+## 1.5.0 — QML manager becomes the default
 
 - The redesigned Qt Quick/QML **My Applications** interface is now the default
   for `appinstall --manage` and launching AppInstall without file arguments.

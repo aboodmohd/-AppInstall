@@ -1,17 +1,15 @@
 # AppInstall Upgrade Guide
 
-## Current status — v1.5.0 release candidate (not published)
+## Upgrading from v1.4.0 to v1.5.0
 
-The latest **published** stable AppInstall release is
-[v1.4.0](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.4.0).
-The QML-default interface, KDE dropdown fixes, and hover-color corrections
-have been merged after that release. Their new release candidate is v1.5.0;
-do **not** treat the published v1.4.0 packages as containing these changes.
+[v1.4.0](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.4.0)
+was published before the QML-default interface, KDE dropdown fixes, and
+hover-color corrections were merged. These changes belong to v1.5.0.
+Do **not** treat the published v1.4.0 packages as containing them.
 
-The independently versioned `install.sh` currently identifies itself as
-v1.2.0 and selects the latest **published** stable release. It does not
-install an unpublished candidate unless you explicitly select and verify the
-candidate package yourself.
+The independently versioned `install.sh` identifies itself as v1.2.0
+at the time of this upgrade guide. It resolves the latest **published**
+stable application release, not an unpublished candidate branch.
 
 ### Safe v1.4.0 → v1.5.0 upgrade checklist
 
@@ -35,10 +33,10 @@ candidate package yourself.
    preserved. If rollback is necessary, reinstall the **verified published**
    v1.4.0 package and recheck records and file associations.
 
-The owner's prior real CachyOS KDE acceptance confirms UI interactions in
-the merged v1.4.0-development candidate, not an independently verified
-v1.5.0 final package or all-format lifecycle test. The final v1.5.0 build,
-cross-distro CI, manifest and release asset inspection are still required.
+The owner's earlier real CachyOS KDE acceptance verified the UI interactions
+in a pre-release development build. It did not establish full end-to-end
+AppImage/Flatpak/DEB/RPM lifecycle compatibility. Validate the exact v1.5.0
+release artifacts and check the published source-to-package hashes separately.
 
 ### Avoid mixed source and system installations
 

@@ -1,4 +1,4 @@
-# AppInstall v1.5.0 — release candidate
+# AppInstall v1.5.0
 
 AppInstall v1.5.0 updates the **My Applications** interface. The Qt Quick/QML
 manager is now the default when you run `appinstall --manage` or open AppInstall
@@ -44,7 +44,6 @@ After installing, verify `appinstall --version`, `appinstall --manage`,
 verified v1.4.0 package as a rollback option; restoring older package code
 does not undo unrelated application transactions.
 
-**Publication status:** This text documents a candidate. A public v1.5.0
-release, exact package hashes and downloadable assets must not be claimed
-until the final source commit and artifacts are verified and publication is
-separately approved.
+Release packages and their SHA-256 hashes must be verified against the
+published `SHA256SUMS` asset before installation. See
+[UPGRADE.md](UPGRADE.md) for upgrade and rollback guidance.
