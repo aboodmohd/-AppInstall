@@ -351,7 +351,7 @@ class FedoraVersionTests(unittest.TestCase):
             with self.subTest(version=version):
                 with tempfile.TemporaryDirectory() as tmp:
                     config = write_os_release(
-                        tmp, f"ID=fedora\\nVERSION_ID={version}\\n")
+                        tmp, f"ID=fedora\nVERSION_ID={version}\n")
                     rc, out, err = run_sourced(
                         "main", env_extra={"APPINSTALL_TEST_OS_RELEASE": config})
                     self.assertEqual(rc, 2, (out, err))

@@ -46,8 +46,8 @@ jobs:
           rpm -qpl "$pkg" | grep -Fx /usr/lib/appinstall/manager_ui/main.qml
           rpm -qpl "$pkg" | grep -Fx /usr/share/licenses/appinstall/LICENSE
           rpm -qp --requires "$pkg" | grep -Fx python3-pyside6
-          sha256sum "$pkg" > dist/SHA256SUMS
-          (cd dist && sha256sum -c SHA256SUMS)
+          (cd dist && sha256sum "$(basename "$pkg")" > SHA256SUMS && \
+            sha256sum -c SHA256SUMS)
 
       - name: RPM dependency install, QML smoke and removal (isolated CI)
         run: |
