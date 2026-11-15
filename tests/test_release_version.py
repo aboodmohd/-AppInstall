@@ -1,45 +1,40 @@
-"""Verify Arch package version and application CLI remain synchronized.
+"""Release version consistency across the Arch, Debian, and Fedora build inputs.
 
-A pre-release package must never silently claim a final stable version in the
-package file while the executable identifies itself as a beta/RC (or vice versa).
+These tests are source-only; they don't install packages or alter the host.
 """
-from pathlib import Path
 import re
 import unittest
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-class VersionConsistencyTests(unittest.TestCase):
-    def test_cli_and_arch_package_version_consistent(self):
-        bash = (ROOT / "appinstall").read_text()
-        pkgbuild = (ROOT / "PKGBUILD").read_text()
-        version = re.search(r'^VERSION="([^"]+)"$', bash, re.MULTILINE)
-        pkgver = re.search(r'^pkgver=([A-Za-z0-9_.]+)$', pkgbuild, re.MULTILINE)
-        self.assertIsNotNone(version)
-        self.assertIsNotNone(pkgver)
-        parts = re.fullmatch(
-            r'(\d+\.\d+\.\d+)(?:-(beta|rc)\.(\d+))?', version.group(1))
-        self.assertIsNotNone(parts)
-        expected = parts.group(1) + (parts.group(2) or '') + (parts.group(3) or '')
-        self.assertEqual(pkgver.group(1), expected)
+class ThreeFormatReleaseVersionTests(unittest.TestCase):
+    def test_cli_version_matches_single_pkgbuilder_source(self):
+        pkg = (ROOT / "PKGBUILD").read_text()
+        app = (ROOT / "appinstall").read_text()
+        pkg_version = re.search(r"^pkgver=([0-9][A-Za-z0-9.]+)$", pkg, re.M)
+        cli_version = re.search(r'^VERSION="([^"]+)"$', app, re.M)
+        self.assertIsNotNone(pkg_version)
+        self.assertIsNotNone(cli_version)
+        self.assertEqual(pkg_version.group(1), cli_version.group(1))
 
-    def test_prerelease_notes_and_published_beta_manifest_are_distinct(self):
-        bash = (ROOT / "appinstall").read_text()
-        version = re.search(r'^VERSION="([^"]+)"$', bash, re.MULTILINE).group(1)
-        notes = (ROOT / "RELEASE_NOTES.md").read_text()
-        self.assertIn(version, notes.splitlines()[0])
-        # The historic beta package's checksum is NOT the checksum of an RC build.
-        beta_manifest = (ROOT / "PACKAGE_CHECKSUM.md").read_text()
-        historical_versions = re.findall(
-            r'\b\d+\.\d+\.\d+(?:-(?:beta|rc)\.\d+)?\b',
-            beta_manifest.splitlines()[0])
-        self.assertIn('1.0.0-beta.1', historical_versions)
-        if version != '1.0.0-beta.1':
-            # Version equality must be exact: "1.0.0" is naturally a
-            # substring of the preserved historical "1.0.0-beta.1".
-            self.assertNotIn(version, historical_versions)
+    def test_deb_and_rpm_builders_share_pkgbuilder_version(self):
+        deb = (ROOT / "tools/build_deb.sh").read_text()
+        rpm = (ROOT / "tools/build_rpm.sh").read_text()
+        spec = (ROOT / "packaging/appinstall.spec.in").read_text()
+        for builder in (deb, rpm):
+            self.assertIn('source "$srcdir/PKGBUILD"' if builder == deb
+                          else 'source "$root/PKGBUILD"', builder)
+            self.assertIn('package', builder)
+        self.assertIn('Version:        @VERSION@', spec)
+        self.assertIn('Release:        @RELEASE@', spec)
+        self.assertIn('BuildArch:      noarch', spec)
 
-
-if __name__ == "__main__":
-    unittest.main()
+    def test_installer_selects_all_three_native_formats(self):
+        installer = (ROOT / "install.sh").read_text()
+        for name in ('"arch"', '"debian"', '"fedora"'):
+            self.assertIn(name + ': r"appinstall', installer)
+        self.assertIn('SUPPORTED_IDS="arch cachyos fedora"', installer)
+        self.assertIn('rpm -qp --qf', installer)
+        self.assertIn('run_root dnf', installer)

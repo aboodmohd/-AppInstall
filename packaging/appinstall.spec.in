@@ -52,5 +52,5 @@ cp -a usr %{buildroot}/
 
 %changelog
 * Sun Nov 15 2026 AppInstall Maintainers <maintainers@localhost> - @VERSION@-@RELEASE@
-- Candidate Fedora native RPM built from the existing AppInstall source inventory.
+- Fedora 44 native RPM integrated into AppInstall v1.6.0 across three package formats.
 - Keep AppInstall records and MIME defaults unchanged during installation.

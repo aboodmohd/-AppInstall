@@ -1,15 +1,52 @@
 # AppInstall Upgrade Guide
 
-## Upgrading from v1.4.0 to v1.5.0
+## Upgrading from v1.5.0 to v1.6.0
+
+Version 1.6.0 adds an independently packaged Fedora 44 RPM while retaining
+the Arch and Debian package formats and the default QML manager. It does
+not change the user's managed application records or install third-party
+applications during a host package upgrade. The one-command installer
+(`install.sh`) is independently versioned at 1.3.0.
+
+**Before upgrading:** Keep the already published v1.5.0 package and its
+checksum manifest, and back up AppInstall records, launchers, settings,
+user MIME defaults and active applications. Read `KNOWN_LIMITATIONS.md`.
+
+Once v1.6.0 is **published**, obtain the correct package for the host and
+verify its `SHA256SUMS`:
+
+- Arch/CachyOS: `sudo pacman -U ./appinstall-1.6.0-1-any.pkg.tar.zst`
+- Debian/Ubuntu/Mint: `sudo apt install ./appinstall_1.6.0-1_all.deb`
+- Fedora 44 (x86_64): `sudo dnf install ./appinstall-1.6.0-1.noarch.rpm`
+
+Fedora 43/45, RHEL, openSUSE and other unverified distributions remain
+unsupported by the one-command installation path. Do not force a native
+package from another distro.
+
+After installation, verify `appinstall --version` reports 1.6.0, then run
+`appinstall --manage`, `appinstall --manage --widgets`, and check the
+installed applications, favorites, Open/Details actions, Status and Sort menus,
+and preserved file associations. On Fedora, verify the installed package
+with `rpm -V appinstall`; on Arch, use `pacman -Qkk appinstall`.
+
+For rollback, reinstall a separately verified prior native package for the
+same distribution and recheck all records and file associations. The public
+v1.5.0 release has no Fedora RPM, so Fedora has **no same-project prior
+native RPM rollback artifact** from v1.5.0. Keep your local Fedora
+candidate only for development rollback; consult system package history
+and backups. A package rollback does not undo unrelated application
+transactions.
+
+## Historical: Upgrading from v1.4.0 to v1.5.0
 
 [v1.4.0](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.4.0)
 was published before the QML-default interface, KDE dropdown fixes, and
 hover-color corrections were merged. These changes belong to v1.5.0.
 Do **not** treat the published v1.4.0 packages as containing them.
 
-The independently versioned `install.sh` identifies itself as v1.2.0
-at the time of this upgrade guide. It resolves the latest **published**
-stable application release, not an unpublished candidate branch.
+The one-command installer is independently versioned from AppInstall.
+It resolves the latest **published** stable application release, not
+an unpublished candidate branch.
 
 ### Safe v1.4.0 → v1.5.0 upgrade checklist
 

@@ -1,5 +1,25 @@
 # AppInstall Changelog
 
+## 1.6.0 — Fedora 44 native RPM and one-command installation
+
+- Package AppInstall in three host-native formats: Arch/CachyOS `.pkg.tar.zst`,
+  Debian/Ubuntu/Linux Mint `.deb`, and Fedora 44 `.noarch.rpm`.
+  Each package derives its version and shared file inventory from PKGBUILD.
+- Add a Fedora 44 native RPM built with `rpmbuild` by an unprivileged user,
+  with Fedora distribution dependencies for PySide6 and Qt Quick. AppInstall's
+  Python/QML modules remain co-located for reliable manager startup.
+- The stable-release one-command installer identifies Fedora 44 (x86_64),
+  selects only a release-matched native RPM, validates its SHA-256 checksum and
+  RPM metadata, and invokes DNF for installation, update, or removal.
+- Refuse unsupported Fedora versions, missing RPM assets, duplicate or
+  untrusted download URLs, and incorrect package metadata instead of
+  installing a package intended for another distribution.
+- Add Fedora 44 CI for RPM build, DNF installation/removal, GUI smoke and
+  preservation of unrelated user files/MIME defaults. The previous Arch
+  and Debian-family CI paths remain covered.
+- Compatibility is based on CI environments unless independently verified
+  on a Fedora desktop; AppImage/Flatpak/DEB/RPM application behavior varies.
+
 ## 1.5.0 — QML manager becomes the default
 
 - The redesigned Qt Quick/QML **My Applications** interface is now the default
