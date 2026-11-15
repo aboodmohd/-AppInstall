@@ -189,7 +189,16 @@ class AppModel(QtCore.QAbstractListModel):
         if role == self.PinnedRole:
             return pinned
         if role == self.IconUrlRole:
-            return 'file://' + app['icon'] if app.get('icon') else ''
+            icon_path = app.get('icon') or ''
+            if not icon_path:
+                return ''
+            # Only use absolute file paths that exist on disk. Theme icon
+            # names (e.g. "com.stremio.Stremio") are not file URLs -- leave
+            # them empty so the QML letter-avatar fallback is used instead.
+            p = Path(icon_path)
+            if p.is_absolute() and p.is_file():
+                return 'file://' + str(p)
+            return ''
         if role == self.InitialRole:
             name = app['name'] or '?'
             return name[0].upper()
