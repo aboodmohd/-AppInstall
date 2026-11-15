@@ -1,0 +1,154 @@
+name: "Audit verified v1.6.0 Arch, Debian, Fedora release packages"
+on:
+  push:
+    branches:
+      - audit/v1.6.0-final-packages-20261115
+permissions:
+  actions: read
+  contents: read
+jobs:
+  verify-all-native-formats:
+    if: github.repository == 'aboodmohd/-AppInstall' && github.ref == 'refs/heads/audit/v1.6.0-final-packages-20261115'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: aboodmohd/-AppInstall
+      FINAL_SHA: d9f3798b2e43a1e2d8ac6a748b42d5f421d0d74d
+    steps:
+      - name: Checkout exact immutable final main release-candidate source
+        uses: actions/checkout@v4
+        with:
+          ref: d9f3798b2e43a1e2d8ac6a748b42d5f421d0d74d
+          persist-credentials: false
+
+      - name: Confirm commit, release guard and CI provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FINAL_SHA"
+          test "$(gh api "repos/$GH_REPO/branches/main" --jq '.commit.sha')" = "$FINAL_SHA"
+          grep -Fxq 'pkgver=1.6.0' PKGBUILD
+          grep -Fxq 'pkgrel=1' PKGBUILD
+          grep -Fxq 'VERSION="1.6.0"' appinstall
+          test "$(gh api "repos/$GH_REPO/releases/latest" --jq '.tag_name')" = v1.5.0
+          if gh api "repos/$GH_REPO/git/ref/tags/v1.6.0" > /dev/null 2>&1; then
+            echo 'Refusing to audit for a new release once tag v1.6.0 already exists' >&2
+            exit 1
+          fi
+          for run in 43748604787 43748604804 43748604814 43748604901 43748604803; do
+            test "$(gh api "repos/$GH_REPO/actions/runs/$run" --jq '.head_sha')" = "$FINAL_SHA"
+            test "$(gh api "repos/$GH_REPO/actions/runs/$run" --jq '.conclusion')" = success
+          done
+
+      - name: Download packages built by the exact final main CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/arch" "$RUNNER_TEMP/deb" "$RUNNER_TEMP/rpm"
+          gh run download 43748604787 --name "appinstall-package-$FINAL_SHA" --dir "$RUNNER_TEMP/arch"
+          gh run download 43748604804 --name "appinstall-deb-$FINAL_SHA" --dir "$RUNNER_TEMP/deb"
+          gh run download 43748604814 --name "appinstall-rpm-$FINAL_SHA" --dir "$RUNNER_TEMP/rpm"
+          for format in arch deb rpm; do
+            (cd "$RUNNER_TEMP/$format" && sha256sum --check --strict SHA256SUMS)
+          done
+          test -s "$RUNNER_TEMP/arch/appinstall-1.6.0-1-any.pkg.tar.zst"
+          test -s "$RUNNER_TEMP/deb/appinstall_1.6.0-1_all.deb"
+          test -s "$RUNNER_TEMP/rpm/appinstall-1.6.0-1.noarch.rpm"
+          test "$(jq -r .source_commit "$RUNNER_TEMP/arch/release-candidate-evidence/candidate-evidence.json")" = "$FINAL_SHA"
+
+      - name: Check every package's metadata and the installed source payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq rpm rpm2cpio cpio zstd
+          arch="$RUNNER_TEMP/arch/appinstall-1.6.0-1-any.pkg.tar.zst"
+          deb="$RUNNER_TEMP/deb/appinstall_1.6.0-1_all.deb"
+          rpmfile="$RUNNER_TEMP/rpm/appinstall-1.6.0-1.noarch.rpm"
+          test "$(dpkg-deb -f "$deb" Version)" = 1.6.0-1
+          test "$(dpkg-deb -f "$deb" Architecture)" = all
+          test "$(rpm -qp --qf '%{NAME}|%{VERSION}-%{RELEASE}|%{ARCH}' "$rpmfile")" = 'appinstall|1.6.0-1|noarch'
+          rpm -qp --requires "$rpmfile" | grep -Fx python3-pyside6
+          mkdir -p "$RUNNER_TEMP/extract/arch" "$RUNNER_TEMP/extract/deb" "$RUNNER_TEMP/extract/rpm"
+          tar --zstd -xf "$arch" -C "$RUNNER_TEMP/extract/arch"
+          dpkg-deb -x "$deb" "$RUNNER_TEMP/extract/deb"
+          (cd "$RUNNER_TEMP/extract/rpm" && rpm2cpio "$rpmfile" | cpio -idm --quiet --no-absolute-filenames)
+          grep -Fxq 'pkgver = 1.6.0-1' "$RUNNER_TEMP/extract/arch/.PKGINFO"
+
+          cmp appinstall "$RUNNER_TEMP/extract/arch/usr/bin/appinstall"
+          cmp appinstall "$RUNNER_TEMP/extract/deb/usr/lib/appinstall/appinstall"
+          test -x "$RUNNER_TEMP/extract/arch/usr/bin/appinstall"
+          test -x "$RUNNER_TEMP/extract/deb/usr/lib/appinstall/appinstall"
+          test -x "$RUNNER_TEMP/extract/rpm/usr/lib/appinstall/appinstall"
+          test "$(head -n 1 "$RUNNER_TEMP/extract/rpm/usr/lib/appinstall/appinstall")" = '#!/usr/bin/bash'
+          cmp <(tail -n +2 appinstall) <(tail -n +2 "$RUNNER_TEMP/extract/rpm/usr/lib/appinstall/appinstall")
+
+          for file in manager_qml.py manager_ui/main.qml manager_ui/Theme.qml manager_ui/AppCard.qml; do
+            cmp "$file" "$RUNNER_TEMP/extract/arch/usr/bin/$file"
+            cmp "$file" "$RUNNER_TEMP/extract/deb/usr/lib/appinstall/$file"
+            cmp "$file" "$RUNNER_TEMP/extract/rpm/usr/lib/appinstall/$file"
+          done
+          for format in arch deb rpm; do
+            dir="$RUNNER_TEMP/extract/$format"
+            cmp LICENSE "$dir/usr/share/licenses/appinstall/LICENSE" || {
+              # Debian packages install copyright to /usr/share/doc instead.
+              if [ "$format" = deb ]; then
+                cmp LICENSE "$dir/usr/share/doc/appinstall/copyright"
+              else exit 1; fi
+            }
+            cmp RELEASE_NOTES.md "$dir/usr/share/doc/appinstall/RELEASE_NOTES.md"
+            grep -Fxq 'Exec=/usr/bin/appinstall %F' "$dir/usr/share/applications/appinstall.desktop"
+          done
+          for format in deb rpm; do
+            test "$(readlink "$RUNNER_TEMP/extract/$format/usr/bin/appinstall")" = ../lib/appinstall/appinstall
+          done
+          echo 'PASS: all 3 packages match v1.6.0 version and reviewed source payload.'
+
+      - name: Build and verify combined release checksum manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          cp "$RUNNER_TEMP/arch/appinstall-1.6.0-1-any.pkg.tar.zst" release/
+          cp "$RUNNER_TEMP/deb/appinstall_1.6.0-1_all.deb" release/
+          cp "$RUNNER_TEMP/rpm/appinstall-1.6.0-1.noarch.rpm" release/
+          (cd release && sha256sum appinstall-1.6.0-1-any.pkg.tar.zst appinstall_1.6.0-1_all.deb appinstall-1.6.0-1.noarch.rpm > SHA256SUMS && \
+            sha256sum --check --strict SHA256SUMS)
+          cat > release/RELEASE_VERIFICATION.txt <<VERIFY
+          AppInstall v1.6.0 - verified candidate, NOT PUBLISHED
+          Exact source commit: $FINAL_SHA
+          Source GitHub repository: https://github.com/$GH_REPO
+          Final main CI: 11/11 workflows, 17/17 successful jobs
+          Unit tests: 552 run, 0 failures, 2 skipped
+          Arch package: GitHub Actions run 43748604787
+          Debian package: GitHub Actions run 43748604804
+          Fedora RPM package: GitHub Actions run 43748604814
+          All package SHA256 manifests verified from GitHub Actions artifacts.
+          Package formats independently checked: Arch, Debian, Fedora RPM.
+          Shared manager/QML/CLI modules compared to the exact main source.
+          Fedora RPM rewrites Bash shebang during rpmbuild; remaining executable
+          source matched byte for byte.
+          Prior owner-reported real CachyOS UI acceptance: v1.5.0, not v1.6.0.
+          Native Fedora 44 GNOME/KDE desktop acceptance: NOT PERFORMED.
+          Fedora 44 container CI covers RPM/DNF install, offscreen QML and removal,
+          not physical desktop integration or every third-party package.
+          No tag, public release or published assets created during this audit.
+          Package checksums are integrity checks, not publisher signatures.
+          VERIFY
+          echo 'CHECKSUMS:'
+          cat release/SHA256SUMS
+          test "$(find release -maxdepth 1 -type f | wc -l)" -eq 5
+
+      - name: Preserve pre-publication verification bundle for review
+        uses: actions/upload-artifact@v4
+        with:
+          name: appinstall-v1.6.0-verified-final-main
+          path: |
+            release/appinstall-1.6.0-1-any.pkg.tar.zst
+            release/appinstall_1.6.0-1_all.deb
+            release/appinstall-1.6.0-1.noarch.rpm
+            release/SHA256SUMS
+            release/RELEASE_VERIFICATION.txt
+          retention-days: 14
+          if-no-files-found: error
