@@ -325,13 +325,13 @@ ApplicationWindow {
                     border.color: statusFilter.visualFocus ? Theme.colors.focusRing : Theme.colors.border
                     border.width: statusFilter.visualFocus ? 2 : 1
                 }
-                contentItem: Label {
+                contentItem: TextInput {
                     text: statusFilter.displayText
                     font: statusFilter.font
                     color: Theme.colors.text
-                    verticalAlignment: Text.AlignVCenter
                     leftPadding: 10
                     rightPadding: statusFilter.indicator.width + 6
+                    readOnly: true
                 }
                 indicator: Label {
                     text: "▾"
@@ -394,13 +394,13 @@ ApplicationWindow {
                     border.color: sortCombo.visualFocus ? Theme.colors.focusRing : Theme.colors.border
                     border.width: sortCombo.visualFocus ? 2 : 1
                 }
-                contentItem: Label {
+                contentItem: TextInput {
                     text: sortCombo.displayText
                     font: sortCombo.font
                     color: Theme.colors.text
-                    verticalAlignment: Text.AlignVCenter
                     leftPadding: 10
                     rightPadding: sortCombo.indicator.width + 6
+                    readOnly: true
                 }
                 indicator: Label {
                     text: "▾"
