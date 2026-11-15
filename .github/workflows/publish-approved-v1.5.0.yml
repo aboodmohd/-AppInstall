@@ -1,0 +1,148 @@
+name: "Publish approved AppInstall v1.5.0 from verified CI packages"
+on:
+  push:
+    branches:
+      - release/v1.5.0-publication-20261115
+permissions:
+  contents: write
+  actions: read
+concurrency:
+  group: "appinstall-v1.5.0-publication"
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'aboodmohd/-AppInstall' && github.ref == 'refs/heads/release/v1.5.0-publication-20261115'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: aboodmohd/-AppInstall
+      FINAL_SHA: 1e14b5fd589648a654db203892e81dd3810ad654
+      ARCH_SHA: ea2a22f8bc7551c4f1d588194272dc7ea9c8728812f32fe47bcb6a9411fbd6b9
+      DEB_SHA: aff78c6bf6628233daae6b75d9cf2fd8bca5a1d90ad887f775acb9103a7ae7ab
+    steps:
+      - name: "Checkout exact approved source commit"
+        uses: actions/checkout@v4
+        with:
+          ref: 1e14b5fd589648a654db203892e81dd3810ad654
+          persist-credentials: false
+
+      - name: "Fail closed unless source, CI and unused tag match"
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$FINAL_SHA"
+          test "$(gh api "repos/$GH_REPO/branches/main" --jq '.commit.sha')" = "$FINAL_SHA"
+          grep -qx 'pkgver=1.5.0' PKGBUILD
+          grep -qx 'pkgrel=1' PKGBUILD
+          grep -qx 'VERSION="1.5.0"' appinstall
+          for run in 43741020322 43741020290; do
+            test "$(gh api "repos/$GH_REPO/actions/runs/$run" --jq '.head_sha')" = "$FINAL_SHA"
+            test "$(gh api "repos/$GH_REPO/actions/runs/$run" --jq '.conclusion')" = "success"
+          done
+          if gh api "repos/$GH_REPO/git/ref/tags/v1.5.0" >/dev/null 2>&1; then
+            echo 'ABORT: v1.5.0 tag already exists' >&2
+            exit 1
+          fi
+          if gh release view v1.5.0 >/dev/null 2>&1; then
+            echo 'ABORT: v1.5.0 release already exists' >&2
+            exit 1
+          fi
+
+      - name: "Download exact post-merge Actions artifacts"
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/arch" "$RUNNER_TEMP/deb"
+          gh run download 43741020322 --name "appinstall-package-$FINAL_SHA" --dir "$RUNNER_TEMP/arch"
+          gh run download 43741020290 --name "appinstall-deb-$FINAL_SHA" --dir "$RUNNER_TEMP/deb"
+          (cd "$RUNNER_TEMP/arch" && sha256sum -c SHA256SUMS)
+          (cd "$RUNNER_TEMP/deb" && sha256sum -c SHA256SUMS)
+          printf '%s  %s\n' "$ARCH_SHA" "$RUNNER_TEMP/arch/appinstall-1.5.0-1-any.pkg.tar.zst" | sha256sum --check --strict -
+          printf '%s  %s\n' "$DEB_SHA" "$RUNNER_TEMP/deb/appinstall_1.5.0-1_all.deb" | sha256sum --check --strict -
+          test "$(jq -r .source_commit "$RUNNER_TEMP/arch/release-candidate-evidence/candidate-evidence.json")" = "$FINAL_SHA"
+          test "$(dpkg-deb --field "$RUNNER_TEMP/deb/appinstall_1.5.0-1_all.deb" Version)" = "1.5.0-1"
+
+      - name: "Verify packages contain exact approved source files"
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/check-arch" "$RUNNER_TEMP/check-deb"
+          tar --zstd -xf "$RUNNER_TEMP/arch/appinstall-1.5.0-1-any.pkg.tar.zst" -C "$RUNNER_TEMP/check-arch"
+          dpkg-deb -x "$RUNNER_TEMP/deb/appinstall_1.5.0-1_all.deb" "$RUNNER_TEMP/check-deb"
+          for file in appinstall manager_qml.py manager_ui/main.qml manager_ui/Theme.qml manager_ui/AppCard.qml; do
+            cmp "$file" "$RUNNER_TEMP/check-arch/usr/bin/$file"
+            cmp "$file" "$RUNNER_TEMP/check-deb/usr/lib/appinstall/$file"
+          done
+          cmp LICENSE "$RUNNER_TEMP/check-arch/usr/share/licenses/appinstall/LICENSE"
+          cmp RELEASE_NOTES.md "$RUNNER_TEMP/check-arch/usr/share/appinstall/RELEASE_NOTES.md"
+          test -x "$RUNNER_TEMP/check-arch/usr/bin/appinstall"
+          echo 'Both package payloads match exact reviewed source files.'
+
+      - name: "Stage versioned binaries, checksums and verification record"
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir release
+          cp "$RUNNER_TEMP/arch/appinstall-1.5.0-1-any.pkg.tar.zst" release/
+          cp "$RUNNER_TEMP/deb/appinstall_1.5.0-1_all.deb" release/
+          printf '%s  %s\n' "$ARCH_SHA" 'appinstall-1.5.0-1-any.pkg.tar.zst' > release/SHA256SUMS
+          printf '%s  %s\n' "$DEB_SHA" 'appinstall_1.5.0-1_all.deb' >> release/SHA256SUMS
+          cat > release/RELEASE_VERIFICATION.txt <<EOF
+          AppInstall v1.5.0 — release verification
+          Exact source commit: $FINAL_SHA
+          GitHub Actions Arch run: 43741020322 (artifact 14172422446)
+          GitHub Actions Debian run: 43741020290 (artifact 14172635309)
+          Post-merge main CI: 9 workflows; 14/14 jobs successful.
+          Unit suite: 543 tests; 0 failures; 2 skips.
+          Arch package SHA256: $ARCH_SHA
+          Debian package SHA256: $DEB_SHA
+          Package payloads compared byte-for-byte with source commit for key QML and launch modules.
+          Source checkout, package checksums, Debian version and MIT license checked before publication.
+          Owner-reported real CachyOS desktop v1.5.0: package integrity 81/81 unchanged; QML and Widgets manager both working.
+          Public-release approval: repository owner explicitly approved v1.5.0 after artifact verification, 2026-11-15.
+          Limitations: package compatibility varies; Distrobox is not a security sandbox.
+          SHA256 integrity manifests are not cryptographic publisher signatures.
+          EOF
+          (cd release && sha256sum --check --strict SHA256SUMS)
+          test "$(find release -maxdepth 1 -type f | wc -l)" -eq 4
+
+      - name: "Create UNPUBLISHED draft and attach only verified assets"
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create v1.5.0 \
+            release/appinstall-1.5.0-1-any.pkg.tar.zst \
+            release/appinstall_1.5.0-1_all.deb \
+            release/SHA256SUMS \
+            release/RELEASE_VERIFICATION.txt \
+            --target "$FINAL_SHA" \
+            --title "AppInstall v1.5.0" \
+            --notes-file RELEASE_NOTES.md \
+            --draft
+
+      - name: "Download draft release assets and independently reverify"
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GH_REPO/releases/tags/v1.5.0" --jq '.draft')" = true
+          test "$(gh api "repos/$GH_REPO/releases/tags/v1.5.0" --jq '.assets | length')" = 4
+          mkdir -p "$RUNNER_TEMP/upload-recheck"
+          gh release download v1.5.0 --dir "$RUNNER_TEMP/upload-recheck" \
+            --pattern '*.zst' --pattern '*.deb' --pattern 'SHA256SUMS' \
+            --pattern 'RELEASE_VERIFICATION.txt'
+          (cd "$RUNNER_TEMP/upload-recheck" && sha256sum --check --strict SHA256SUMS)
+          cmp release/SHA256SUMS "$RUNNER_TEMP/upload-recheck/SHA256SUMS"
+          cmp release/RELEASE_VERIFICATION.txt "$RUNNER_TEMP/upload-recheck/RELEASE_VERIFICATION.txt"
+          tag_sha="$(gh api "repos/$GH_REPO/git/ref/tags/v1.5.0" --jq '.object.sha')"
+          test "$tag_sha" = "$FINAL_SHA"
+
+      - name: "Publish verified stable release and verify public state"
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release edit v1.5.0 --draft=false --latest
+          test "$(gh api "repos/$GH_REPO/releases/tags/v1.5.0" --jq '.draft')" = false
+          test "$(gh api "repos/$GH_REPO/git/ref/tags/v1.5.0" --jq '.object.sha')" = "$FINAL_SHA"
+          test "$(gh api "repos/$GH_REPO/releases/tags/v1.5.0" --jq '.assets | length')" = 4
+          gh release view v1.5.0 --json url --jq .url
