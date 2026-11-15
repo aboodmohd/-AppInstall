@@ -97,22 +97,58 @@ Item {
                 Label {
                     id: nameLabel
                     Layout.fillWidth: true
-                    Layout.maximumWidth: implicitWidth
                     text: model.name
                     elide: Text.ElideRight
                     font.pixelSize: 15
                     font.weight: Font.DemiBold
                     color: Theme.colors.text
-                    // Full name on hover; elide is the overflow answer for
-                    // real lists with long names.
+                    // Name uses the available space before the actions;
+                    // genuinely long names elide, short names (Hayase,
+                    // Stremio) show in full even at 720px.
                     ToolTip.visible: nameLabel.truncated && card.hovered
                     ToolTip.delay: 400
                     ToolTip.text: model.name
                 }
 
+                // Favorite toggle sits beside the name, clickable and in
+                // the ⋯ menu for keyboard users.
+                Button {
+                    id: pinButton
+                    text: model.pinned ? "★" : "☆"
+                    activeFocusOnTab: false
+                    font.pixelSize: 17
+                    implicitWidth: 32
+                    implicitHeight: 30
+                    hoverEnabled: true
+
+                    background: Rectangle {
+                        radius: 7
+                        color: pinButton.pressed ? Theme.colors.pressed
+                             : pinButton.hovered ? Theme.colors.hover
+                             : "transparent"
+                        border.color: pinButton.visualFocus ? Theme.colors.focusRing : "transparent"
+                        border.width: pinButton.visualFocus ? 2 : 0
+                        scale: pinButton.pressed ? 0.97 : 1.0
+
+                        Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
+                        Behavior on scale { NumberAnimation { duration: Theme.pressMs; easing.type: Easing.OutCubic } }
+                    }
+                    contentItem: Label {
+                        text: pinButton.text
+                        font: pinButton.font
+                        color: model.pinned ? Theme.colors.accent : Theme.colors.textSecondary
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: bridge.togglePin(model.key)
+                    Accessible.name: (model.pinned
+                                      ? qsTr("Remove %1 from favorites").arg(model.name)
+                                      : qsTr("Add %1 to favorites").arg(model.name))
+                    Accessible.role: Accessible.Button
+                }
+
                 // Status chip: dot + label, tone from the backend status.
-                // Sits right after the name, as in the web design; the
-                // filler keeps long names from pushing it to the edge.
+                // Sits right after the favorite, as in the web design.
                 Rectangle {
                     id: statusChip
                     radius: 9
@@ -143,8 +179,6 @@ Item {
                     Accessible.role: Accessible.StaticText
                     Accessible.name: model.statusLabel
                 }
-
-                Item { Layout.fillWidth: true }
             }
 
             Label {
@@ -281,44 +315,6 @@ Item {
                 ToolTip.visible: hovered
                 ToolTip.delay: 400
                 ToolTip.text: card.Accessible.description
-            }
-
-            // Favorite toggle at the card's edge, as in the web design:
-            // filled accent star when pinned, quiet outline star otherwise.
-            // Same togglePin entry point the widgets window uses.
-            Button {
-                id: pinButton
-                text: model.pinned ? "★" : "☆"
-                activeFocusOnTab: false
-                font.pixelSize: 17
-                implicitWidth: 32
-                implicitHeight: 30
-                hoverEnabled: true
-
-                background: Rectangle {
-                    radius: 7
-                    color: pinButton.pressed ? Theme.colors.pressed
-                         : pinButton.hovered ? Theme.colors.hover
-                         : "transparent"
-                    border.color: pinButton.visualFocus ? Theme.colors.focusRing : "transparent"
-                    border.width: pinButton.visualFocus ? 2 : 0
-                    scale: pinButton.pressed ? 0.97 : 1.0
-
-                    Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
-                    Behavior on scale { NumberAnimation { duration: Theme.pressMs; easing.type: Easing.OutCubic } }
-                }
-                contentItem: Label {
-                    text: pinButton.text
-                    font: pinButton.font
-                    color: model.pinned ? Theme.colors.accent : Theme.colors.textSecondary
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-                onClicked: bridge.togglePin(model.key)
-                Accessible.name: (model.pinned
-                                  ? qsTr("Remove %1 from favorites").arg(model.name)
-                                  : qsTr("Add %1 to favorites").arg(model.name))
-                Accessible.role: Accessible.Button
             }
 
             Menu {

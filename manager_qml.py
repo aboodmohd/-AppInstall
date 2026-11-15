@@ -194,7 +194,8 @@ class AppModel(QtCore.QAbstractListModel):
             name = app['name'] or '?'
             return name[0].upper()
         if role == self.CanOpenRole:
-            return app['format'] in ('appimage', 'flatpak', 'deb', 'rpm') and bool(app.get('desktop'))
+            return app['format'] in ('appimage', 'flatpak', 'deb', 'rpm') \
+                and manager._launcher_exists(app, app['key'])
         if role == self.CanUninstallRole:
             return manager.can_uninstall(app)
         if role == self.CanUpdateRole:
