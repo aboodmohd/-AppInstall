@@ -190,6 +190,43 @@ class AppModelTests(QmlManagerBase):
                          'appimage:beta')
         self.assertTrue(self.model.data(self.model.index(0, 0), self.model.PinnedRole))
 
+    def test_icon_url_returns_empty_for_theme_icon_name(self):
+        """Theme icon names (e.g. 'com.stremio.Stremio') are not file URLs
+        and should return empty string so QML uses letter-avatar fallback."""
+        raw = dict(format='appimage', name='Themed App', version='1.0',
+                   desktop='', icon='com.stremio.Stremio', icon_name='',
+                   container=None, manifest=None, target='/nonexistent/app.AppImage',
+                   description='', status='installed')
+        self.load_inventory([('flatpak:com.stremio.Stremio', raw)])
+        index = self.model.index(0, 0)
+        self.assertEqual(self.model.data(index, self.model.IconUrlRole), '')
+
+    def test_icon_url_returns_empty_for_nonexistent_path(self):
+        """A non-existent absolute path should return empty string."""
+        raw = dict(format='appimage', name='Missing App', version='1.0',
+                   desktop='/nonexistent/missing.desktop', icon='/nonexistent/icon.png',
+                   icon_name='', container=None, manifest=None,
+                   target='/nonexistent/app.AppImage', description='',
+                   status='installed')
+        self.load_inventory([('appimage:missing', raw)])
+        index = self.model.index(0, 0)
+        self.assertEqual(self.model.data(index, self.model.IconUrlRole), '')
+
+    def test_icon_url_returns_file_uri_for_existing_path(self):
+        """An absolute path to an existing file should return a file:// URL."""
+        desktop = self.root / 'entries' / 'existing.desktop'
+        desktop.parent.mkdir(parents=True, exist_ok=True)
+        desktop.write_text('[Desktop Entry]\nType=Application\nName=Existing\n')
+        raw = dict(format='appimage', name='Existing App', version='1.0',
+                   desktop=str(desktop), icon=str(desktop), icon_name='',
+                   container=None, manifest=None,
+                   target='/nonexistent/app.AppImage', description='',
+                   status='installed')
+        self.load_inventory([('appimage:existing', raw)])
+        index = self.model.index(0, 0)
+        self.assertEqual(self.model.data(index, self.model.IconUrlRole),
+                         'file://' + str(desktop))
+
     def test_can_open_true_when_launcher_exists(self):
         """Record with a real desktop file: Open enabled."""
         self.load_inventory([

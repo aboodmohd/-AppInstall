@@ -351,7 +351,7 @@ ApplicationWindow {
                         color: Theme.colors.text
                         verticalAlignment: Text.AlignVCenter
                     }
-                    highlighted: statusFilter.highlightedIndex === index
+                    highlighted: statusFilter.highlightedIndex === model.index
                     background: Rectangle {
                         radius: 5
                         color: statusDelegate.highlighted ? Theme.colors.hover : "transparent"
@@ -419,7 +419,7 @@ ApplicationWindow {
                         color: Theme.colors.text
                         verticalAlignment: Text.AlignVCenter
                     }
-                    highlighted: sortCombo.highlightedIndex === index
+                    highlighted: sortCombo.highlightedIndex === model.index
                     background: Rectangle {
                         radius: 5
                         color: sortDelegate.highlighted ? Theme.colors.hover : "transparent"
