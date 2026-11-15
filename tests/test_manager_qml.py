@@ -190,6 +190,43 @@ class AppModelTests(QmlManagerBase):
                          'appimage:beta')
         self.assertTrue(self.model.data(self.model.index(0, 0), self.model.PinnedRole))
 
+    def test_icon_url_returns_empty_for_theme_icon_name(self):
+        """Theme icon names (e.g. 'com.stremio.Stremio') are not file URLs
+        and should return empty string so QML uses letter-avatar fallback."""
+        raw = dict(format='appimage', name='Themed App', version='1.0',
+                   desktop='', icon='com.stremio.Stremio', icon_name='',
+                   container=None, manifest=None, target='/nonexistent/app.AppImage',
+                   description='', status='installed')
+        self.load_inventory([('flatpak:com.stremio.Stremio', raw)])
+        index = self.model.index(0, 0)
+        self.assertEqual(self.model.data(index, self.model.IconUrlRole), '')
+
+    def test_icon_url_returns_empty_for_nonexistent_path(self):
+        """A non-existent absolute path should return empty string."""
+        raw = dict(format='appimage', name='Missing App', version='1.0',
+                   desktop='/nonexistent/missing.desktop', icon='/nonexistent/icon.png',
+                   icon_name='', container=None, manifest=None,
+                   target='/nonexistent/app.AppImage', description='',
+                   status='installed')
+        self.load_inventory([('appimage:missing', raw)])
+        index = self.model.index(0, 0)
+        self.assertEqual(self.model.data(index, self.model.IconUrlRole), '')
+
+    def test_icon_url_returns_file_uri_for_existing_path(self):
+        """An absolute path to an existing file should return a file:// URL."""
+        desktop = self.root / 'entries' / 'existing.desktop'
+        desktop.parent.mkdir(parents=True, exist_ok=True)
+        desktop.write_text('[Desktop Entry]\nType=Application\nName=Existing\n')
+        raw = dict(format='appimage', name='Existing App', version='1.0',
+                   desktop=str(desktop), icon=str(desktop), icon_name='',
+                   container=None, manifest=None,
+                   target='/nonexistent/app.AppImage', description='',
+                   status='installed')
+        self.load_inventory([('appimage:existing', raw)])
+        index = self.model.index(0, 0)
+        self.assertEqual(self.model.data(index, self.model.IconUrlRole),
+                         'file://' + str(desktop))
+
     def test_can_open_true_when_launcher_exists(self):
         """Record with a real desktop file: Open enabled."""
         self.load_inventory([
@@ -660,6 +697,84 @@ class SmokeLaunchTests(unittest.TestCase):
             self.assertIn('QML smoke', result.stdout)
 
 
+class QmlDelegateRegressionTests(QmlManagerBase):
+    """Regression tests for QML ComboBox delegates and card hover behavior.
+
+    These tests catch regressions that caused runtime errors on KDE Wayland:
+    - ComboBox delegates must expose `model.index` (not bare `index`).
+    - KDE ComboBox contentItems must implement positionToRectangle(),
+      which TextInput provides (but a plain Label does not).
+    - Card hover state must use mouse.containsMouse, not mouse.hovered
+      (MouseArea has no hovered property).
+    """
+
+    def test_combo_delegate_uses_model_index(self):
+        """ComboBox delegate highlighted expressions must use model.index,
+        not bare index, otherwise KDE Wayland raises ReferenceError."""
+        self.load_inventory([
+            ('appimage:example', self.stage_installed_appimage('appimage:example', 'Example App')),
+        ])
+        capture = QmlLoadCapture()
+        self.engine = QtQml.QQmlApplicationEngine()
+        self.engine.rootContext().setContextProperty('bridge', self.bridge)
+        self.engine.rootContext().setContextProperty('appsModel', self.model)
+        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        with capture:
+            self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
+        self.window = self.engine.rootObjects()[0]
+        self.assertIsNotNone(self.window, 'main.qml must load')
+        # index is not defined error would appear in QML messages
+        index_errors = [m for m in capture.messages if 'index is not defined' in m]
+        self.assertEqual(
+            len(index_errors), 0,
+            f'Delegate uses bare index instead of model.index: {index_errors}'
+        )
+
+    def test_combo_content_item_supports_kde_text_api(self):
+        """Both KDE ComboBoxes provide the required positionToRectangle() API."""
+        self.load_inventory([
+            ('appimage:example', self.stage_installed_appimage('appimage:example', 'Example App')),
+        ])
+        self.engine = QtQml.QQmlApplicationEngine()
+        self.engine.rootContext().setContextProperty('bridge', self.bridge)
+        self.engine.rootContext().setContextProperty('appsModel', self.model)
+        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        with QmlLoadCapture() as capture:
+            self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
+        self.window = self.engine.rootObjects()[0]
+        self.assertIsNotNone(self.window, 'main.qml must load')
+        # positionToRectangle is not a function would appear in QML messages
+        pos_errors = [m for m in capture.messages if 'positionToRectangle' in m]
+        self.assertEqual(pos_errors, [], f'KDE content item warning: {pos_errors}')
+        for control in ('statusFilter', 'sortCombo'):
+            expression = QtQml.QQmlExpression(
+                QtQml.qmlContext(self.window), self.window,
+                f'typeof {control}.contentItem.positionToRectangle === "function"')
+            value, _ = expression.evaluate()
+            self.assertFalse(expression.hasError(), expression.error().toString())
+            self.assertTrue(value, f'{control} must support positionToRectangle()')
+
+    def test_card_hover_uses_contains_mouse(self):
+        """AppCard hovered property must use mouse.containsMouse,
+        not mouse.hovered (MouseArea has no hovered property).
+
+        We can't introspect QML property names from Python, but loading
+        main.qml without QML errors confirms the property reference is
+        valid. This test guards against regressions that reintroduce
+        mouse.hovered.
+        """
+        self.load_inventory([
+            ('appimage:example', self.stage_installed_appimage('appimage:example', 'Example App')),
+        ])
+        self.engine = QtQml.QQmlApplicationEngine()
+        self.engine.rootContext().setContextProperty('bridge', self.bridge)
+        self.engine.rootContext().setContextProperty('appsModel', self.model)
+        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
+        self.window = self.engine.rootObjects()[0]
+        self.assertIsNotNone(self.window, 'main.qml must load without QML errors')
+
+
 class InventoryLoadTests(QmlManagerBase):
     def test_refresh_uses_the_normal_loader(self):
         registry = self.root / 'data' / 'appinstall' / 'containers' / 'registry.json'
@@ -790,6 +905,48 @@ class QmlInteractionTests(QmlManagerBase):
         for action in ('Enter', 'Open', 'Space', 'Details', 'Menu', 'Shift+F10'):
             self.assertIn(action, description)
 
+    def _click_combo_option(self, control, index):
+        """Click a realized popup delegate and verify the selection changes."""
+        self.evaluate(f'{control}.popup.open()')
+        QtTest.QTest.qWait(100)
+        self.assertTrue(self.evaluate(f'{control}.popup.visible'))
+        self.assertGreater(self.evaluate(f'{control}.popup.height'), 35)
+        content = self.evaluate(f'{control}.popup.contentItem')
+        self.assertEqual(content.metaObject().className(), 'QQuickListView')
+        self.assertGreater(content.property('height'), 20)
+        self.assertGreater(content.property('contentHeight'), 0)
+        option = self.evaluate(f'{control}.popup.contentItem.itemAtIndex({index})')
+        self.assertIsNotNone(option, f'{control} option {index} must be visible')
+        point = option.mapToScene(
+            QtCore.QPointF(option.width() / 2, option.height() / 2)).toPoint()
+        QtTest.QTest.mouseClick(self.window, QtCore.Qt.LeftButton, pos=point)
+        QtTest.QTest.qWait(80)
+        self.assertEqual(self.evaluate(f'{control}.currentIndex'), index)
+
+    def test_status_dropdown_mouse_select_filters_inventory(self):
+        self._click_combo_option('statusFilter', 4)  # stale record
+        self.assertEqual(self.model.rowCount(), 0)
+        self._click_combo_option('statusFilter', 0)  # all statuses
+        self.assertEqual(self.model.rowCount(), 40)
+
+    def test_sort_dropdown_mouse_select_reorders_inventory(self):
+        self._click_combo_option('sortCombo', 1)  # name descending
+        self.assertTrue(
+            self.model.data(self.model.index(0, 0), self.model.NameRole).startswith('39 '))
+        self._click_combo_option('sortCombo', 0)  # name ascending
+        self.assertTrue(
+            self.model.data(self.model.index(0, 0), self.model.NameRole).startswith('00 '))
+
+    def test_combo_dropdown_keyboard_opens_and_closes(self):
+        self.evaluate('statusFilter.forceActiveFocus()')
+        QtTest.QTest.keyClick(self.window, QtCore.Qt.Key_Space)
+        QtTest.QTest.qWait(80)
+        self.assertTrue(self.evaluate('statusFilter.popup.visible'))
+        self.assertGreater(self.evaluate('statusFilter.popup.height'), 35)
+        QtTest.QTest.keyClick(self.window, QtCore.Qt.Key_Escape)
+        QtTest.QTest.qWait(50)
+        self.assertFalse(self.evaluate('statusFilter.popup.visible'))
+
     def test_checked_filter_text_contrast_in_both_themes_and_states(self):
         def luminance(channels):
             linear = [c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
@@ -821,83 +978,7 @@ class QmlInteractionTests(QmlManagerBase):
                         QtTest.QTest.mouseRelease(self.window, QtCore.Qt.LeftButton, pos=point)
 
 
-class QmlDelegateRegressionTests(QmlManagerBase):
-    """Regression tests for QML ComboBox delegates and card hover behavior.
-
-    These tests catch regressions that caused runtime errors on KDE Wayland:
-
-    - ComboBox delegates must expose \"model.index\" (not bare \"index\").
-    - ComboBox contentItems must be QQuickItem subclasses (TextInput),
-      not plain Label, so KDE's positionToRectangle() works.
-    - ComboBox popups must have a ListView contentItem bound to
-      delegateModel so dropdown options appear.
-    - Card hover state must use mouse.containsMouse, not mouse.hovered
-      (MouseArea has no hovered property).
-    """
-
-    def test_combo_delegate_uses_model_index(self):
-        """ComboBox delegate highlighted expressions must use model.index,
-        not bare index, otherwise KDE Wayland raises ReferenceError."""
-        self.load_inventory([
-            ('appimage:example', self.stage_installed_appimage('appimage:example', 'Example App')),
-        ])
-        capture = QmlLoadCapture()
-        self.engine = QtQml.QQmlApplicationEngine()
-        self.engine.rootContext().setContextProperty('bridge', self.bridge)
-        self.engine.rootContext().setContextProperty('appsModel', self.model)
-        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
-        with capture:
-            self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
-        self.window = self.engine.rootObjects()[0]
-        self.assertIsNotNone(self.window, 'main.qml must load without QML errors')
-        # \"index is not defined\" would appear in QML messages if delegates
-        # use bare 'index' instead of 'model.index'.
-        index_errors = [m for m in capture.messages if 'index is not defined' in m]
-        self.assertEqual(
-            len(index_errors), 0,
-            f'ComboBox delegate uses bare index instead of model.index: {index_errors}')
-
-    def test_combo_popup_has_listview_content(self):
-        """ComboBox popup contentItem must be a ListView bound to
-        delegateModel so dropdown options appear."""
-        self.load_inventory([
-            ('appimage:example', self.stage_installed_appimage('appimage:example', 'Example App')),
-        ])
-        capture = QmlLoadCapture()
-        self.engine = QtQml.QQmlApplicationEngine()
-        self.engine.rootContext().setContextProperty('bridge', self.bridge)
-        self.engine.rootContext().setContextProperty('appsModel', self.model)
-        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
-        with capture:
-            self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
-        self.window = self.engine.rootObjects()[0]
-        self.assertIsNotNone(self.window, 'main.qml must load without QML errors')
-        # ComboBox popups having no ListView contentItem would not produce
-        # QML errors, but the popup would show no dropdown items. Since we
-        # set contentItem: ListView in main.qml, the load itself passing
-        # confirms the syntax is correct. The actual popup contentItem
-        # check is done at runtime on CachyOS.
-        pass
-
-    def test_card_hover_uses_contains_mouse(self):
-        """AppCard hovered property must use mouse.containsMouse,
-        not mouse.hovered (MouseArea has no hovered property).
-
-        We can't introspect QML property names from Python, but loading
-        main.qml without QML errors confirms the property reference is
-        valid. This test guards against regressions that reintroduce
-        mouse.hovered.
-        """
-        self.load_inventory([
-            ('appimage:example', self.stage_installed_appimage('appimage:example', 'Example App')),
-        ])
-        self.engine = QtQml.QQmlApplicationEngine()
-        self.engine.rootContext().setContextProperty('bridge', self.bridge)
-        self.engine.rootContext().setContextProperty('appsModel', self.model)
-        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
-        self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
-        self.window = self.engine.rootObjects()[0]
-        self.assertIsNotNone(self.window, 'main.qml must load without QML errors')
+class QmlInstantiationTests(QmlManagerBase):
     def test_main_qml_loads_without_errors(self):
         engine = QtQml.QQmlApplicationEngine()
         engine.rootContext().setContextProperty('bridge', self.bridge)

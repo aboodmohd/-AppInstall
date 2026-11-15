@@ -14,7 +14,7 @@ Item {
 
     // Hover tint only — a dense list is hovered constantly, so movement
     // would be noise (Emil: tens/day interactions get no animation).
-    readonly property bool hovered: mouse.hovered
+    readonly property bool hovered: mouse.containsMouse
 
     implicitHeight: cardRow.implicitHeight + 24
     Accessible.role: Accessible.ListItem

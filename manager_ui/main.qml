@@ -325,13 +325,13 @@ ApplicationWindow {
                     border.color: statusFilter.visualFocus ? Theme.colors.focusRing : Theme.colors.border
                     border.width: statusFilter.visualFocus ? 2 : 1
                 }
-                contentItem: Label {
+                contentItem: TextInput {
                     text: statusFilter.displayText
                     font: statusFilter.font
                     color: Theme.colors.text
-                    verticalAlignment: Text.AlignVCenter
                     leftPadding: 10
                     rightPadding: statusFilter.indicator.width + 6
+                    readOnly: true
                 }
                 indicator: Label {
                     text: "▾"
@@ -344,6 +344,7 @@ ApplicationWindow {
                 delegate: ItemDelegate {
                     id: statusDelegate
                     required property var model
+                    required property int index
                     width: statusFilter.width
                     contentItem: Label {
                         text: statusDelegate.model.label
@@ -351,7 +352,7 @@ ApplicationWindow {
                         color: Theme.colors.text
                         verticalAlignment: Text.AlignVCenter
                     }
-                    highlighted: statusFilter.highlightedIndex === index
+                    highlighted: statusFilter.highlightedIndex === model.index
                     background: Rectangle {
                         radius: 5
                         color: statusDelegate.highlighted ? Theme.colors.hover : "transparent"
@@ -361,21 +362,24 @@ ApplicationWindow {
                     y: statusFilter.height + 4
                     width: statusFilter.width
                     padding: 4
+                    // Unlike an ordinary Column, ListView has no useful
+                    // implicit height. Give the popup nonzero, bounded
+                    // geometry and allow scrolling for longer lists.
+                    height: Math.min(280, Math.max(statusFilter.count * 36,
+                                                   statusOptions.contentHeight)
+                                     + topPadding + bottomPadding)
                     background: Rectangle {
                         radius: 8
                         color: Theme.colors.surface
                         border.color: Theme.colors.border
                     }
                     contentItem: ListView {
+                        id: statusOptions
                         model: statusFilter.delegateModel
-                        currentIndex: statusFilter.currentIndex
-                        highlight: Rectangle {
-                            color: Theme.colors.hover
-                            radius: 5
-                        }
-                        highlightFollowsCurrentItem: true
+                        currentIndex: statusFilter.highlightedIndex
                         clip: true
-                        width: statusFilter.width
+                        boundsBehavior: Flickable.StopAtBounds
+                        ScrollIndicator.vertical: ScrollIndicator { }
                     }
                 }
                 Accessible.name: qsTr("Status filter")
@@ -404,13 +408,13 @@ ApplicationWindow {
                     border.color: sortCombo.visualFocus ? Theme.colors.focusRing : Theme.colors.border
                     border.width: sortCombo.visualFocus ? 2 : 1
                 }
-                contentItem: Label {
+                contentItem: TextInput {
                     text: sortCombo.displayText
                     font: sortCombo.font
                     color: Theme.colors.text
-                    verticalAlignment: Text.AlignVCenter
                     leftPadding: 10
                     rightPadding: sortCombo.indicator.width + 6
+                    readOnly: true
                 }
                 indicator: Label {
                     text: "▾"
@@ -423,6 +427,7 @@ ApplicationWindow {
                 delegate: ItemDelegate {
                     id: sortDelegate
                     required property var model
+                    required property int index
                     width: sortCombo.width
                     contentItem: Label {
                         text: sortDelegate.model.label
@@ -430,7 +435,7 @@ ApplicationWindow {
                         color: Theme.colors.text
                         verticalAlignment: Text.AlignVCenter
                     }
-                    highlighted: sortCombo.highlightedIndex === index
+                    highlighted: sortCombo.highlightedIndex === model.index
                     background: Rectangle {
                         radius: 5
                         color: sortDelegate.highlighted ? Theme.colors.hover : "transparent"
@@ -440,21 +445,24 @@ ApplicationWindow {
                     y: sortCombo.height + 4
                     width: sortCombo.width
                     padding: 4
+                    // Unlike an ordinary Column, ListView has no useful
+                    // implicit height. Give the popup nonzero, bounded
+                    // geometry and allow scrolling for longer lists.
+                    height: Math.min(280, Math.max(sortCombo.count * 36,
+                                                   sortOptions.contentHeight)
+                                     + topPadding + bottomPadding)
                     background: Rectangle {
                         radius: 8
                         color: Theme.colors.surface
                         border.color: Theme.colors.border
                     }
                     contentItem: ListView {
+                        id: sortOptions
                         model: sortCombo.delegateModel
-                        currentIndex: sortCombo.currentIndex
-                        highlight: Rectangle {
-                            color: Theme.colors.hover
-                            radius: 5
-                        }
-                        highlightFollowsCurrentItem: true
+                        currentIndex: sortCombo.highlightedIndex
                         clip: true
-                        width: sortCombo.width
+                        boundsBehavior: Flickable.StopAtBounds
+                        ScrollIndicator.vertical: ScrollIndicator { }
                     }
                 }
                 Accessible.name: qsTr("Sort order")
