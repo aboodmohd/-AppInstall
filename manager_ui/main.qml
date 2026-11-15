@@ -13,6 +13,18 @@ ApplicationWindow {
     title: qsTr("My Applications — AppInstall")
     color: Theme.colors.window
 
+    // Screenshot contract for --screenshot: the QML engine returns the
+    // base QWindow wrapper for this root, which lacks grabWindow(); QML
+    // functions stay invokable through the dynamic metaobject, so the
+    // grab itself lives here. grabToImage needs an item with a QML
+    // engine — grabRoot, not the engine-less window contentItem.
+    function saveWindowShot(path) {
+        grabRoot.grabToImage(function(result) {
+            result.saveToFile(path)
+            Qt.quit()
+        })
+    }
+
     Component.onCompleted: {
         Theme.reducedMotion = bridge.reducedMotion
         Theme.mode = bridge.dark ? "dark" : "light"
@@ -77,6 +89,17 @@ ApplicationWindow {
         }
     }
 
+    // Grab root for --screenshot: a QML-declared item that paints the
+    // window background and contains all content. grabToImage only works
+    // on items with a QML engine, and the window's own contentItem (the
+    // previous target) is engine-less. Stacking is unchanged: the shade
+    // keeps z: 10 above this, the inner background keeps z: -1 below the
+    // layout.
+    Rectangle {
+        id: grabRoot
+        anchors.fill: parent
+        color: Theme.colors.window
+
     // Opaque window background: grabs and repaints must never show the
     // platform clear color through unlit regions. Behind the layout, not a
     // layout child.
@@ -114,17 +137,20 @@ ApplicationWindow {
                     Accessible.role: Accessible.Heading
                 }
 
-                Item { Layout.fillWidth: true }
-
+                // Theme pill: shows the active mode, opens the same three
+                // choices the widgets window offers (system follow included).
                 Button {
                     id: themeButton
-                    text: qsTr("Theme")
+                    text: bridge.themeChoice === 'auto' ? qsTr("System")
+                          : bridge.themeChoice === 'dark' ? qsTr("Dark")
+                          : qsTr("Light")
                     font.pixelSize: 13
                     implicitHeight: 32
+                    implicitWidth: themeLabel.implicitWidth + 24
                     hoverEnabled: true
 
                     background: Rectangle {
-                        radius: 7
+                        radius: 8
                         color: themeButton.pressed ? Theme.colors.pressed
                              : themeButton.hovered ? Theme.colors.hover
                              : "transparent"
@@ -134,6 +160,7 @@ ApplicationWindow {
                         Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
                     }
                     contentItem: Label {
+                        id: themeLabel
                         text: themeButton.text
                         font: themeButton.font
                         color: Theme.colors.text
@@ -141,7 +168,7 @@ ApplicationWindow {
                         verticalAlignment: Text.AlignVCenter
                     }
                     onClicked: themeMenu.popup(themeButton, 0, themeButton.height + 4)
-                    Accessible.name: qsTr("Theme: %1").arg(Theme.mode)
+                    Accessible.name: qsTr("Theme: %1").arg(themeButton.text)
 
                     Menu {
                         id: themeMenu
@@ -165,6 +192,70 @@ ApplicationWindow {
                             onTriggered: bridge.setTheme('dark')
                         }
                     }
+                }
+
+                Item { Layout.fillWidth: true }
+
+                // Install entry points: the widgets window's exact flows,
+                // reached through the bridge's normal-entry-point rule.
+                Button {
+                    id: installFileButton
+                    text: qsTr("Install from File…")
+                    font.pixelSize: 13
+                    implicitHeight: 32
+                    implicitWidth: installFileLabel.implicitWidth + 24
+                    hoverEnabled: true
+
+                    background: Rectangle {
+                        radius: 8
+                        color: installFileButton.pressed ? Theme.colors.pressed
+                             : installFileButton.hovered ? Theme.colors.hover
+                             : "transparent"
+                        border.color: installFileButton.visualFocus ? Theme.colors.focusRing : Theme.colors.border
+                        border.width: installFileButton.visualFocus ? 2 : 1
+
+                        Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
+                    }
+                    contentItem: Label {
+                        id: installFileLabel
+                        text: installFileButton.text
+                        font: installFileButton.font
+                        color: Theme.colors.text
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: bridge.installFromFile()
+                    Accessible.name: qsTr("Install a package from a file")
+                }
+
+                Button {
+                    id: installUrlButton
+                    text: qsTr("Install from URL…")
+                    font.pixelSize: 13
+                    implicitHeight: 32
+                    implicitWidth: installUrlLabel.implicitWidth + 24
+                    hoverEnabled: true
+
+                    background: Rectangle {
+                        radius: 8
+                        color: installUrlButton.pressed ? Theme.colors.pressed
+                             : installUrlButton.hovered ? Theme.colors.hover
+                             : "transparent"
+                        border.color: installUrlButton.visualFocus ? Theme.colors.focusRing : Theme.colors.border
+                        border.width: installUrlButton.visualFocus ? 2 : 1
+
+                        Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
+                    }
+                    contentItem: Label {
+                        id: installUrlLabel
+                        text: installUrlButton.text
+                        font: installUrlButton.font
+                        color: Theme.colors.text
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: bridge.installFromUrl()
+                    Accessible.name: qsTr("Install a package from a URL")
                 }
             }
         }
@@ -208,8 +299,6 @@ ApplicationWindow {
                 topPadding: 7
                 bottomPadding: 7
             }
-
-            Item { Layout.fillWidth: true }
 
             // Status filter.
             ComboBox {
@@ -356,28 +445,33 @@ ApplicationWindow {
             Layout.leftMargin: 16
             Layout.rightMargin: 16
             Layout.bottomMargin: 10
-            spacing: 6
+            spacing: 10
 
-            ButtonGroup { id: formatGroup }
+            // Flow (not a row): the chips wrap onto a second line at narrow
+            // widths instead of squeezing the count label out of the window.
+            Flow {
+                Layout.fillWidth: true
+                spacing: 6
 
-            Repeater {
-                model: [
-                    { label: qsTr("All"),      value: "all" },
-                    { label: qsTr("AppImage"), value: "appimage" },
-                    { label: qsTr("Flatpak"),  value: "flatpak" },
-                    { label: qsTr("DEB"),      value: "deb" },
-                    { label: qsTr("RPM"),      value: "rpm" },
-                ]
+                ButtonGroup { id: formatGroup }
 
-                delegate: CheckButton {
-                    ButtonGroup.group: formatGroup
-                    checkText: modelData.label
-                    onClicked: appsModel.setFormatFilter(modelData.value)
-                    Component.onCompleted: if (index === 0) checked = true
+                Repeater {
+                    model: [
+                        { label: qsTr("All"),      value: "all" },
+                        { label: qsTr("AppImage"), value: "appimage" },
+                        { label: qsTr("Flatpak"),  value: "flatpak" },
+                        { label: qsTr("DEB"),      value: "deb" },
+                        { label: qsTr("RPM"),      value: "rpm" },
+                    ]
+
+                    delegate: CheckButton {
+                        ButtonGroup.group: formatGroup
+                        checkText: modelData.label
+                        onClicked: appsModel.setFormatFilter(modelData.value)
+                        Component.onCompleted: if (index === 0) checked = true
+                    }
                 }
             }
-
-            Item { Layout.fillWidth: true }
 
             Label {
                 id: countLabel
@@ -495,6 +589,11 @@ ApplicationWindow {
                 spacing: 8
                 currentIndex: 0
                 keyNavigationEnabled: true
+                // The delegate (card) is the Tab stop: with the ListView
+                // itself grabbable, Tab stopped here and never descended
+                // into the cards, leaving every card action keyboard-
+                // unreachable. Cards move with Up/Down (see the delegate).
+                activeFocusOnTab: false
 
                 ScrollBar.vertical: ScrollBar {
                     policy: ScrollBar.AsNeeded
@@ -506,8 +605,15 @@ ApplicationWindow {
                 // feedback lives in hover/press color and the status line.
 
                 delegate: AppCard {
+                    required property int index
                     width: appList.width
                     activeFocusOnTab: true
+                    onActiveFocusChanged: {
+                        if (activeFocus) {
+                            appList.currentIndex = index
+                            appList.positionViewAtIndex(index, ListView.Contain)
+                        }
+                    }
                     Keys.onUpPressed: (event) => appList.moveCardFocus(-1, event)
                     Keys.onDownPressed: (event) => appList.moveCardFocus(1, event)
                 }
@@ -523,7 +629,10 @@ ApplicationWindow {
                 function focusCard(index) {
                     if (index < 0 || index >= appsModel.rowCount()) return
                     currentIndex = index
-                    var item = itemAtIndex(index)
+                    positionViewAtIndex(index, ListView.Contain)
+                    // Realize delegates before focusing an offscreen target.
+                    forceLayout()
+                    var item = currentItem
                     if (item) item.forceActiveFocus()
                 }
 
@@ -577,12 +686,18 @@ ApplicationWindow {
         }
     }
 
-    // Format segmented control: checkable chip, filled selected state,
-    // visible focus ring. Exclusive through formatGroup.
+    } // grabRoot
+
+    // Format segmented control: checkable chip, selected state is the web
+    // design's accent outline + readable text, visible focus ring. Exclusive
+    // through formatGroup.
     component CheckButton: Button {
         id: chip
         property string checkText
         checkable: true
+        // Explicit: inline components have been observed to drop out of
+        // the Tab chain otherwise, leaving the filter mouse-only.
+        activeFocusOnTab: true
         implicitHeight: 28
         implicitWidth: chipLabel.implicitWidth + 26
         font.pixelSize: 13
@@ -590,13 +705,13 @@ ApplicationWindow {
 
         background: Rectangle {
             radius: 14
-            color: chip.checked ? Theme.colors.surfaceAlt
-                 : chip.pressed ? Theme.colors.pressed
-                 : chip.hovered ? Theme.colors.hover
-                 : "transparent"
+            // QML hex colors use ARGB; keep these overlays explicitly RGBA.
+            color: Theme.mode === "dark"
+                 ? Qt.rgba(1, 1, 1, chip.pressed ? 0.10 : chip.hovered ? 0.05 : 0)
+                 : Qt.rgba(0, 0, 0, chip.pressed ? 0.08 : chip.hovered ? 0.04 : 0)
             border.color: chip.visualFocus ? Theme.colors.focusRing
-                        : chip.checked ? Theme.colors.border
-                        : "transparent"
+                        : chip.checked ? Theme.colors.accent
+                        : Theme.colors.border
             border.width: chip.visualFocus ? 2 : 1
 
             Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }

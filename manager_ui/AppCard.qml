@@ -22,6 +22,7 @@ Item {
                      + model.formatLabel + (model.version ? " " + model.version : "")
                      + ", " + model.statusLabel
                      + (showProblems ? ". Problems: " + model.problems : "")
+    Accessible.description: qsTr("Enter: Open; Space: Details; Menu or Shift+F10: More actions")
 
     Rectangle {
         id: cardSurface
@@ -94,14 +95,6 @@ Item {
                 spacing: 8
 
                 Label {
-                    text: "★"
-                    visible: model.pinned
-                    font.pixelSize: 14
-                    color: Theme.colors.accent
-                    Layout.alignment: Qt.AlignVCenter
-                }
-
-                Label {
                     id: nameLabel
                     Layout.fillWidth: true
                     text: model.name
@@ -109,14 +102,53 @@ Item {
                     font.pixelSize: 15
                     font.weight: Font.DemiBold
                     color: Theme.colors.text
-                    // Full name on hover; elide is the overflow answer for
-                    // real lists with long names.
+                    // Name uses the available space before the actions;
+                    // genuinely long names elide, short names (Hayase,
+                    // Stremio) show in full even at 720px.
                     ToolTip.visible: nameLabel.truncated && card.hovered
                     ToolTip.delay: 400
                     ToolTip.text: model.name
                 }
 
+                // Favorite toggle sits beside the name, clickable and in
+                // the ⋯ menu for keyboard users.
+                Button {
+                    id: pinButton
+                    text: model.pinned ? "★" : "☆"
+                    activeFocusOnTab: false
+                    font.pixelSize: 17
+                    implicitWidth: 32
+                    implicitHeight: 30
+                    hoverEnabled: true
+
+                    background: Rectangle {
+                        radius: 7
+                        color: pinButton.pressed ? Theme.colors.pressed
+                             : pinButton.hovered ? Theme.colors.hover
+                             : "transparent"
+                        border.color: pinButton.visualFocus ? Theme.colors.focusRing : "transparent"
+                        border.width: pinButton.visualFocus ? 2 : 0
+                        scale: pinButton.pressed ? 0.97 : 1.0
+
+                        Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
+                        Behavior on scale { NumberAnimation { duration: Theme.pressMs; easing.type: Easing.OutCubic } }
+                    }
+                    contentItem: Label {
+                        text: pinButton.text
+                        font: pinButton.font
+                        color: model.pinned ? Theme.colors.accent : Theme.colors.textSecondary
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                    onClicked: bridge.togglePin(model.key)
+                    Accessible.name: (model.pinned
+                                      ? qsTr("Remove %1 from favorites").arg(model.name)
+                                      : qsTr("Add %1 to favorites").arg(model.name))
+                    Accessible.role: Accessible.Button
+                }
+
                 // Status chip: dot + label, tone from the backend status.
+                // Sits right after the favorite, as in the web design.
                 Rectangle {
                     id: statusChip
                     radius: 9
@@ -167,7 +199,7 @@ Item {
             Label {
                 visible: card.showProblems
                 Layout.fillWidth: true
-                text: "⚠ " + model.problems
+                text: model.problems
                 elide: Text.ElideRight
                 font.pixelSize: 12
                 color: Theme.colors.danger
@@ -188,6 +220,9 @@ Item {
                 id: openButton
                 enabled: model.canOpen
                 text: qsTr("Open")
+                // The card is the Tab stop (whole-item keyboard model);
+                // buttons stay mouse/touch-only so Tab crosses the list.
+                activeFocusOnTab: false
                 font.pixelSize: 13
                 font.weight: Font.Medium
                 implicitWidth: Math.max(contentItem.implicitWidth + 24, 76)
@@ -217,6 +252,7 @@ Item {
             Button {
                 id: detailsButton
                 text: qsTr("Details")
+                activeFocusOnTab: false
                 font.pixelSize: 13
                 implicitWidth: Math.max(contentItem.implicitWidth + 24, 76)
                 implicitHeight: 30
@@ -248,6 +284,7 @@ Item {
             Button {
                 id: moreButton
                 text: "⋮"
+                activeFocusOnTab: false
                 font.pixelSize: 16
                 implicitWidth: 30
                 implicitHeight: 30
@@ -275,10 +312,25 @@ Item {
                 // Menus are high-frequency: they open instantly, no animation.
                 onClicked: moreMenu.popup(moreButton, 0, moreButton.height + 4)
                 Accessible.name: "More actions for " + model.name
+                ToolTip.visible: hovered
+                ToolTip.delay: 400
+                ToolTip.text: card.Accessible.description
             }
 
             Menu {
                 id: moreMenu
+
+                // Favorite toggle in the menu too: the card is the keyboard
+                // focus unit (Enter opens, Menu opens this menu), so the
+                // star button alone would leave favorites mouse-only.
+                MenuItem {
+                    text: model.pinned ? qsTr("Remove from Favorites")
+                                       : qsTr("Add to Favorites")
+                    checkable: true
+                    checked: model.pinned
+                    onTriggered: bridge.togglePin(model.key)
+                }
+                MenuSeparator { contentItem: Rectangle { implicitHeight: 1; color: Theme.colors.border } }
 
                 MenuItem {
                     text: qsTr("Reinstall")
@@ -330,13 +382,23 @@ Item {
         }
     }
 
-    // Enter opens, Space toggles the action menu — the two most frequent
-    // keyboard paths, both instant (no animation on keyboard actions).
+    // Keyboard paths for the card (the card is the focus unit): Enter
+    // opens the app, Space shows its details — the two visible buttons —
+    // and Menu or Shift+F10 opens the ⋯ menu. All instant, no animation.
+    Keys.onPressed: (event) => {
+        if (event.key === Qt.Key_F10 && event.modifiers === Qt.ShiftModifier) {
+            moreMenu.popup(moreButton, 0, moreButton.height + 4)
+            event.accepted = true
+        }
+    }
     Keys.onReturnPressed: (event) => {
         if (model.canOpen) { bridge.openApp(model.key); event.accepted = true }
     }
     Keys.onEnterPressed: (event) => {
         if (model.canOpen) { bridge.openApp(model.key); event.accepted = true }
+    }
+    Keys.onSpacePressed: (event) => {
+        bridge.showDetails(model.key); event.accepted = true
     }
     Keys.onMenuPressed: (event) => {
         moreMenu.popup(moreButton, 0, moreButton.height + 4)
