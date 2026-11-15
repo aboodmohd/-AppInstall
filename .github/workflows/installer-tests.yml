@@ -4,14 +4,20 @@ on:
   pull_request:
     paths:
       - "install.sh"
+      - "PKGBUILD"
+      - "appinstall"
       - "tests/test_install_sh.py"
+      - "tests/test_release_version.py"
       - ".github/workflows/installer-tests.yml"
   push:
     branches:
       - main
     paths:
       - "install.sh"
+      - "PKGBUILD"
+      - "appinstall"
       - "tests/test_install_sh.py"
+      - "tests/test_release_version.py"
       - ".github/workflows/installer-tests.yml"
   workflow_dispatch:
 

@@ -8,11 +8,13 @@ Run the installer as your regular desktop user:
 curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash
 ```
 
-The installer selects a package from the latest stable GitHub release and
-checks its SHA-256. Arch Linux and CachyOS use pacman. Debian 13, Ubuntu 24.04
-and 26.04, and Linux Mint 22 use APT when the stable release includes a
-`.deb`. On APT systems, have Python 3 and curl available before running the
-command. Ubuntu needs the Universe repository enabled.
+The installer selects the **native** package from the latest published
+stable GitHub release and checks its SHA-256 before any package operation.
+Arch Linux and CachyOS use pacman; Debian 13, Ubuntu 24.04/26.04 and Linux
+Mint 22 use APT; and Fedora 44 x86_64 uses DNF when the release includes
+the matching RPM. The installer rejects unsupported platforms or a missing
+native asset, never substituting an Arch or Debian package. Ensure Python 3
+and curl are available; Ubuntu needs the Universe repository enabled.
 
 APT installs the selected `.deb` with `--no-install-recommends`. The package
 declares alternative Qt bindings so APT can satisfy the dependency from the
@@ -23,18 +25,26 @@ Use `--dry-run` to inspect the package selection and `--uninstall` to remove
 AppInstall. Use `--set-defaults` to opt into changing per-user file handlers
 or `--no-defaults` to keep them. Previous defaults are backed up.
 
-## Fedora 44 native RPM candidate (not published)
+## Native Fedora 44 RPM (v1.6.0)
 
-The feature branch adds an isolated native RPM and a DNF installer path.
-**Public v1.5.0 does not contain an RPM.** Fedora installation must reject
-releases without `appinstall-<version>-<release>.noarch.rpm` and
-`SHA256SUMS`; no cross-distro package fallback is permitted.
+Fedora 44 (x86_64) uses DNF and the native
+`appinstall-1.6.0-1.noarch.rpm` package. The one-command installer
+fetches it only from a published stable release alongside `SHA256SUMS`,
+validates the package checksum and RPM name/version/architecture and
+obtains user consent before installing via DNF.
 
-On a disposable Fedora 44 environment with `rpm-build`, run
-`bash tools/build_rpm.sh dist` **as a nonroot user**. Inspect and verify
-the local candidate `dist/appinstall-1.5.0-1.noarch.rpm` before manually
-installing it via DNF. The GitHub CI build is the current acceptance
-environment, not the user's CachyOS installation.
+Advanced users can build from source **on Fedora 44 as a non-root user**
+after installing `rpm-build` and dependencies:
+
+```bash
+bash tools/build_rpm.sh dist
+```
+
+Verify the generated RPM and install the local candidate explicitly with
+`sudo dnf install ./dist/appinstall-1.6.0-1.noarch.rpm`. The rpm
+builder is not a substitute for a release checksum. Use the
+release's verified downloadable RPM for normal installation; CI tests are
+not live desktop acceptance.
 
 ## System requirements
 
@@ -50,14 +60,19 @@ environment, not the user's CachyOS installation.
 
 ## Install from package (Arch/CachyOS)
 
-Download from the [`v1.1.2` release](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.1.2):
+Download from [the v1.6.0 release](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.6.0)
+**once it has been publicly published**. Do not use an unpublished
+candidate artifact as an official stable release.
 
 ```sh
-curl -LO https://github.com/aboodmohd/-AppInstall/releases/download/v1.1.2/appinstall-1.1.2-1-any.pkg.tar.zst
-curl -LO https://github.com/aboodmohd/-AppInstall/releases/download/v1.1.2/SHA256SUMS
-sha256sum -c SHA256SUMS   # must print: appinstall-1.1.2-1-any.pkg.tar.zst: OK
-sudo pacman -U appinstall-1.1.2-1-any.pkg.tar.zst
+curl -fLO https://github.com/aboodmohd/-AppInstall/releases/download/v1.6.0/appinstall-1.6.0-1-any.pkg.tar.zst
+curl -fLO https://github.com/aboodmohd/-AppInstall/releases/download/v1.6.0/SHA256SUMS
+sha256sum --ignore-missing -c SHA256SUMS
+sudo pacman -U ./appinstall-1.6.0-1-any.pkg.tar.zst
 ```
+
+For the published release, check that the output includes
+`appinstall-1.6.0-1-any.pkg.tar.zst: OK` before installing.
 
 The one-command installer performs download + verification +
 installation automatically.

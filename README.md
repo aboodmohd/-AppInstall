@@ -20,10 +20,13 @@ Managed applications now use monitored launchers. Startup failures show useful e
 curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash
 ```
 
-The installer downloads the package for your distro and verifies it against
-`SHA256SUMS`. Arch Linux and CachyOS use pacman. Debian 13, Ubuntu 24.04 and
-26.04, and Linux Mint 22 use APT once the latest stable release includes a
-`.deb`. Ubuntu needs the Universe repository for its Qt bindings.
+The installer downloads the host-native package and verifies it against
+`SHA256SUMS`. Arch Linux/CachyOS use pacman; Debian 13, Ubuntu 24.04/26.04
+and Linux Mint 22 use APT; and Fedora 44 x86_64 uses a native RPM installed
+through DNF when the latest published stable release includes that asset.
+Ubuntu needs the Universe repository for its Qt bindings. The installer
+refuses unsupported distributions rather than reusing another platform's
+package.
 
 On APT systems, only the AppInstall `.deb` and its required dependencies
 are installed. Optional backends can be installed separately. On Arch and
@@ -51,10 +54,11 @@ curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.
 
 For a no-changes plan, run `curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash -s -- --dry-run`. The `--yes` flag allows unattended installation, but does **not** automatically change file defaults; use `--set-defaults` to opt in, or `--no-defaults` to leave them unchanged. See [INSTALL.md](INSTALL.md) for all flags and installation details.
 
-**Fedora 44 is next (candidate branch):** native RPM packaging and a Fedora
-DNF installer path are under testing. Public v1.5.0 includes only Arch and
-Debian packages, **not a Fedora RPM**; the installer must fail safely until
-a separately approved new stable release includes the native RPM.
+**Fedora 44 support (v1.6.0):** a native RPM and DNF installation path
+join the Arch and Debian packages. The installer accepts Fedora 44 x86_64 only
+when the **latest published stable release** contains a matching verified RPM;
+otherwise it refuses to install. Fedora support is tested in a disposable
+CI container; actual GNOME/KDE sessions still require separate acceptance.
 See [FEDORA_RPM_ACCEPTANCE.md](FEDORA_RPM_ACCEPTANCE.md).
 
 For other distributions, see [source installation](INSTALL.md). Installing

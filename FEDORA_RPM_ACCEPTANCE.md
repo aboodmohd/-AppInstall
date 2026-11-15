@@ -1,7 +1,9 @@
 # Fedora 44 native RPM — Candidate Acceptance
 
-**Status: DEVELOPMENT ONLY.** Published v1.5.0 and its tag/assets stay
-unchanged. Fedora support needs a new version and separate owner approval.
+**Status: Fedora 44 CI acceptance passed on PR #71; live desktop acceptance
+is still pending.** Fedora support is included in the v1.6.0 release
+candidate. Published v1.5.0 remains immutable; the v1.6.0 tag and
+artifacts require separate approval.
 
 The candidate native noarch RPM uses the same PKGBUILD file inventory as
 the Arch and Debian packages. Its QML and Python modules live in
@@ -12,17 +14,19 @@ claimed to be supported.
 
 ## Required gates
 
-- [ ] Nonroot Fedora 44 RPM build, valid metadata and source-file provenance
-- [ ] Native Fedora DNF install/reinstall/removal in disposable CI
-- [ ] Real Qt Quick offscreen smoke, terminal CLI, desktop entry and MIME files
-- [ ] Managed user data and unrelated MIME defaults preserved on removal
-- [ ] Installer matches only the RPM for the same latest stable tag, verifies
+- [x] Nonroot Fedora 44 RPM build, valid metadata and source-file provenance
+- [x] Native Fedora DNF install/reinstall/removal in disposable CI
+- [x] Real Qt Quick offscreen smoke, terminal CLI, desktop entry and MIME files
+- [x] Managed user data and unrelated MIME defaults preserved on removal
+- [x] Installer matches only the RPM for the same latest stable tag, verifies
       SHA256SUMS and reads the RPM headers before installing
-- [ ] Reject wrong/duplicate asset, malicious URL, tampered checksum, bad
-      RPM headers and unsupported Fedora versions
-- [ ] Existing Arch and Debian package/installer workflows still pass
+- [x] Reject wrong/duplicate asset, malicious URL, checksum mismatch,
+      RPM headers not matching the selected package, and unsupported Fedora
+      versions in unit tests and the CI verification path
+- [x] Existing Arch and Debian package/installer workflows still pass
 - [ ] Real Fedora 44 desktop acceptance (or limitations documented)
-- [ ] New release version and explicit owner merge/publication authorization
+- [ ] New v1.6.0 release final-build/asset verification and separate
+      explicit owner authorization for publication
 
 Installing AppInstall's own RPM is distinct from using the app to install
 third-party DEB/RPM application files in Distrobox. Distrobox is not a
