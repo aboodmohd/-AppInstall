@@ -1,0 +1,117 @@
+name: Fedora 44 native RPM package and installer acceptance
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fedora-rpm:
+    name: Fedora 44 RPM build / lifecycle
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: fedora:44
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install trusted Fedora build and runtime dependencies
+        run: |
+          dnf -y install rpm-build rpm tar gzip shadow-utils util-linux sudo \
+            python3 python3-pyside6 qt6-qtdeclarative \
+            curl coreutils findutils xdg-utils desktop-file-utils \
+            shared-mime-info squashfs-tools libarchive
+
+      - name: Validate script/spec and build as nonroot
+        run: |
+          set -euo pipefail
+          bash -n tools/build_rpm.sh install.sh
+          useradd -m -s /bin/bash appbuild
+          chown -R appbuild:appbuild "$GITHUB_WORKSPACE"
+          runuser -u appbuild -- env HOME=/home/appbuild \
+            bash -c 'cd "$1" && bash tools/build_rpm.sh dist' _ "$GITHUB_WORKSPACE"
+          version="$(sed -n 's/^pkgver=//p' PKGBUILD)"
+          release="$(sed -n 's/^pkgrel=//p' PKGBUILD)"
+          pkg="dist/appinstall-${version}-${release}.noarch.rpm"
+          test -s "$pkg"
+          rpm -qp --qf '%{NAME}|%{VERSION}|%{RELEASE}|%{ARCH}\n' "$pkg" |
+            grep -Fx "appinstall|${version}|${release}|noarch"
+          rpm -qpl "$pkg" | grep -Fx /usr/bin/appinstall
+          rpm -qpl "$pkg" | grep -Fx /usr/lib/appinstall/manager_ui/main.qml
+          rpm -qpl "$pkg" | grep -Fx /usr/share/licenses/appinstall/LICENSE
+          rpm -qp --requires "$pkg" | grep -Fx python3-pyside6
+          sha256sum "$pkg" > dist/SHA256SUMS
+          (cd dist && sha256sum -c SHA256SUMS)
+
+      - name: RPM dependency install, QML smoke and removal (isolated CI)
+        run: |
+          set -euo pipefail
+          pkg=(dist/appinstall-*.noarch.rpm)
+          mkdir -p /home/appbuild/Applications /home/appbuild/.config
+          printf '%s\n' 'preserve user data' > /home/appbuild/Applications/keep
+          printf '%s\n' '[Default Applications]' 'text/plain=original.desktop;' \
+            > /home/appbuild/.config/mimeapps.list
+          chown -R appbuild:appbuild /home/appbuild
+          dnf -y install "${pkg[0]}"
+          ver="$(sed -n 's/^pkgver=//p' PKGBUILD)"
+          test "$(appinstall --version)" = "appinstall $ver"
+          test "$(readlink /usr/bin/appinstall)" = ../lib/appinstall/appinstall
+          desktop-file-validate /usr/share/applications/appinstall.desktop
+          grep -Fxq 'Exec=/usr/bin/appinstall %F' /usr/share/applications/appinstall.desktop
+          grep -Fxq 'Exec=/usr/bin/appinstall %f' \
+            /usr/share/kio/servicemenus/appinstall-appimage-review.desktop
+          runuser -u appbuild -- env QT_QPA_PLATFORM=offscreen \
+            APPINSTALL_DISABLE_UPDATE_TIMER=1 \
+            python3 /usr/lib/appinstall/manager_qml.py --smoke
+          rpm -V appinstall
+          dnf -y remove appinstall
+          if rpm -q appinstall; then exit 1; fi
+          grep -Fxq 'preserve user data' /home/appbuild/Applications/keep
+          grep -Fxq 'text/plain=original.desktop;' /home/appbuild/.config/mimeapps.list
+
+      - name: Verify Fedora one-command installer with a local stable fixture
+        run: |
+          set -euo pipefail
+          test ! -e /usr/bin/appinstall
+          useradd -m -s /bin/bash appinstall-ci
+          cat >/etc/sudoers.d/appinstall-ci <<'SUDOERS'
+          appinstall-ci ALL=(root) NOPASSWD: /usr/bin/dnf, /usr/bin/true
+          SUDOERS
+          chmod 0440 /etc/sudoers.d/appinstall-ci
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          dist = (Path.cwd() / "dist").resolve()
+          pkg = next(dist.glob("appinstall-*.noarch.rpm"))
+          names = (pkg.name, "SHA256SUMS")
+          assets = [{"name": name,
+                     "browser_download_url": (dist / name).as_uri()}
+                    for name in names]
+          (dist / "fedora-release-fixture.json").write_text(json.dumps({
+              "tag_name": "v" + pkg.name.split("-")[1],
+              "draft": False, "prerelease": False, "assets": assets,
+          }))
+          PY
+          runuser -u appinstall-ci -- env \
+            APPINSTALL_TEST_OS_RELEASE=/etc/os-release \
+            APPINSTALL_TEST_RELEASES_JSON="$GITHUB_WORKSPACE/dist/fedora-release-fixture.json" \
+            bash "$GITHUB_WORKSPACE/install.sh" --yes --no-defaults --no-optional
+          version="$(sed -n 's/^pkgver=//p' PKGBUILD)"
+          test "$(appinstall --version)" = "appinstall $version"
+          rpm -V appinstall
+
+      - name: Upload candidate RPM and SHA256SUMS (not a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: appinstall-rpm-${{ github.sha }}
+          path: |
+            dist/appinstall-*.noarch.rpm
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 14
