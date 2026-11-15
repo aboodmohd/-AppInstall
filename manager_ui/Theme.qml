@@ -17,6 +17,8 @@ QtObject {
     readonly property int enterMs: reducedMotion ? 0 : 240
     readonly property int staggerMs: reducedMotion ? 0 : 40
 
+    // Qt parses 8-digit hex colors as #AARRGGBB, not CSS #RRGGBBAA.
+    // The old dark hover #ffffff0d accidentally rendered opaque yellow.
     readonly property var light: ({
         window:    "#f5f5f7",
         surface:   "#ffffff",
@@ -28,17 +30,17 @@ QtObject {
         accentText:"#ffffff",
         focusRing: "#2456d8",
         success:   "#1a7f37",
-        successBg: "#1a7f371a",
+        successBg: "#1a1a7f37",
         warning:   "#8a5a08",
-        warningBg: "#a163091a",
+        warningBg: "#1aa16309",
         danger:    "#b3402e",
-        dangerBg:  "#b3402e1a",
+        dangerBg:  "#1ab3402e",
         neutral:   "#5f5f66",
-        neutralBg: "#5f5f6614",
-        hover:     "#0000000a",
-        pressed:   "#00000014",
+        neutralBg: "#145f5f66",
+        hover:     "#0a000000",
+        pressed:   "#14000000",
         iconFallbackBg: "#e4e6ec",
-        shadow:    "#0000000f",
+        shadow:    "#0f000000",
     })
 
     readonly property var dark: ({
@@ -52,17 +54,17 @@ QtObject {
         accentText:"#ffffff",
         focusRing: "#8db2ff",
         success:   "#4ade80",
-        successBg: "#4ade8024",
+        successBg: "#244ade80",
         warning:   "#f5c451",
-        warningBg: "#f5c45124",
+        warningBg: "#24f5c451",
         danger:    "#f28b82",
-        dangerBg:  "#f28b8224",
+        dangerBg:  "#24f28b82",
         neutral:   "#a7a7b0",
-        neutralBg: "#a7a7b01f",
-        hover:     "#ffffff0d",
-        pressed:   "#ffffff1a",
+        neutralBg: "#1fa7a7b0",
+        hover:     "#0dffffff",
+        pressed:   "#1affffff",
         iconFallbackBg: "#2c3040",
-        shadow:    "#00000040",
+        shadow:    "#40000000",
     })
 
     readonly property var colors: mode === "dark" ? dark : light

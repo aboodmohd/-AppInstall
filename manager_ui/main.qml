@@ -301,23 +301,33 @@ ApplicationWindow {
             }
 
             // Status filter.
-            ComboBox {
+            // Explicit button and popup rather than ComboBox: KDE's style
+            // must not intercept the dropdown activation or delegate selection.
+            Button {
                 id: statusFilter
-                implicitHeight: 32
+                property int selectedIndex: 0
+                readonly property var options: [
+                    { label: qsTr("All statuses"), value: "all" },
+                    { label: qsTr("Installed"), value: "installed" },
+                    { label: qsTr("Needs repair"), value: "needs-repair" },
+                    { label: qsTr("Files missing"), value: "missing" },
+                    { label: qsTr("Stale record"), value: "stale" },
+                    { label: qsTr("Corrupted"), value: "corrupted" }
+                ]
+                text: options[selectedIndex].label + " ▾"
                 font.pixelSize: 13
-                model: ListModel {
-                    ListElement { label: qsTr("All statuses"); value: "all" }
-                    ListElement { label: qsTr("Installed"); value: "installed" }
-                    ListElement { label: qsTr("Needs repair"); value: "needs-repair" }
-                    ListElement { label: qsTr("Files missing"); value: "missing" }
-                    ListElement { label: qsTr("Stale record"); value: "stale" }
-                    ListElement { label: qsTr("Corrupted"); value: "corrupted" }
+                implicitHeight: 32
+                implicitWidth: contentItem.implicitWidth + 22
+                activeFocusOnTab: true
+                Accessible.name: qsTr("Status selection")
+                function choose(index) {
+                    if (index < 0 || index >= options.length) return
+                    selectedIndex = index
+                    appsModel.setStatusFilter(options[index].value)
+                    statusPopup.close()
                 }
-                textRole: "label"
-                valueRole: "value"
-                currentIndex: 0
-                onActivated: (index) => appsModel.setStatusFilter(currentValue)
-                Component.onCompleted: appsModel.setStatusFilter(currentValue)
+                Component.onCompleted: appsModel.setStatusFilter(options[selectedIndex].value)
+                onClicked: statusPopup.open()
 
                 background: Rectangle {
                     radius: 7
@@ -325,68 +335,111 @@ ApplicationWindow {
                     border.color: statusFilter.visualFocus ? Theme.colors.focusRing : Theme.colors.border
                     border.width: statusFilter.visualFocus ? 2 : 1
                 }
-                contentItem: TextInput {
-                    text: statusFilter.displayText
+                contentItem: Label {
+                    text: statusFilter.text
                     font: statusFilter.font
                     color: Theme.colors.text
                     leftPadding: 10
-                    rightPadding: statusFilter.indicator.width + 6
-                    readOnly: true
+                    rightPadding: 10
+                    verticalAlignment: Text.AlignVCenter
                 }
-                indicator: Label {
-                    text: "▾"
-                    color: Theme.colors.textSecondary
-                    font.pixelSize: 12
-                    anchors.right: parent.right
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-                delegate: ItemDelegate {
-                    id: statusDelegate
-                    required property var model
-                    required property int index
-                    width: statusFilter.width
-                    contentItem: Label {
-                        text: statusDelegate.model.label
-                        font.pixelSize: 13
-                        color: Theme.colors.text
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    highlighted: statusFilter.highlightedIndex === model.index
-                    background: Rectangle {
-                        radius: 5
-                        color: statusDelegate.highlighted ? Theme.colors.hover : "transparent"
-                    }
-                }
-                popup: Popup {
+
+                Popup {
+                    id: statusPopup
+                    x: 0
                     y: statusFilter.height + 4
-                    width: statusFilter.width
+                    width: Math.max(statusFilter.width, 174)
+                    height: statusFilter.options.length * 34 + topPadding + bottomPadding
                     padding: 4
+                    focus: true
+                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                    property int keyboardIndex: statusFilter.selectedIndex
+                    onOpened: {
+                        keyboardIndex = statusFilter.selectedIndex
+                        statusChoices.forceActiveFocus()
+                    }
                     background: Rectangle {
                         radius: 8
                         color: Theme.colors.surface
                         border.color: Theme.colors.border
                     }
+                    contentItem: Column {
+                        id: statusChoices
+                        focus: true
+                        Keys.onPressed: (event) => {
+                            if (event.key === Qt.Key_Down) {
+                                statusPopup.keyboardIndex = (statusPopup.keyboardIndex + 1) % statusFilter.options.length
+                                event.accepted = true
+                            } else if (event.key === Qt.Key_Up) {
+                                statusPopup.keyboardIndex =
+                                    (statusPopup.keyboardIndex + statusFilter.options.length - 1) % statusFilter.options.length
+                                event.accepted = true
+                            } else if (event.key === Qt.Key_Return
+                                       || event.key === Qt.Key_Enter
+                                       || event.key === Qt.Key_Space) {
+                                statusFilter.choose(statusPopup.keyboardIndex)
+                                event.accepted = true
+                            }
+                        }
+                        Repeater {
+                            id: statusRepeater
+                            model: statusFilter.options
+                            delegate: Button {
+                                id: optionButton
+                                required property int index
+                                required property var modelData
+                                width: statusPopup.availableWidth
+                                implicitHeight: 34
+                                height: 34
+                                activeFocusOnTab: false
+                                text: modelData.label
+                                onClicked: statusFilter.choose(index)
+                                background: Rectangle {
+                                    radius: 5
+                                    color: (statusPopup.keyboardIndex === index
+                                             || optionButton.hovered)
+                                           ? Theme.colors.surfaceAlt : "transparent"
+                                }
+                                contentItem: Label {
+                                    text: optionButton.text
+                                    font.pixelSize: 13
+                                    color: Theme.colors.text
+                                    leftPadding: 9
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                Accessible.name: optionButton.text
+                            }
+                        }
+                    }
                 }
-                Accessible.name: qsTr("Status filter")
             }
 
-            // Sort.
-            ComboBox {
+            // Sort order.
+            // Explicit button and popup rather than ComboBox: KDE's style
+            // must not intercept the dropdown activation or delegate selection.
+            Button {
                 id: sortCombo
-                implicitHeight: 32
+                property int selectedIndex: 0
+                readonly property var options: [
+                    { label: qsTr("Name (A–Z)"), value: "name-asc" },
+                    { label: qsTr("Name (Z–A)"), value: "name-desc" },
+                    { label: qsTr("Recently launched"), value: "recent" },
+                    { label: qsTr("Size (largest)"), value: "size" }
+                ]
+                text: options[selectedIndex].label + " ▾"
                 font.pixelSize: 13
-                model: ListModel {
-                    ListElement { label: qsTr("Name (A–Z)"); value: "name-asc" }
-                    ListElement { label: qsTr("Name (Z–A)"); value: "name-desc" }
-                    ListElement { label: qsTr("Recently launched"); value: "recent" }
-                    ListElement { label: qsTr("Size (largest)"); value: "size" }
+                implicitHeight: 32
+                implicitWidth: contentItem.implicitWidth + 22
+                activeFocusOnTab: true
+                Accessible.name: qsTr("Sort selection")
+                function choose(index) {
+                    if (index < 0 || index >= options.length) return
+                    selectedIndex = index
+                    appsModel.setSort(options[index].value)
+                    sortPopup.close()
                 }
-                textRole: "label"
-                valueRole: "value"
-                currentIndex: 0
-                onActivated: (index) => appsModel.setSort(currentValue)
-                Component.onCompleted: appsModel.setSort(currentValue)
+                Component.onCompleted: appsModel.setSort(options[selectedIndex].value)
+                onClicked: sortPopup.open()
 
                 background: Rectangle {
                     radius: 7
@@ -394,50 +447,83 @@ ApplicationWindow {
                     border.color: sortCombo.visualFocus ? Theme.colors.focusRing : Theme.colors.border
                     border.width: sortCombo.visualFocus ? 2 : 1
                 }
-                contentItem: TextInput {
-                    text: sortCombo.displayText
+                contentItem: Label {
+                    text: sortCombo.text
                     font: sortCombo.font
                     color: Theme.colors.text
                     leftPadding: 10
-                    rightPadding: sortCombo.indicator.width + 6
-                    readOnly: true
+                    rightPadding: 10
+                    verticalAlignment: Text.AlignVCenter
                 }
-                indicator: Label {
-                    text: "▾"
-                    color: Theme.colors.textSecondary
-                    font.pixelSize: 12
-                    anchors.right: parent.right
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                }
-                delegate: ItemDelegate {
-                    id: sortDelegate
-                    required property var model
-                    required property int index
-                    width: sortCombo.width
-                    contentItem: Label {
-                        text: sortDelegate.model.label
-                        font.pixelSize: 13
-                        color: Theme.colors.text
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    highlighted: sortCombo.highlightedIndex === model.index
-                    background: Rectangle {
-                        radius: 5
-                        color: sortDelegate.highlighted ? Theme.colors.hover : "transparent"
-                    }
-                }
-                popup: Popup {
+
+                Popup {
+                    id: sortPopup
+                    x: 0
                     y: sortCombo.height + 4
-                    width: sortCombo.width
+                    width: Math.max(sortCombo.width, 174)
+                    height: sortCombo.options.length * 34 + topPadding + bottomPadding
                     padding: 4
+                    focus: true
+                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                    property int keyboardIndex: sortCombo.selectedIndex
+                    onOpened: {
+                        keyboardIndex = sortCombo.selectedIndex
+                        sortChoices.forceActiveFocus()
+                    }
                     background: Rectangle {
                         radius: 8
                         color: Theme.colors.surface
                         border.color: Theme.colors.border
                     }
+                    contentItem: Column {
+                        id: sortChoices
+                        focus: true
+                        Keys.onPressed: (event) => {
+                            if (event.key === Qt.Key_Down) {
+                                sortPopup.keyboardIndex = (sortPopup.keyboardIndex + 1) % sortCombo.options.length
+                                event.accepted = true
+                            } else if (event.key === Qt.Key_Up) {
+                                sortPopup.keyboardIndex =
+                                    (sortPopup.keyboardIndex + sortCombo.options.length - 1) % sortCombo.options.length
+                                event.accepted = true
+                            } else if (event.key === Qt.Key_Return
+                                       || event.key === Qt.Key_Enter
+                                       || event.key === Qt.Key_Space) {
+                                sortCombo.choose(sortPopup.keyboardIndex)
+                                event.accepted = true
+                            }
+                        }
+                        Repeater {
+                            id: sortRepeater
+                            model: sortCombo.options
+                            delegate: Button {
+                                id: optionButton
+                                required property int index
+                                required property var modelData
+                                width: sortPopup.availableWidth
+                                implicitHeight: 34
+                                height: 34
+                                activeFocusOnTab: false
+                                text: modelData.label
+                                onClicked: sortCombo.choose(index)
+                                background: Rectangle {
+                                    radius: 5
+                                    color: (sortPopup.keyboardIndex === index
+                                             || optionButton.hovered)
+                                           ? Theme.colors.surfaceAlt : "transparent"
+                                }
+                                contentItem: Label {
+                                    text: optionButton.text
+                                    font.pixelSize: 13
+                                    color: Theme.colors.text
+                                    leftPadding: 9
+                                    verticalAlignment: Text.AlignVCenter
+                                }
+                                Accessible.name: optionButton.text
+                            }
+                        }
+                    }
                 }
-                Accessible.name: qsTr("Sort order")
             }
         }
 

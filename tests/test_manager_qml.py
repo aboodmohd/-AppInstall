@@ -20,7 +20,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from PySide6 import QtCore, QtQml, QtQuick, QtTest
+from PySide6 import QtCore, QtGui, QtQml, QtQuick, QtTest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -697,42 +697,10 @@ class SmokeLaunchTests(unittest.TestCase):
             self.assertIn('QML smoke', result.stdout)
 
 
-class QmlDelegateRegressionTests(QmlManagerBase):
-    """Regression tests for QML ComboBox delegates and card hover behavior.
+class QmlDropdownRegressionTests(QmlManagerBase):
+    """The controls must render real options without KDE ComboBox styling."""
 
-    These tests catch regressions that caused runtime errors on KDE Wayland:
-    - ComboBox delegates must expose `model.index` (not bare `index`).
-    - ComboBox contentItems must be QQuickItem subclasses (Label),
-      not plain ItemDelegate, so KDE's positionToRectangle() works.
-    - Card hover state must use mouse.containsMouse, not mouse.hovered
-      (MouseArea has no hovered property).
-    """
-
-    def test_combo_delegate_uses_model_index(self):
-        """ComboBox delegate highlighted expressions must use model.index,
-        not bare index, otherwise KDE Wayland raises ReferenceError."""
-        self.load_inventory([
-            ('appimage:example', self.stage_installed_appimage('appimage:example', 'Example App')),
-        ])
-        capture = QmlLoadCapture()
-        self.engine = QtQml.QQmlApplicationEngine()
-        self.engine.rootContext().setContextProperty('bridge', self.bridge)
-        self.engine.rootContext().setContextProperty('appsModel', self.model)
-        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
-        with capture:
-            self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
-        self.window = self.engine.rootObjects()[0]
-        self.assertIsNotNone(self.window, 'main.qml must load')
-        # index is not defined error would appear in QML messages
-        index_errors = [m for m in capture.messages if 'index is not defined' in m]
-        self.assertEqual(
-            len(index_errors), 0,
-            f'Delegate uses bare index instead of model.index: {index_errors}'
-        )
-
-    def test_combo_content_item_is_qquick_item(self):
-        """ComboBox contentItems must be Label (QQuickItem subclass) so that
-        KDE's positionToRectangle() works on them."""
+    def test_dropdown_buttons_and_popup_options_exist(self):
         self.load_inventory([
             ('appimage:example', self.stage_installed_appimage('appimage:example', 'Example App')),
         ])
@@ -743,23 +711,16 @@ class QmlDelegateRegressionTests(QmlManagerBase):
         with QmlLoadCapture() as capture:
             self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
         self.window = self.engine.rootObjects()[0]
-        self.assertIsNotNone(self.window, 'main.qml must load')
-        # positionToRectangle is not a function would appear in QML messages
-        pos_errors = [m for m in capture.messages if 'positionToRectangle' in m]
-        self.assertEqual(
-            len(pos_errors), 0,
-            f'contentItem lacks positionToRectangle: {pos_errors}'
-        )
+        self.assertIsNotNone(self.window, 'main.qml failed to load')
+        self.assertEqual([m for m in capture.messages if 'Error' in m], [])
+        for name, expected in (('statusFilter', 6), ('sortCombo', 4)):
+            expr = QtQml.QQmlExpression(QtQml.qmlContext(self.window),
+                                         self.window, f'{name}.options.length')
+            value, _ = expr.evaluate()
+            self.assertFalse(expr.hasError(), expr.error().toString())
+            self.assertEqual(value, expected)
 
-    def test_card_hover_uses_contains_mouse(self):
-        """AppCard hovered property must use mouse.containsMouse,
-        not mouse.hovered (MouseArea has no hovered property).
-
-        We can't introspect QML property names from Python, but loading
-        main.qml without QML errors confirms the property reference is
-        valid. This test guards against regressions that reintroduce
-        mouse.hovered.
-        """
+    def test_card_hover_has_defined_boolean(self):
         self.load_inventory([
             ('appimage:example', self.stage_installed_appimage('appimage:example', 'Example App')),
         ])
@@ -767,9 +728,12 @@ class QmlDelegateRegressionTests(QmlManagerBase):
         self.engine.rootContext().setContextProperty('bridge', self.bridge)
         self.engine.rootContext().setContextProperty('appsModel', self.model)
         self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
-        self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
+        with QmlLoadCapture() as capture:
+            self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
         self.window = self.engine.rootObjects()[0]
-        self.assertIsNotNone(self.window, 'main.qml must load without QML errors')
+        self.assertIsNotNone(self.window)
+        self.assertFalse(any('Unable to assign [undefined] to bool' in m
+                             for m in capture.messages))
 
 
 class InventoryLoadTests(QmlManagerBase):
@@ -901,6 +865,78 @@ class QmlInteractionTests(QmlManagerBase):
         description = self.evaluate('card.Accessible.description', self.card())
         for action in ('Enter', 'Open', 'Space', 'Details', 'Menu', 'Shift+F10'):
             self.assertIn(action, description)
+
+    def _click_dropdown_option(self, button, popup, repeater, index):
+        """Test an actual button click followed by a popup option click."""
+        trigger = self.evaluate(button)
+        point = trigger.mapToScene(QtCore.QPointF(
+            trigger.width() / 2, trigger.height() / 2)).toPoint()
+        QtTest.QTest.mouseClick(self.window, QtCore.Qt.LeftButton, pos=point)
+        QtTest.QTest.qWait(100)
+        self.assertTrue(self.evaluate(f'{popup}.visible'))
+        self.assertGreater(self.evaluate(f'{popup}.height'), 40)
+        option = self.evaluate(f'{repeater}.itemAt({index})')
+        self.assertIsNotNone(option, f'{popup} choice {index} missing')
+        point = option.mapToScene(
+            QtCore.QPointF(option.width() / 2, option.height() / 2)).toPoint()
+        QtTest.QTest.mouseClick(self.window, QtCore.Qt.LeftButton, pos=point)
+        QtTest.QTest.qWait(80)
+        self.assertEqual(self.evaluate(f'{button}.selectedIndex'), index)
+        self.assertFalse(self.evaluate(f'{popup}.visible'))
+
+    def test_status_dropdown_mouse_select_filters_inventory(self):
+        self._click_dropdown_option('statusFilter', 'statusPopup', 'statusRepeater', 4)
+        self.assertEqual(self.model.rowCount(), 0)
+        self._click_dropdown_option('statusFilter', 'statusPopup', 'statusRepeater', 0)
+        self.assertEqual(self.model.rowCount(), 40)
+
+    def test_sort_dropdown_mouse_select_reorders_inventory(self):
+        self._click_dropdown_option('sortCombo', 'sortPopup', 'sortRepeater', 1)
+        self.assertTrue(
+            self.model.data(self.model.index(0, 0), self.model.NameRole).startswith('39 '))
+        self._click_dropdown_option('sortCombo', 'sortPopup', 'sortRepeater', 0)
+        self.assertTrue(
+            self.model.data(self.model.index(0, 0), self.model.NameRole).startswith('00 '))
+
+    def test_status_dropdown_keyboard_navigation(self):
+        self.evaluate('statusFilter.forceActiveFocus()')
+        QtTest.QTest.keyClick(self.window, QtCore.Qt.Key_Space)
+        QtTest.QTest.qWait(100)
+        self.assertTrue(self.evaluate('statusPopup.visible'))
+        QtTest.QTest.keyClick(self.window, QtCore.Qt.Key_Down)
+        QtTest.QTest.keyClick(self.window, QtCore.Qt.Key_Return)
+        QtTest.QTest.qWait(80)
+        self.assertEqual(self.evaluate('statusFilter.selectedIndex'), 1)
+        self.assertEqual(self.model.rowCount(), 40)
+        self.assertFalse(self.evaluate('statusPopup.visible'))
+        self.evaluate('statusPopup.open()')
+        QtTest.QTest.qWait(100)
+        QtTest.QTest.keyClick(self.window, QtCore.Qt.Key_Escape)
+        QtTest.QTest.qWait(60)
+        self.assertFalse(self.evaluate('statusPopup.visible'))
+
+    def test_hovered_card_is_neutral_in_dark_mode(self):
+        self.evaluate('Theme.mode = "dark"')
+        card = self.card()
+        point = card.mapToScene(QtCore.QPointF(8, 8)).toPoint()
+        QtTest.QTest.mouseMove(self.window, point)
+        QtTest.QTest.qWait(220)
+        self.assertTrue(self.evaluate('card.hovered', card))
+        color = self.evaluate('cardSurface.color', card)
+        self.assertIsInstance(color, QtGui.QColor)
+        self.assertEqual(color.alpha(), 255)
+        self.assertLess(max(color.red(), color.green(), color.blue()), 100,
+                        'Hovered card must never turn bright yellow')
+
+    def test_translucent_theme_tokens_use_qt_argb_order(self):
+        for mode in ('light', 'dark'):
+            self.evaluate(f'Theme.mode = "{mode}"')
+            for token in ('hover', 'pressed', 'successBg', 'warningBg',
+                          'dangerBg', 'neutralBg', 'shadow'):
+                value = self.evaluate(f'Theme.colors.{token}')
+                color = QtGui.QColor(value)
+                self.assertTrue(color.isValid(), f'{mode}.{token}')
+                self.assertLessEqual(color.alpha(), 64, f'{mode}.{token}')
 
     def test_checked_filter_text_contrast_in_both_themes_and_states(self):
         def luminance(channels):
