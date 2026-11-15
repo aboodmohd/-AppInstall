@@ -746,8 +746,26 @@ class Bridge(QtCore.QObject):
 def main():
     args = sys.argv[1:]
     smoke = '--smoke' in args
-    if smoke:
-        sys.argv = [sys.argv[0]] + [a for a in args if a != '--smoke']
+    shot = None
+    if '--screenshot' in args:
+        index = args.index('--screenshot')
+        if index + 1 < len(args):
+            shot = args[index + 1]
+    if smoke or shot is not None:
+        # Strip Qt-incompatible flags before constructing QApplication.
+        filtered = []
+        skip_next = False
+        for a in args:
+            if skip_next:
+                skip_next = False
+                continue
+            if a == '--smoke':
+                continue
+            if a == '--screenshot':
+                skip_next = True
+                continue
+            filtered.append(a)
+        sys.argv = [sys.argv[0]] + filtered
         # Deterministic headless run for CI: no windowing system required,
         # and the auto update checks must never touch the network.
         os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
@@ -780,20 +798,21 @@ def main():
 
     window = engine.rootObjects()[0]
     window.setIcon(QtGui.QIcon.fromTheme('appinstall'))
-    shot = None
-    if '--screenshot' in args:
-        index = args.index('--screenshot')
-        if index + 1 < len(args):
-            shot = args[index + 1]
     if shot:
         # Same delayed-grab contract as the widgets window's --screenshot:
         # wait for the async inventory load to land, then save the window
-        # image and quit. The grab itself is declared in main.qml
-        # (saveWindowShot): the QML engine hands back the plain QWindow
-        # wrapper, which has no grabWindow(), while QML-declared functions
-        # stay callable through the dynamic metaobject.
+        # image and quit. Uses QGuiApplication.primaryScreen().grabWindow()
+        # because QML's grabToImage() returns null images offscreen.
         def grab():
-            window.saveWindowShot(shot)
+            from PySide6.QtGui import QGuiApplication
+            screen = QGuiApplication.primaryScreen()
+            pixmap = screen.grabWindow(window.winId())
+            if not pixmap.isNull():
+                pixmap.save(shot)
+                print('DEBUG: screenshot saved to', shot, flush=True)
+            else:
+                print('DEBUG: screenshot grabWindow returned null pixmap', flush=True)
+            app.quit()
         QtCore.QTimer.singleShot(1500, grab)
     elif smoke:
         # The scene came up with no missing QML modules: quit cleanly.

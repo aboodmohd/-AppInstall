@@ -149,8 +149,10 @@ def main():
     results.append(('manager_qml.py list (dark)', qml_dark, result.returncode))
 
     report = ['# Phase 4 + Phase 5 GUI Evidence — AppInstall 1.0 Beta\n',
-              'Captured under `QT_QPA_PLATFORM=offscreen` (headless).',
-              'No screenshots were claimed without being actually rendered.\n',
+              'Nine offscreen captures were rendered under `QT_QPA_PLATFORM=offscreen` (headless); '
+              'the separately recorded `manager-live-wayland.png` capture came from a live KDE Wayland session.\n',
+              'No screenshots were claimed without being actually rendered. Git history documents the captures, '
+              'but contributor ownership and redistribution rights still require human confirmation.\n',
               '## Screenshots\n']
     for label, path, rc in results:
         status = 'captured' if path.exists() else 'MISSING'

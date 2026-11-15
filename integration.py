@@ -40,13 +40,21 @@ icon_sources = tuple(f'appinstall-{size}.png' for size in ICON_SIZES)
 icon_destinations = tuple(
     data / 'icons' / 'hicolor' / f'{size}x{size}' / 'apps' / 'appinstall.png'
     for size in ICON_SIZES)
+# QML files that manager_qml.py loads at runtime: Theme.qml, main.qml,
+# AppCard.qml, and the qmldir import descriptor. manager_qml.py resolves
+# QML_DIR = Path(__file__).parent / 'manager_ui', so these must land in
+# $state/manager_ui/ alongside the deployed manager_qml.py.
+qml_sources = ('manager_ui/qmldir', 'manager_ui/Theme.qml',
+               'manager_ui/main.qml', 'manager_ui/AppCard.qml')
+qml_destinations = tuple(state / s for s in qml_sources)
 uninstalling = sys.argv[1:] == ['--uninstall']
 root = Path(__file__).resolve().parent
 
 if not uninstalling:
     # Check every required file before writing any user-owned location.
     required = ('appinstall', 'appinstall.desktop',
-                'appinstall-appimage-review.desktop', *modules, *icon_sources)
+                'appinstall-appimage-review.desktop', *modules, *icon_sources,
+                *qml_sources)
     missing = [name for name in required if not (root / name).is_file()]
     if missing:
         raise SystemExit(
@@ -61,6 +69,7 @@ from source_transaction import SourceTransaction
 destinations = [
     *(state / name for name in modules),
     *icon_destinations,
+    *qml_destinations,
     bindir / 'appinstall',
     bindir / 'appinstall-uninstall',
     apps / 'appinstall.desktop',
@@ -107,11 +116,13 @@ with SourceTransaction(state, destinations) as transaction:
         for target in (
             apps / 'appinstall.desktop',
             *icon_destinations,
+            *qml_destinations,
             bindir / 'appinstall',
             bindir / 'appinstall-uninstall',
             state / 'integration.py',
             state / 'source_transaction.py',
             state / 'confirm.py',
+            state / 'manager_qml.py',
             record,
         ):
             changes[target] = None
@@ -146,6 +157,10 @@ with SourceTransaction(state, destinations) as transaction:
             src_icon = root / f'appinstall-{size}.png'
             dst_icon = data / 'icons' / 'hicolor' / f'{size}x{size}' / 'apps' / 'appinstall.png'
             changes[dst_icon] = (src_icon.read_bytes(), 0o644)
+        for src in qml_sources:
+            source = root / src
+            changes[state / src] = (
+                source.read_bytes(), stat.S_IMODE(source.stat().st_mode))
         uninstall = (
             '#!/bin/sh\nexec python3 '+
             shlex.quote(str(state / 'integration.py'))+

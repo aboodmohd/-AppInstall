@@ -10,7 +10,7 @@ ApplicationWindow {
     minimumWidth: 720
     minimumHeight: 520
     visible: true
-    title: qsTr("My Applications — AppInstall")
+    title: qsTr("AppInstall — My Applications")
     color: Theme.colors.window
 
     // Screenshot contract for --screenshot: the QML engine returns the
