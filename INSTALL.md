@@ -23,6 +23,19 @@ Use `--dry-run` to inspect the package selection and `--uninstall` to remove
 AppInstall. Use `--set-defaults` to opt into changing per-user file handlers
 or `--no-defaults` to keep them. Previous defaults are backed up.
 
+## Fedora 44 native RPM candidate (not published)
+
+The feature branch adds an isolated native RPM and a DNF installer path.
+**Public v1.5.0 does not contain an RPM.** Fedora installation must reject
+releases without `appinstall-<version>-<release>.noarch.rpm` and
+`SHA256SUMS`; no cross-distro package fallback is permitted.
+
+On a disposable Fedora 44 environment with `rpm-build`, run
+`bash tools/build_rpm.sh dist` **as a nonroot user**. Inspect and verify
+the local candidate `dist/appinstall-1.5.0-1.noarch.rpm` before manually
+installing it via DNF. The GitHub CI build is the current acceptance
+environment, not the user's CachyOS installation.
+
 ## System requirements
 
 - Python 3

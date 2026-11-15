@@ -1,0 +1,56 @@
+# Internal AppInstall RPM packaging template. @VERSION@ / @RELEASE@ are
+# populated by tools/build_rpm.sh from the canonical PKGBUILD.
+# This RPM is intended for Fedora 44 testing; wider RPM distro support requires
+# distro-specific dependency validation and separate approval.
+Name:           appinstall
+Version:        @VERSION@
+Release:        @RELEASE@
+Summary:        Install AppImage, Flatpak, DEB and RPM applications from the desktop
+License:        MIT
+URL:            https://github.com/aboodmohd/-AppInstall
+Source0:        appinstall-%{version}.tar.gz
+BuildArch:      noarch
+
+Requires:       bash
+Requires:       coreutils
+Requires:       curl
+Requires:       python3
+Requires:       xdg-utils
+Requires:       python3-pyside6
+Requires:       qt6-qtdeclarative
+Recommends:     desktop-file-utils
+Recommends:     shared-mime-info
+Suggests:       flatpak
+Suggests:       podman
+Suggests:       distrobox
+Suggests:       squashfs-tools
+
+%description
+AppInstall reviews and installs AppImage, Flatpak, DEB and RPM files through
+a Qt desktop interface. DEB/RPM application packages run through explicitly
+confirmed rootless Distrobox containers, not directly on the host.
+
+%prep
+%setup -q -c
+
+%build
+# Pure Python, shell and QML; no compiled libraries are bundled.
+
+%install
+mkdir -p %{buildroot}
+cp -a usr %{buildroot}/
+
+%files
+%{_bindir}/appinstall
+%{_prefix}/lib/appinstall
+%{_datadir}/applications/appinstall.desktop
+%{_datadir}/kio/servicemenus/appinstall-appimage-review.desktop
+%{_datadir}/icons/hicolor/*/apps/appinstall.png
+%{_datadir}/appinstall
+%{_datadir}/doc/appinstall
+%license %{_datadir}/licenses/appinstall/LICENSE
+
+%changelog
+* Sun Nov 15 2026 AppInstall Maintainers <maintainers@localhost> - @VERSION@-@RELEASE@
+- Candidate Fedora native RPM built from the existing AppInstall source inventory.
+- Keep AppInstall records and MIME defaults unchanged during installation.

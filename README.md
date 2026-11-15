@@ -51,6 +51,12 @@ curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.
 
 For a no-changes plan, run `curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash -s -- --dry-run`. The `--yes` flag allows unattended installation, but does **not** automatically change file defaults; use `--set-defaults` to opt in, or `--no-defaults` to leave them unchanged. See [INSTALL.md](INSTALL.md) for all flags and installation details.
 
+**Fedora 44 is next (candidate branch):** native RPM packaging and a Fedora
+DNF installer path are under testing. Public v1.5.0 includes only Arch and
+Debian packages, **not a Fedora RPM**; the installer must fail safely until
+a separately approved new stable release includes the native RPM.
+See [FEDORA_RPM_ACCEPTANCE.md](FEDORA_RPM_ACCEPTANCE.md).
+
 For other distributions, see [source installation](INSTALL.md). Installing
 DEB/RPM apps inside AppInstall uses Distrobox and is separate from installing
 AppInstall itself.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# AppInstall — one-command installer (stable releases, native pacman and APT packages).
+# AppInstall — one-command installer (stable releases, native pacman, APT and Fedora DNF packages).
 #
 # Public command:
 #   curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash
@@ -11,7 +11,7 @@
 #      never used).
 #   3. Downloads the package and its SHA256SUMS manifest and verifies the
 #      checksum before anything else happens.
-#   4. Installs with the native package manager (pacman or APT). The script runs as
+#   4. Installs with the native package manager (pacman, APT or Fedora DNF). The script runs as
 #      the invoking user; only package-manager commands are elevated, with their
 #      stdin handed back to the terminal so `curl | bash` keeps working.
 #   5. Offers to install missing optional backends via pacman.
@@ -57,12 +57,12 @@ MIME_TYPES=(
 )
 
 # Distribution IDs enabled without extra consent (tested systems only).
-SUPPORTED_IDS="arch cachyos"
+SUPPORTED_IDS="arch cachyos fedora"
 
 # Optional backends offered after core installation (pacman package names).
 OPTIONAL_PKGS=(flatpak podman distrobox squashfs-tools fuse2 kdialog zenity libnotify)
 
-INSTALLER_VERSION="1.2.0"
+INSTALLER_VERSION="1.3.0"
 
 # ---------------------------------------------------------------------------
 # Flags / state. Defaults respect pre-existing environment values so the test
@@ -174,6 +174,23 @@ detect_distro_id() {
   printf '%s\n' "${fields%%|*}"
 }
 
+# Treat os-release as inert data, never source or evaluate it as shell code.
+detect_distro_version() {
+  local file="${TEST_OS_RELEASE:-/etc/os-release}" line value=""
+  if [[ -r "$file" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      case "$line" in
+        VERSION_ID=*)
+          value="${line#VERSION_ID=}"
+          value="${value#\"}"; value="${value%\"}"
+          value="${value#\'}"; value="${value%\'}"
+          break ;;
+      esac
+    done <"$file"
+  fi
+  printf '%s\n' "$value"
+}
+
 detect_arch() { uname -m; }
 
 detect_de() {
@@ -249,7 +266,7 @@ run_root() {
   elif [[ -n "$DESKTOP_UPDATE" ]]; then
     local executable
     case "$1" in
-      pacman|apt-get) executable="/usr/bin/$1" ;;
+      pacman|apt-get|dnf) executable="/usr/bin/$1" ;;
       *) return 2 ;;
     esac
     shift
@@ -314,6 +331,7 @@ try:
     package_pattern = {
         "arch": r"appinstall-[0-9][A-Za-z0-9.+_-]*-any\.pkg\.tar\.zst",
         "debian": r"appinstall_[0-9][A-Za-z0-9.+~-]*_all\.deb",
+        "fedora": r"appinstall-[0-9][A-Za-z0-9.+_~-]*-[0-9][A-Za-z0-9._+~]*\.noarch\.rpm",
     }[sys.argv[2]]
     found = {}
     for asset in data["assets"]:
@@ -330,6 +348,8 @@ try:
     pkg, sums = found["pkg"], found["sums"]
     if sys.argv[2] == "debian" and not pkg[0].startswith("appinstall_" + tag[1:] + "-"):
         raise ValueError("Debian package version does not match release")
+    if sys.argv[2] == "fedora" and not pkg[0].startswith("appinstall-" + tag[1:] + "-"):
+        raise ValueError("Fedora RPM version does not match release")
     print("|".join((tag, pkg[1], sums[1], pkg[0])))
 except (ValueError, KeyError, TypeError):
     sys.exit(4)
@@ -371,6 +391,10 @@ CHECKSUM
 # Existing installation and conflict handling
 # ---------------------------------------------------------------------------
 installed_version() { # -> version string, empty when absent
+  if [[ "${1:-arch}" == fedora ]]; then
+    rpm -q --qf '%{VERSION}-%{RELEASE}\n' appinstall 2>/dev/null || true
+    return 0
+  fi
   if [[ "${1:-arch}" == debian ]]; then
     local status version
     IFS='|' read -r status version < <(dpkg-query -W -f='${Status}|${Version}\n' appinstall 2>/dev/null) || return 0
@@ -381,6 +405,21 @@ installed_version() { # -> version string, empty when absent
 }
 
 version_relation() { # a b -> a>b:1  a==b:0  a<b:-1  (empty comparison generic)
+  if [[ "${3:-arch}" == fedora ]]; then
+    # Native RPM's EVR comparison. The strict whitelist prevents Lua injection.
+    local result=""
+    if [[ ! "$1" =~ ^[A-Za-z0-9._:+~^-]+$ || ! "$2" =~ ^[A-Za-z0-9._:+~^-]+$ ]]; then
+      printf 'unk\n'; return 0
+    fi
+    result="$(rpm --eval "%{lua:print(rpm.vercmp('$1','$2'))}" 2>/dev/null)" || result="?"
+    case "$result" in
+      -1) printf 'lt\n' ;;
+       0) printf 'eq\n' ;;
+       1) printf 'gt\n' ;;
+       *) printf 'unk\n' ;;
+    esac
+    return 0
+  fi
   if [[ "${3:-arch}" == debian ]]; then
     if dpkg --compare-versions "$1" eq "$2"; then printf 'eq\n'
     elif dpkg --compare-versions "$1" gt "$2"; then printf 'gt\n'
@@ -700,8 +739,13 @@ rootless_podman_report() {
 # ---------------------------------------------------------------------------
 # Package install
 # ---------------------------------------------------------------------------
-package_version_from_asset() { # appinstall-1.0.0-1-any.pkg.tar.zst -> 1.0.0-1
+package_version_from_asset() { # native package filename -> version-release
   local base="${1##*/}"
+  if [[ "$base" == appinstall-*.noarch.rpm ]]; then
+    base="${base%.noarch.rpm}"
+    printf '%s\n' "${base#appinstall-}"
+    return 0
+  fi
   if [[ "$base" == appinstall_*_all.deb ]]; then
     base="${base#appinstall_}"
     printf '%s\n' "${base%_all.deb}"
@@ -723,6 +767,14 @@ pkg_installed_state_hint() { # installed_version target_version -> words for dry
 
 install_package_file() { # verified pkg path
   local pkg="$1"
+  if [[ "${2:-arch}" == fedora ]]; then
+    local flags=()
+    [[ $ASSUME_YES -eq 1 ]] && flags+=(-y)
+    info "Installing package with Fedora DNF: $(basename "$pkg")"
+    run_root dnf "${flags[@]}" install "$pkg" || die 5 "DNF installation failed. Review its output."
+    [[ -e "$APP_BIN" ]] || die 5 "DNF finished but $APP_BIN is missing."
+    return 0
+  fi
   if [[ "${2:-arch}" == debian ]]; then
     local flags=(--no-install-recommends)
     [[ $ASSUME_YES -eq 1 ]] && flags+=(-y)
@@ -752,6 +804,7 @@ uninstall_flow() {
   local family="${1:-arch}"
   local remove_command=(pacman -R)
   [[ "$family" == debian ]] && remove_command=(apt-get remove)
+  [[ "$family" == fedora ]] && remove_command=(dnf remove)
   if [[ $DRY_RUN -eq 1 ]]; then
     info "[dry-run] would offer package removal and association restoration."
     return 0
@@ -765,7 +818,11 @@ uninstall_flow() {
   if [[ -z "$(installed_version "$family")" ]]; then
     info "AppInstall does not appear to be installed through the native package manager; nothing to remove."
   else
-    if [[ "$family" == debian ]]; then
+    if [[ "$family" == fedora ]]; then
+      local dnf_flags=()
+      [[ $ASSUME_YES -eq 1 ]] && dnf_flags+=(-y)
+      run_root dnf "${dnf_flags[@]}" remove appinstall || die 5 "DNF removal failed."
+    elif [[ "$family" == debian ]]; then
       local apt_flags=()
       [[ $ASSUME_YES -eq 1 ]] && apt_flags+=(-y)
       run_root apt-get "${apt_flags[@]}" remove appinstall || die 5 "APT removal failed."
@@ -792,7 +849,7 @@ uninstall_flow() {
 # ---------------------------------------------------------------------------
 usage() {
   cat <<HELP
-AppInstall one-command installer (stable releases only; Arch Linux, CachyOS, Debian, Ubuntu, and Linux Mint).
+AppInstall one-command installer (stable releases only; Arch/CachyOS, Debian/Ubuntu/Mint, Fedora 44).
 
   bash install.sh [flags]
 
@@ -870,7 +927,17 @@ main() {
       install_command="apt-get --no-install-recommends install"
       package_tools=(apt-get dpkg dpkg-query dpkg-deb)
       if [[ $WITH_OPTIONAL -eq 1 ]]; then
-        die 2 "--with-optional is available on Arch and CachyOS. Install any optional backends you need through APT."
+        die 2 "--with-optional is available on Arch and CachyOS. Install any optional backends through APT."
+      fi
+      ;;
+    fedora)
+      [[ "$(detect_distro_version)" == "44" ]] ||
+        die 2 "Only Fedora 44 is verified for the candidate RPM. No changes made."
+      family=fedora
+      install_command="dnf install"
+      package_tools=(dnf rpm)
+      if [[ $WITH_OPTIONAL -eq 1 ]]; then
+        die 2 "--with-optional is available only on Arch and CachyOS. Install Fedora optional backends through DNF."
       fi
       ;;
     *)
@@ -920,7 +987,7 @@ main() {
     die 2 "Noninteractive run without --yes: nothing was installed. Run from a terminal to answer prompts."
   fi
   if ! have_cmd python3; then
-    if [[ "$family" == debian || $DESKTOP_CHECK -eq 1 || -n "$DESKTOP_UPDATE" ]]; then
+    if [[ "$family" == debian || "$family" == fedora || $DESKTOP_CHECK -eq 1 || -n "$DESKTOP_UPDATE" ]]; then
       die 2 "Install the distribution's python3 package, then retry."
     fi
     if [[ $DRY_RUN -eq 1 ]]; then
@@ -963,8 +1030,8 @@ main() {
 
   info "Resolving the latest stable release from GitHub (drafts and prereleases are never used)…"
   local release tag pkg_url sums_url pkg_name
-  if [[ "$family" == debian ]]; then
-    release="$(resolve_release "$family")" || die 4 "Could not resolve a verified Debian package from the latest stable release. Check the release assets or your network connection."
+  if [[ "$family" == debian || "$family" == fedora ]]; then
+    release="$(resolve_release "$family")" || die 4 "No verified native package for $family in latest stable release. The published v1.5.0 does not include an RPM; never install another distro's package."
   else
     release="$(resolve_release "$family")" || die 4 "GitHub API query for the latest stable release failed (network issue or rate limit). Optionally export GITHUB_TOKEN=<token> to raise the API rate limit, then retry."
   fi
@@ -1053,6 +1120,12 @@ main() {
          "$(dpkg-deb -f "$pkg_path" Version)" == "$pkg_ver" &&
          "$(dpkg-deb -f "$pkg_path" Architecture)" == all ]] ||
         die 3 "Debian package metadata did not match the selected release."
+    elif [[ "$family" == fedora ]]; then
+      local rpm_metadata=""
+      rpm_metadata="$(rpm -qp --qf '%{NAME}|%{VERSION}-%{RELEASE}|%{ARCH}' "${TMP_DIR}/${pkg_name}")" ||
+        die 3 "Could not read RPM package metadata."
+      [[ "$rpm_metadata" == "appinstall|$pkg_ver|noarch" ]] ||
+        die 3 "RPM metadata does not match the selected release."
     fi
     install_package_file "${TMP_DIR}/${pkg_name}" "$family"
   fi
