@@ -30,7 +30,9 @@ jobs:
           FAMILY: ${{ matrix.family }}
         run: |
           if [ "$FAMILY" = arch ]; then
-            pacman -Syu --needed --noconfirm curl pyside6 sudo
+            # The package declares the Qt Quick and WebKitGTK runtimes as
+            # hard dependencies: makepkg refuses to build without them.
+            pacman -Syu --needed --noconfirm curl pyside6 qt6-declarative python-gobject webkit2gtk-4.1 sudo
           else
             apt-get update
             apt-get install -y --no-install-recommends curl python3 sudo

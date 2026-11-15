@@ -34,6 +34,10 @@ or `--no-defaults` to keep them. Previous defaults are backed up.
 - squashfs-tools (passive AppImage preview — recommended but optional)
 - libarchive (package inspection)
 - binutils (optional static ELF dependency checks)
+- python-gobject + webkit2gtk-4.1 on Arch, python3-gi + gir1.2-gtk-3.0 +
+  gir1.2-webkit2-4.1 on Debian-family (the optional **My Applications
+  (Preview)** WebView). Both packages declare these, so they are
+  installed with the package.
 
 ## Install from package (Arch/CachyOS)
 

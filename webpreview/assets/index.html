@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" data-theme-choice="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My Applications — AppInstall</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+<div class="shell">
+  <header class="header">
+    <h1 class="header__title">My Applications</h1>
+    <div class="dropdown dropdown--end" id="theme-menu">
+      <button class="button button--quiet dropdown-trigger" type="button"
+              aria-haspopup="true" aria-expanded="false">Theme</button>
+      <div class="dropdown-panel" role="menu" hidden>
+        <button class="dropdown-item" type="button" role="menuitemradio"
+                aria-checked="true" data-value="auto">Follow system</button>
+        <button class="dropdown-item" type="button" role="menuitemradio"
+                aria-checked="false" data-value="light">Light</button>
+        <button class="dropdown-item" type="button" role="menuitemradio"
+                aria-checked="false" data-value="dark">Dark</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <div class="search">
+      <input id="search" class="search__input" type="search"
+             placeholder="Search applications…" aria-label="Search applications"
+             autocomplete="off" spellcheck="false">
+    </div>
+
+    <div class="dropdown" id="status-menu">
+      <button class="button dropdown-trigger" type="button"
+              aria-haspopup="true" aria-expanded="false">All statuses</button>
+      <div class="dropdown-panel" role="menu" hidden>
+        <button class="dropdown-item" type="button" role="menuitemradio"
+                aria-checked="true" data-value="all">All statuses</button>
+        <button class="dropdown-item" type="button" role="menuitemradio"
+                aria-checked="false" data-value="installed">Installed</button>
+        <button class="dropdown-item" type="button" role="menuitemradio"
+                aria-checked="false" data-value="needs-repair">Needs repair</button>
+        <button class="dropdown-item" type="button" role="menuitemradio"
+                aria-checked="false" data-value="missing">Files missing</button>
+        <button class="dropdown-item" type="button" role="menuitemradio"
+                aria-checked="false" data-value="stale">Stale record</button>
+        <button class="dropdown-item" type="button" role="menuitemradio"
+                aria-checked="false" data-value="corrupted">Corrupted</button>
+      </div>
+    </div>
+
+    <div class="dropdown dropdown--end" id="sort-menu">
+      <button class="button dropdown-trigger" type="button"
+              aria-haspopup="true" aria-expanded="false">Name (A–Z)</button>
+      <div class="dropdown-panel" role="menu" hidden>
+        <button class="dropdown-item" type="button" role="menuitemradio"
+                aria-checked="true" data-value="name-asc">Name (A–Z)</button>
+        <button class="dropdown-item" type="button" role="menuitemradio"
+                aria-checked="false" data-value="name-desc">Name (Z–A)</button>
+        <button class="dropdown-item" type="button" role="menuitemradio"
+                aria-checked="false" data-value="recent">Recently launched</button>
+        <button class="dropdown-item" type="button" role="menuitemradio"
+                aria-checked="false" data-value="size">Size (largest)</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="filters">
+    <div class="chips" role="group" aria-label="Filter by format">
+      <button class="chip chip--active" type="button" data-format="all"
+              aria-pressed="true">All</button>
+      <button class="chip" type="button" data-format="appimage"
+              aria-pressed="false">AppImage</button>
+      <button class="chip" type="button" data-format="flatpak"
+              aria-pressed="false">Flatpak</button>
+      <button class="chip" type="button" data-format="deb"
+              aria-pressed="false">DEB</button>
+      <button class="chip" type="button" data-format="rpm"
+              aria-pressed="false">RPM</button>
+    </div>
+    <p class="count" id="count">0 applications</p>
+  </div>
+
+  <p class="banner" id="error" hidden></p>
+
+  <main class="list-region">
+    <ul class="app-list" id="app-list"></ul>
+    <p class="empty" id="empty" hidden></p>
+  </main>
+</div>
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>
