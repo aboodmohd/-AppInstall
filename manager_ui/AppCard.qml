@@ -28,7 +28,7 @@ Item {
         id: cardSurface
         anchors.fill: parent
         radius: 10
-        color: card.hovered ? Theme.colors.hover : Theme.colors.surface
+        color: card.hovered ? Theme.colors.surfaceAlt : Theme.colors.surface
         border.color: card.activeFocus ? Theme.colors.focusRing : Theme.colors.border
         border.width: card.activeFocus ? 2 : 1
 
