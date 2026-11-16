@@ -88,6 +88,65 @@ class RepositoryCatalogTests(unittest.TestCase):
         self.assertEqual(result["description"], "Image editor")
         self.assertEqual(result["container"], "fedora-apps")
 
+    def test_browse_deb_returns_real_filtered_apps_without_a_query(self):
+        payload = ("gimp - GNU Image Manipulation Program\n"
+                   "inkscape - vector graphics editor\n"
+                   "libgimp-3.0-0 - libraries for GIMP\n"
+                   "gimp-data - Data files for GIMP\n"
+                   "evince - document viewer\n"
+                   "gimp-help-de - documentation for GIMP\n"
+                   "inkscape - duplicate\n")
+        with patch.object(catalog, "ready", return_value=True), \
+             patch.object(catalog, "_run", return_value=payload) as cmd:
+            results = catalog.browse("deb")
+        self.assertEqual({r["appId"] for r in results},
+                         {"gimp", "inkscape", "evince"})
+        self.assertTrue(all(row["source"] == "DEB" for row in results))
+        call = cmd.call_args
+        self.assertEqual(call.args[0], "deb")
+        self.assertEqual(call.args[1][:2], ["apt-cache", "search"])
+        self.assertIn("browser", call.args[1][2])
+        self.assertNotIn("gimp", call.args[1][2])
+
+    def test_browse_rpm_selects_gui_desktop_file_providers(self):
+        payload = ("gimp\tImage editor\t3.0\tx86_64\n"
+                   "evince\tDocument viewer\t47\tnoarch\n"
+                   "libpaint\tShared library\t1\tx86_64\n")
+        with patch.object(catalog, "ready", return_value=True), \
+             patch.object(catalog, "_run", return_value=payload) as cmd:
+            rows = catalog.browse("rpm")
+        self.assertEqual({r["appId"] for r in rows}, {"gimp", "evince"})
+        self.assertEqual(rows[0]["source"], "RPM")
+        self.assertIn("--file=/usr/share/applications/*.desktop",
+                      cmd.call_args.args[1])
+
+    def test_rpm_browse_falls_back_when_filelists_are_missing(self):
+        payload = "firefox\tWeb browser\t145\tx86_64\n"
+        with patch.object(catalog, "ready", return_value=True), \
+             patch.object(catalog, "_run",
+                          side_effect=[RuntimeError("missing filelists"), payload]) as cmd:
+            result = catalog.browse("rpm")
+        self.assertEqual([row["appId"] for row in result], ["firefox"])
+        self.assertEqual(cmd.call_count, 2)
+        self.assertIn("*browser*", cmd.call_args.args[1])
+
+    def test_browse_never_creates_a_container_just_to_list_packages(self):
+        with patch.object(catalog, "ready", return_value=False), \
+             patch.object(container_backend, "Engine") as engine:
+            for kind in ("deb", "rpm"):
+                with self.subTest(kind=kind), self.assertRaises(catalog.CatalogNotReady):
+                    catalog.browse(kind)
+        engine.assert_not_called()
+
+    def test_browse_ranks_before_limiting_to_240(self):
+        payload = "".join(f"tool-{i:04d} - graphical interface utility\n"
+                          for i in range(400))
+        with patch.object(catalog, "ready", return_value=True), \
+             patch.object(catalog, "_run", return_value=payload):
+            results = catalog.browse("deb")
+        self.assertEqual(len(results), catalog.SEARCH_LIMIT)
+        self.assertEqual(len({r["appId"] for r in results}), catalog.SEARCH_LIMIT)
+
     def test_prepare_requires_explicit_call_and_closes_engine(self):
         engine = Mock()
         with patch.object(catalog.backend, "Engine", return_value=engine), \
