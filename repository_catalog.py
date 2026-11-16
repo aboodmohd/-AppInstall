@@ -6,13 +6,18 @@ No container is created merely by browsing. First-time preparation requires
 an explicit confirmation in the UI, and all install operations have their
 own transaction-review step in container_ui.Workflow.
 """
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
+from html.parser import HTMLParser
 import json
 import os
 import platform
 import re
 import shutil
 import subprocess
+import urllib.error
 import urllib.parse
+import urllib.request
 
 import container_backend as backend
 
@@ -200,3 +205,126 @@ def package_info(kind, name):
         "source": "Debian 13 repositories" if kind == "deb" else "Fedora 44 repositories",
         "install_method": "repository",
     }
+
+
+# AppStream artwork is optional metadata only. Search/install must never rely on
+# a logo being available. Debian's generated package pages contain matching
+# component icons; many development/library/CLI packages have no AppStream icon.
+APPSTREAM_BASE = "https://appstream.debian.org"
+ICON_LOOKUP_LIMIT = 12
+ICON_REQUEST_TIMEOUT = 3
+MAX_METADATA_BYTES = 1024 * 1024
+_NO_ICON_PARTS = ("-dev", "-dbg", "-dbgsym", "-doc", "-docs", "-data",
+                  "-common", "-help", "-l10n", "-locale", "-lang", "-i18n",
+                  "-translations", "-headers", "-test", "-tests")
+_NO_ICON_PREFIXES = ("lib", "gir1.", "python3-", "perl-", "ruby-", "fonts-",
+                     "golang-", "node-", "texlive-", "firmware-", "kernel-")
+
+
+class _NoRedirects(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, msg, headers, newurl):
+        raise ValueError("Unexpected AppStream redirect")
+
+
+def _is_visual_package(name):
+    """Heuristic for *artwork lookups*, not a claim that a package is a GUI."""
+    if not isinstance(name, str) or not PACKAGE_RE.fullmatch(name):
+        return False
+    if name.lower().startswith(_NO_ICON_PREFIXES):
+        return False
+    parts = ("-" + name.lower() + "-")
+    return not any(piece in parts for piece in (
+        "-data-", "-dev-", "-dbg-", "-dbgsym-", "-doc-", "-docs-",
+        "-common-", "-help-", "-locale-", "-l10n-", "-lang-",
+        "-i18n-", "-translations-", "-headers-", "-tests-",
+        "-test-", "-devel-", "-static-"
+    ))
+
+
+def _trusted_icon_url(src):
+    if not isinstance(src, str) or len(src) > 850 or not src:
+        return ""
+    url = urllib.parse.urljoin(APPSTREAM_BASE + "/", src)
+    parts = urllib.parse.urlsplit(url)
+    # Never display arbitrary links embedded in untrusted HTML.
+    if (parts.scheme != "https" or parts.netloc != "appstream.debian.org"
+            or parts.username or parts.password or parts.query or parts.fragment):
+        return ""
+    pieces = parts.path.split("/")
+    if (".." in pieces or "." in pieces
+            or not parts.path.startswith("/media/pool/")
+            or "/icons/" not in parts.path
+            or not parts.path.lower().endswith(".png")):
+        return ""
+    return url
+
+
+class _AppStreamIconHTML(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.icons = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag != "img":
+            return
+        data = dict(attrs)
+        url = _trusted_icon_url(data.get("src"))
+        if url:
+            self.icons.append(url)
+
+
+@lru_cache(maxsize=768)
+def _debian_appstream_icon(name):
+    """Official Debian AppStream metadata for an *exact* package name.
+
+    Fail closed and silently keep the letter if the metadata/icon is missing.
+    No response can redirect to a different host or exceed the size cap.
+    """
+    if not _is_visual_package(name):
+        return ""
+    url = APPSTREAM_BASE + "/trixie/main/metainfo/" + urllib.parse.quote(name, safe="") + ".html"
+    request = urllib.request.Request(
+        url, headers={"Accept": "text/html", "User-Agent": "AppInstall/1.7 Discover icons"})
+    try:
+        opener = urllib.request.build_opener(_NoRedirects)
+        with opener.open(request, timeout=ICON_REQUEST_TIMEOUT) as response:
+            if response.geturl() != url:
+                return ""
+            data = response.read(MAX_METADATA_BYTES + 1)
+        if len(data) > MAX_METADATA_BYTES:
+            return ""
+        parser = _AppStreamIconHTML()
+        parser.feed(data.decode("utf-8"))
+    except (OSError, ValueError, UnicodeError, urllib.error.URLError):
+        return ""
+    # 128x128 first if the service supplies it; PNG reliably works in Qt.
+    return sorted(parser.icons, key=lambda x: ("128x128" not in x, "64x64" not in x))[0] if parser.icons else ""
+
+
+def icons_for_results(rows):
+    """Read-only best-effort artwork enrichment, bounded and off the GUI thread.
+
+    Fedora entries use an icon only when the same named upstream application
+    has a Debian AppStream icon; we do not assume package format equivalence.
+    """
+    candidates = []
+    for row in rows:
+        name = row.get("appId", "")
+        if _is_visual_package(name) and name not in candidates:
+            candidates.append(name)
+        if len(candidates) == ICON_LOOKUP_LIMIT:
+            break
+    if not candidates:
+        return {}
+    icons = {}
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        tasks = {executor.submit(_debian_appstream_icon, name): name
+                 for name in candidates}
+        for future in as_completed(tasks):
+            try:
+                url = future.result()
+                if url:
+                    icons[tasks[future]] = url
+            except Exception:
+                pass
+    return icons
