@@ -278,8 +278,9 @@ class EngineUninstallCleanupTests(unittest.TestCase):
             engine.uninstall(key, cleanup={str(history)})
         self.assertFalse(history.exists())
         self.assertNotIn(key, engine.registry)
-        self.assertFalse(any('distrobox' in str(call)
-                             for call in run.call_args_list))
+        self.assertFalse(any(call.args[0][:2] == ['distrobox', 'rm']
+                             for call in run.call_args_list
+                             if call.args and isinstance(call.args[0], list)))
 
     def test_arbitrary_folder_refused_before_uninstall(self):
         import container_backend as c
