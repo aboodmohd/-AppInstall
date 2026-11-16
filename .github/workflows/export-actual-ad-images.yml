@@ -1,0 +1,40 @@
+name: Export exact original AppInstall marketing images
+on:
+  push:
+    branches:
+      - assets/appinstall-real-ad-20261116
+permissions:
+  contents: read
+jobs:
+  export:
+    if: github.repository == 'aboodmohd/-AppInstall' && github.ref == 'refs/heads/assets/appinstall-real-ad-20261116'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: d9f3798b2e43a1e2d8ac6a748b42d5f421d0d74d
+          persist-credentials: false
+      - name: Verify that image assets are genuine sources from the exact approved commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = d9f3798b2e43a1e2d8ac6a748b42d5f421d0d74d
+          for file in appinstall-512.png docs/screenshots/manager-qml-dark.png docs/screenshots/manager-qml-light.png evidence/phase4/manager-qml-list-dark.png; do
+            test -s "$file"
+            file "$file" | grep -q 'PNG image data'
+          done
+          sha256sum appinstall-512.png docs/screenshots/manager-qml-dark.png docs/screenshots/manager-qml-light.png evidence/phase4/manager-qml-list-dark.png > AD_SOURCE_SHA256SUMS
+          sha256sum -c AD_SOURCE_SHA256SUMS
+      - name: Export original screenshot/logo without retouching or regeneration
+        uses: actions/upload-artifact@v4
+        with:
+          name: appinstall-official-logo-and-original-screenshots-20261116
+          path: |
+            appinstall-512.png
+            docs/screenshots/manager-qml-dark.png
+            docs/screenshots/manager-qml-light.png
+            evidence/phase4/manager-qml-list-dark.png
+            AD_SOURCE_SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
