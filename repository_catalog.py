@@ -103,7 +103,7 @@ def prepare(kind):
         raise RuntimeError("Container setup did not complete.")
 
 
-def _rows(kind, content):
+def _rows(kind, content, limit=SEARCH_LIMIT):
     """Normalize package manager output; never interpret text as shell input."""
     results, seen = [], set()
     for line in content.splitlines():
@@ -132,9 +132,93 @@ def _rows(kind, content):
                           if kind == "deb" else
                           "https://packages.fedoraproject.org/pkgs/" + urllib.parse.quote(name) + "/"),
         })
-        if len(results) >= SEARCH_LIMIT:
+        if len(results) >= limit:
             break
     return results
+
+
+# Browsing draws names from the real distro package indexes. These phrases
+# describe types of desktop software, NOT a curated list of app/package names.
+# APT searches package descriptions; DNF prefers packages advertising desktop
+# launchers in its official repo file metadata.
+BROWSE_APT_PATTERN = (
+    "web browser|image editor|image manipulation|text editor|video player|"
+    "media player|music player|audio player|terminal emulator|file manager|"
+    "image viewer|document viewer|photo editor|graphic editor|graphics editor|"
+    "email client|instant messag|office suite|desktop publishing|drawing program|"
+    "painting program|video editor|screen recorder|desktop application|"
+    "graphical interface|desktop environment|computer game"
+)
+BROWSE_DNF_FILE = "/usr/share/applications/*.desktop"
+BROWSE_DNF_GLOBS = (
+    "*browser*", "*editor*", "*player*", "*viewer*", "*office*",
+    "*graphics*", "*photo*", "*video*", "*terminal*", "*paint*", "*media*",
+)
+BROWSE_TERMS = (
+    "browser", "image", "photo", "editor", "media", "music", "video",
+    "graphics", "drawing", "terminal", "office", "document", "game",
+    "mail", "chat", "player", "viewer", "desktop", "file manager",
+)
+BROWSE_BAD_SUMMARIES = (
+    "documentation", "development files", "debugging symbols",
+    "data files for", "shared library", "libraries for",
+    "translation for", "language pack", "plugin for", "headers for",
+)
+
+
+def _browse_rank(row):
+    """Prefer desktop-like names, not alphabetically early dependency packages."""
+    name = row["appId"].lower()
+    summary = row["summary"].lower()
+    score = sum(3 for word in BROWSE_TERMS if word in summary)
+    score += sum(2 for word in BROWSE_TERMS if word in name)
+    score += 2 if not any(name.startswith(p) for p in ("gnome-", "kde-", "qt-", "gtk-")) else 0
+    score += 1 if len(name) <= 20 else 0
+    return -score, name
+
+
+def _browse_results(kind, content):
+    # Parse more candidates than a single page; rank before applying the
+    # 240-entry display cap so package index ordering does not determine the UI.
+    results = _rows(kind, content, limit=8000)
+    filtered = [
+        row for row in results
+        if _is_visual_package(row["appId"])
+        and row["summary"].strip()
+        and not row["summary"].lower().startswith(BROWSE_BAD_SUMMARIES)
+    ]
+    return sorted(filtered, key=_browse_rank)[:SEARCH_LIMIT]
+
+
+def browse(kind):
+    """Browse real graphical-looking packages without a typed search term.
+
+    Does not create containers, install anything, or modify metadata.
+    This is a relevance-ranked selection, NOT a claim of popular/download data.
+    """
+    _identity(kind)
+    if not ready(kind):
+        raise CatalogNotReady("Repository not yet prepared. Select Enable repository.")
+    if kind == "deb":
+        output = _run(kind, ["apt-cache", "search", BROWSE_APT_PATTERN], timeout=90)
+    else:
+        fmt = "--queryformat=%{name}\t%{summary}\t%{version}\t%{arch}"
+        query = [
+            "dnf", "repoquery", "--available", "--latest-limit=1",
+            fmt, "--file=" + BROWSE_DNF_FILE,
+        ]
+        try:
+            output = _run(kind, query, timeout=120)
+        except RuntimeError:
+            # Some rpm metadata mirrors do not publish filelists to libdnf5;
+            # fall back to real matching package names, never fake app cards.
+            output = ""
+        if not output.strip():
+            output = _run(kind, [
+                "dnf", "repoquery", "--available", "--latest-limit=1",
+                fmt, *BROWSE_DNF_GLOBS,
+            ], timeout=90)
+    return _browse_results(kind, output)
 
 
 def search(kind, query):
