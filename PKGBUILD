@@ -42,6 +42,7 @@ source=('install.sh'
         'url_install.py'
         'url_dialog.py'
         'flathub_catalog.py'
+        'repository_catalog.py'
         'README.md'
         'LICENSE'
         'LAUNCH_DIAGNOSTICS.md'
@@ -127,11 +128,12 @@ b2sums=(
         '48f56d95504710dc4ee0dc790aa11323ff82eb90ede2dee7da1d398f00714648333e098bebe4722645404081f016bfea5fe55fe79dff96d9839d9a60622ed47d'
         '93eee495efa0b17d12c4ccb9f5a3c9e5e0943c8f970380a2f02ed6cb9234feb81e97cfbcb30ce05df90726b897d6364e16cacba4ee2db5aef619bb0b78fc168a'
         '52d35713d301522f310302200c6dc53d2b79f683002814cc39fcc0667bb1957b27f28d50d0311c07e8a558a02f617a20858d49d7cd4275d7943a69f60bb9601a'
+        'SKIP'
 )
 package() {
     install -Dm0644 "$srcdir/RELEASE_NOTES.md" "$pkgdir/usr/share/appinstall/RELEASE_NOTES.md"
     install -Dm0755 "$srcdir/install.sh" "$pkgdir/usr/bin/appinstall-installer"
-    for helper in container_backend.py container_ui.py launch_monitor.py manager.py manager_qml.py result_ui.py runtime_probe.py diagnostics_core.py diagnostics_ui.py url_install.py url_dialog.py flathub_catalog.py; do
+    for helper in container_backend.py container_ui.py launch_monitor.py manager.py manager_qml.py result_ui.py runtime_probe.py diagnostics_core.py diagnostics_ui.py url_install.py url_dialog.py flathub_catalog.py repository_catalog.py; do
         install -Dm0644 "$srcdir/$helper" "$pkgdir/usr/bin/$helper"
     done
     # QML prototype of the My Applications screen (manager_qml.py loads it
