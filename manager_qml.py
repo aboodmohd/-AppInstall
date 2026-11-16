@@ -621,8 +621,10 @@ class Bridge(QtCore.QObject):
         """Latest-wins search using a single asynchronous worker."""
         query = str(query).strip()[:90]
         source = source if source in ('Flatpak', 'AppImage', 'DEB', 'RPM') else 'Flatpak'
+        was_setup_required = (self._catalog_source == source
+                              and self._catalog_setup_required)
         self._catalog_source = source
-        self._catalog_setup_required = False
+        self._catalog_setup_required = was_setup_required if query and len(query) < 2 else False
         self.catalogResultsChanged.emit()
         if query and len(query) < 2:
             self._catalog_pending = None
@@ -661,7 +663,8 @@ class Bridge(QtCore.QObject):
         worker.start()
 
     @QtCore.Slot(str)
-    def prepareCatalogSource(self, source):
+    @QtCore.Slot(str, str)
+    def prepareCatalogSource(self, source, query=''):
         """One-time explicit approval to create/index a persistent rootless container."""
         if source not in ('DEB', 'RPM') or self._catalog_source != source:
             return
@@ -679,7 +682,8 @@ class Bridge(QtCore.QObject):
             return
         self._catalog_setup_required = False
         self.catalogResultsChanged.emit()
-        self._catalog_pending = ('', source)
+        query = str(query).strip()[:90]
+        self._catalog_pending = (query if len(query) >= 2 else '', source)
         self._start_catalog_worker(initialize=True)
 
     def _catalog_needs_setup(self, source):
@@ -733,6 +737,8 @@ class Bridge(QtCore.QObject):
     def _catalog_failed(self, query, message):
         if self._catalog_pending is None and self._catalog_worker is not None and \
                 self._catalog_worker.source == self._catalog_source:
+            if self._catalog_worker.initializing:
+                self._catalog_setup_required = True
             self._catalog_all = []
             self._catalog.replace([])
             self.catalogResultsChanged.emit()
