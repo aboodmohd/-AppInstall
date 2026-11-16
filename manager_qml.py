@@ -423,7 +423,8 @@ class CatalogWorker(QtCore.QThread):
                     repository_catalog.prepare(kind)
                 if not repository_catalog.ready(kind):
                     raise repository_catalog.CatalogNotReady("Repository not prepared.")
-                results = repository_catalog.search(kind, self.query) if self.query else []
+                results = (repository_catalog.search(kind, self.query)
+                           if self.query else repository_catalog.browse(kind))
             elif self.source == "AppImage":
                 results = (flathub_catalog.appimage_search(self.query)
                            if self.query else flathub_catalog.appimage_browse())
@@ -431,6 +432,8 @@ class CatalogWorker(QtCore.QThread):
                 results = (flathub_catalog.search(self.query)
                            if self.query else flathub_catalog.popular())
             self.ready.emit(self.query, results)
+            # Blank-query native browse returns packages from the official
+            # repository, just as a typed search does.
             # Show package cards immediately. Official AppStream icons resolve
             # later on this worker, never holding up the main QML/UI thread.
             if self.source in ("DEB", "RPM") and results:
@@ -744,7 +747,8 @@ class Bridge(QtCore.QObject):
                     'DEB': 'Debian APT', 'RPM': 'Fedora DNF'}[self._catalog_source]
         if not total and self._catalog_source in ('DEB', 'RPM') \
                 and not self._catalog_setup_required:
-            status = 'Search ' + provider + ' packages by name (two or more characters).'
+            status = ('No browse results from ' + provider
+                      + '. Search by package name or refresh the repository.')
         elif not total:
             status = 'No applications matched this search on ' + provider + '.'
         elif shown < total:
