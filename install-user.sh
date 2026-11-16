@@ -14,7 +14,7 @@ installed_by=""
 if command -v pacman >/dev/null 2>&1 && pacman -Qq appinstall >/dev/null 2>&1; then
   installed_by="pacman"
 elif command -v dpkg-query >/dev/null 2>&1 && \
-     dpkg-query -W -f='\${Status}' appinstall 2>/dev/null | grep -qx 'install ok installed'; then
+     dpkg-query -W -f='${Status}' appinstall 2>/dev/null | grep -qx 'install ok installed'; then
   installed_by="dpkg"
 elif command -v rpm >/dev/null 2>&1 && rpm -q appinstall >/dev/null 2>&1; then
   installed_by="rpm"
