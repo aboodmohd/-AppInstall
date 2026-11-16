@@ -1,0 +1,154 @@
+name: Publish AppInstall v1.7.0
+
+# Version-locked, one-time release publication after status checks and PR merge.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-v1.7.0.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: appinstall-v1.7.0-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Verify and publish approved 1.7.0 assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_SHA: ac42b1f350d4d158318778a7ce18252c3b79d4c9
+      CANDIDATE_SHA: 2cf88fda852c144fc99cc723dab6afff4c1bdc54
+      EXPECTED_TREE: 01e156ff3caadc983950f11b9eaa66389c46d08c
+      BUILD_RUN_ID: "43894853390"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Verify release identity, provenance, and absence of tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$(git rev-parse "HEAD^")" = "$TARGET_SHA"
+          test "$(git rev-parse "$TARGET_SHA^{tree}")" = "$EXPECTED_TREE"
+          test "$(git rev-parse "$CANDIDATE_SHA^{tree}")" = "$EXPECTED_TREE"
+          test "$(git show "$TARGET_SHA:PKGBUILD" | sed -n 's/^pkgver=//p')" = 1.7.0
+          test "$(git show "$TARGET_SHA:appinstall" | sed -n 's/^VERSION="\([^"]*\)"$/\1/p')" = 1.7.0
+          if gh release view v1.7.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "v1.7.0 already published: refusing overwrite" >&2
+            exit 1
+          fi
+          if git ls-remote --tags --exit-code origin refs/tags/v1.7.0 >/dev/null 2>&1; then
+            echo "v1.7.0 tag exists: refusing overwrite" >&2
+            exit 1
+          fi
+          read -r run_sha conclusion <<<"$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID" --jq '.head_sha + " " + .conclusion')"
+          test "$run_sha" = "$TARGET_SHA"
+          test "$conclusion" = success
+
+      - name: Download and verify four native/portable release formats
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir release
+          gh run download "$BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name appinstall-v1.7.0-release-candidate --dir release
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          expected = {
+              "appinstall-1.7.0-1-any.pkg.tar.zst",
+              "appinstall_1.7.0-1_all.deb",
+              "appinstall-1.7.0-1.noarch.rpm",
+              "appinstall-1.7.0-portable.tar.gz",
+          }
+          observed = {p.name for p in Path("release").iterdir() if p.is_file()}
+          assert observed == expected | {"SHA256SUMS"}, observed
+          lines = Path("release/SHA256SUMS").read_text().splitlines()
+          assert len(lines) == 4, lines
+          manifest_names = {line.split(None, 1)[1].lstrip("*") for line in lines}
+          assert manifest_names == expected, manifest_names
+          PYTHON
+          (cd release && sha256sum --check --strict SHA256SUMS)
+
+      - name: Prepare public v1.7.0 release notes
+        shell: bash
+        run: |
+          cat > /tmp/appinstall-v1.7-notes.md <<'NOTES'
+          # AppInstall v1.7.0 — Discover Apps
+
+          Discover Apps adds a responsive multi-column application grid with
+          automatic browsing, search, and a **View more** button.
+
+          - **Flatpak:** live Flathub discovery and confirmed installs
+          - **AppImage:** live AppImageHub discovery and reviewed direct downloads
+          - **DEB:** official Debian 13 APT catalog and container installations
+          - **RPM:** official Fedora 44 DNF5 catalog and container installations
+
+          Selecting an app opens AppInstall's review/confirmation process.
+          DEB/RPM container initialization requires separate user consent.
+          The existing My Applications screen, horizontal menu and settings
+          remain intact. Icons are best-effort; some package cards show letters.
+
+          ## Installation options
+
+          | Host distribution | Release asset |
+          | --- | --- |
+          | Arch Linux / CachyOS (x86_64) | appinstall-1.7.0-1-any.pkg.tar.zst |
+          | Debian 13 / Ubuntu 24.04, 26.04 / Linux Mint 22 (x86_64) | appinstall_1.7.0-1_all.deb |
+          | Fedora 44 (x86_64) | appinstall-1.7.0-1.noarch.rpm |
+          | Other Linux desktop distributions | appinstall-1.7.0-portable.tar.gz (source) |
+
+          On the verified native distributions, use the
+          [one-command installer](https://github.com/aboodmohd/-AppInstall#install-appinstall).
+          Other distributions may install the portable *source* bundle locally:
+          verify the archive against SHA256SUMS, extract it, and run
+          `bash ./install-user.sh` as a non-root user.
+
+          The portable bundle needs host-provided Python 3, Bash, freedesktop
+          integration tools and PySide6/Qt Quick for the full Discover interface.
+          It is **not** a universal binary and isn't guaranteed to work on every
+          Linux distribution, architecture or desktop environment.
+          Rootless Distrobox containers used for DEB/RPM applications are **not
+          security sandboxes**; application compatibility varies.
+
+          **Verification:** 13/13 workflows passed on the merged commit,
+          including 627 automated tests (2 skipped). The pacman, APT, RPM
+          and portable artifacts were built and verified together against
+          one SHA256SUMS manifest. The portable CLI/source installer was
+          checked on Arch, Debian 13, Fedora 44 and Alpine 3.22; Alpine
+          graphical compatibility has not been validated.
+          NOTES
+
+      - name: Publish public stable GitHub release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create v1.7.0 --repo "$GITHUB_REPOSITORY" \
+            --target "$TARGET_SHA" \
+            --title "AppInstall v1.7.0 — Discover Apps" \
+            --notes-file /tmp/appinstall-v1.7-notes.md \
+            --latest --fail-on-no-commits \
+            release/appinstall-1.7.0-1-any.pkg.tar.zst \
+            release/appinstall_1.7.0-1_all.deb \
+            release/appinstall-1.7.0-1.noarch.rpm \
+            release/appinstall-1.7.0-portable.tar.gz \
+            release/SHA256SUMS
+
+      - name: Verify published release and tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh release view v1.7.0 --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length')" -eq 5
+          gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v1.7.0" \
+            --jq '.object.sha' | grep -Fx "$TARGET_SHA"
+          gh release view v1.7.0 --repo "$GITHUB_REPOSITORY" \
+            --json url,isDraft,isPrerelease,assets \
+            --jq '{url:.url,draft:.isDraft,prerelease:.isPrerelease,assets:[.assets[].name]}'
