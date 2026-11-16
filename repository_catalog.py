@@ -136,7 +136,8 @@ def search(kind, query):
     _identity(kind)
     if not ready(kind):
         raise CatalogNotReady("Repository not yet prepared. Select Enable repository.")
-    if not isinstance(query, str) or not SEARCH_RE.fullmatch(query.strip()):
+    if (not isinstance(query, str) or "\n" in query or "\r" in query
+            or not SEARCH_RE.fullmatch(query.strip())):
         raise ValueError("Enter at least two letters or numbers to search packages.")
     query = query.strip()
     if kind == "deb":
