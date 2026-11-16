@@ -28,6 +28,38 @@ jobs:
             curl coreutils findutils xdg-utils desktop-file-utils \
             shared-mime-info squashfs-tools libarchive
 
+      - name: Verify real DNF5 browse output (not just mocked fixtures)
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import subprocess
+          from unittest.mock import patch
+          import repository_catalog as catalog
+
+          def host_dnf(kind, args, timeout=120):
+              assert kind == "rpm" and args[0] == "dnf"
+              process = subprocess.run(args, capture_output=True, text=True, timeout=timeout)
+              if process.returncode:
+                  raise RuntimeError((process.stdout + process.stderr)[-2000:])
+              if len(process.stdout.encode()) > 4 * 1024 * 1024:
+                  raise RuntimeError("DNF5 output exceeds catalog metadata cap")
+              return process.stdout
+
+          # CI already runs in a disposable Fedora 44 container. Bypass only
+          # the AppInstall-owned Distrobox check; query actual configured repos.
+          with patch.object(catalog, "ready", return_value=True), \
+               patch.object(catalog, "_run", side_effect=host_dnf):
+              results = catalog.browse("rpm")
+              assert results, "Empty Fedora app browse result from real DNF5 repos"
+              assert any(row["summary"] for row in results)
+              print("Real Fedora browse:", len(results), "cards; sample:", 
+                    [(r["name"], r["summary"][:40]) for r in results[:5]])
+              typed = catalog.search("rpm", "gimp")
+              assert typed and any(r["appId"] == "gimp" for r in typed), \
+                  "DNF5 gimp search returned no parseable rows"
+              print("Real Fedora gimp search:", len(typed), "packages")
+          PY
+
       - name: Validate script/spec and build as nonroot
         run: |
           set -euo pipefail
