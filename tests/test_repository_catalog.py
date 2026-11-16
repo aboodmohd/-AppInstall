@@ -130,6 +130,39 @@ class RepositoryCatalogTests(unittest.TestCase):
         self.assertEqual(cmd.call_count, 2)
         self.assertIn("*browser*", cmd.call_args.args[1])
 
+    def test_dnf5_queryformat_has_literal_record_separator_for_all_operations(self):
+        # DNF5 does NOT append a newline for each queryformat-rendered record.
+        result = "gimp\tImage editor\t3.0\tx86_64\nfirefox\tWeb browser\t145\tx86_64\n"
+        with patch.object(catalog, "ready", return_value=True), \
+             patch.object(catalog, "_run", return_value=result) as runner:
+            rows = catalog.browse("rpm")
+            self.assertEqual({r["appId"] for r in rows}, {"gimp", "firefox"})
+            self.assertTrue(runner.call_args.args[1][4].endswith("\\n"))
+            # Test the actual literal DNF5 escape, not a Python newline.
+            self.assertNotIn("\n", runner.call_args.args[1][4])
+
+            catalog.search("rpm", "gimp")
+            args = runner.call_args.args[1]
+            self.assertTrue(args[4].endswith("\\n"))
+            self.assertEqual([r["appId"] for r in catalog._rows("rpm", result)],
+                             ["gimp", "firefox"])
+
+        metadata = "gimp\t3.0-1\tx86_64\tImage editor\n"
+        with patch.object(catalog, "_run", return_value=metadata) as runner, \
+             patch.object(catalog.platform, "machine", return_value="x86_64"):
+            info = catalog.package_info("rpm", "gimp")
+            self.assertEqual(info["name"], "gimp")
+            self.assertTrue(runner.call_args.args[1][4].endswith("\\n"))
+
+    def test_rpm_browse_falls_back_when_desktop_query_is_nonempty_but_unparseable(self):
+        rows = "firefox\tWeb browser\t145\tx86_64\n"
+        with patch.object(catalog, "ready", return_value=True), \
+             patch.object(catalog, "_run",
+                          side_effect=["unparseable records", rows]) as runner:
+            results = catalog.browse("rpm")
+        self.assertEqual([row["appId"] for row in results], ["firefox"])
+        self.assertEqual(runner.call_count, 2)
+
     def test_browse_never_creates_a_container_just_to_list_packages(self):
         with patch.object(catalog, "ready", return_value=False), \
              patch.object(container_backend, "Engine") as engine:
