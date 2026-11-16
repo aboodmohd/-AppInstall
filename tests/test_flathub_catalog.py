@@ -105,7 +105,7 @@ class CatalogApiTests(unittest.TestCase):
         self.assertEqual(rows[0]['name'], 'Tool')
         self.assertEqual(rows[0]['iconUrl'], '')
 
-    def test_search_results_bounded_to_24(self):
+    def test_search_results_bounded_to_240(self):
         hits=[{'app_id': f'org.example.App{i}'} for i in range(75)]
         self.assertEqual(len(cat._base_entries(hits)), cat.MAX_SEARCH_RESULTS)
 
@@ -150,6 +150,45 @@ class CatalogApiTests(unittest.TestCase):
         with self.assertRaises(cat.CatalogError):
             blocker.redirect_request(None, None, 302, 'redirect', {},
                                      'https://169.254.169.254/latest/meta-data/')
+
+
+class AppImageHubTests(unittest.TestCase):
+    def sample(self):
+        return [
+            {'name': 'Example_App', 'description': 'Sample graphics editor',
+             'categories': ['Graphics'],
+             'icons': ['Example_App/icons/128x128/example.png'],
+             'links': [{'type': 'Download',
+                        'url': 'https://github.com/example/app/releases/latest/download/example.AppImage'}]},
+            {'name': 'Other_App', 'description': 'Office utility',
+             'icons': ['../../secret.png'],
+             'links': [{'type': 'Download', 'url': 'https://evil.invalid/setup.AppImage'}]},
+        ]
+
+    def test_search_uses_real_feed_metadata_and_safe_install_links(self):
+        with patch.object(cat, '_appimage_feed', return_value=self.sample()):
+            rows = cat.appimage_search('graphics')
+            self.assertEqual(len(rows), 1)
+            row = rows[0]
+            self.assertEqual(row['source'], 'AppImage')
+            self.assertEqual(row['category'], 'Graphics')
+            self.assertEqual(row['name'], 'Example App')
+            self.assertTrue(row['iconUrl'].startswith('https://appimage.github.io/database/'))
+            self.assertTrue(row['installUrl'].endswith('.AppImage'))
+
+    def test_invalid_icon_or_download_never_enters_install(self):
+        with patch.object(cat, '_appimage_feed', return_value=self.sample()):
+            rows = cat.appimage_browse()
+        self.assertEqual(rows[1]['iconUrl'], '')
+        self.assertEqual(rows[1]['installUrl'], '')
+        self.assertTrue(rows[1]['sourceUrl'].startswith('https://appimage.github.io/apps/'))
+
+    def test_appimage_short_search_does_not_download_feed(self):
+        with patch.object(cat, '_appimage_feed') as feed:
+            with self.assertRaises(ValueError):
+                cat.appimage_search('g')
+        feed.assert_not_called()
+
 
 
 if __name__ == '__main__':
