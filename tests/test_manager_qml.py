@@ -517,15 +517,91 @@ class CatalogModelTests(QmlManagerBase):
             self.bridge.catalogModel.index(0, 0),
             self.bridge.catalogModel.SourceRole), 'AppImage')
 
-    def test_deb_and_rpm_never_auto_install_foreign_package_names(self):
-        with patch.object(manager, 'UrlInstallDialog') as dialog:
-            self.bridge.searchCatalog('gimp', 'DEB')
-            self.assertIn('distribution/architecture', self.bridge.catalogStatus)
-            self.assertEqual(self.bridge.catalogModel.count, 0)
-            self.bridge.searchCatalog('gimp', 'RPM')
-            self.assertEqual(self.bridge.catalogModel.count, 0)
+    def repository_rows(self, source):
+        return [{
+            'appId': 'gimp', 'name': 'gimp',
+            'summary': 'Image editor', 'iconUrl': '',
+            'category': 'Debian 13' if source == 'DEB' else 'Fedora 44',
+            'source': source, 'installUrl': '', 'version': '3.0',
+        }]
+
+    def wait_for_catalog(self):
+        deadline = time.monotonic() + 6
+        while time.monotonic() < deadline:
+            self.app.processEvents()
+            if not self.bridge.catalogLoading:
+                break
+            time.sleep(0.01)
+
+    def test_deb_and_rpm_show_real_repository_results(self):
+        for source, kind in (('DEB', 'deb'), ('RPM', 'rpm')):
+            with self.subTest(source=source), \
+                 patch.object(manager_qml.repository_catalog, 'search',
+                              return_value=self.repository_rows(source)) as lookup:
+                self.bridge.searchCatalog('gimp', source)
+                self.wait_for_catalog()
+            lookup.assert_called_once_with(kind, 'gimp')
+            self.assertFalse(self.bridge.catalogLoading)
+            self.assertEqual(self.bridge.catalogModel.count, 1)
+            self.assertEqual(self.bridge.catalogModel.data(
+                self.bridge.catalogModel.index(0, 0),
+                self.bridge.catalogModel.SourceRole), source)
+
+    def test_missing_repository_requires_explicit_enable(self):
+        with patch.object(manager_qml.repository_catalog, 'search',
+                          side_effect=manager_qml.repository_catalog.CatalogNotReady()):
+            self.bridge.searchCatalog('', 'DEB')
+            self.wait_for_catalog()
+        self.assertTrue(self.bridge.catalogSetupRequired)
+        self.assertEqual(self.bridge.catalogModel.count, 0)
+        self.assertIn('Enable', self.bridge.catalogStatus)
+
+    def test_repository_setup_requests_permission_before_pulling(self):
+        import container_ui
+        with patch.object(manager_qml.repository_catalog, 'prepare') as prepare, \
+             patch.object(manager_qml.repository_catalog, 'search',
+                          return_value=[]), \
+             patch.object(QtWidgets.QMessageBox, 'question',
+                          return_value=QtWidgets.QMessageBox.StandardButton.No):
+            self.bridge._catalog_source = 'DEB'
+            self.bridge.prepareCatalogSource('DEB')
+        prepare.assert_not_called()
+        with patch.object(manager_qml.repository_catalog, 'prepare') as prepare, \
+             patch.object(QtWidgets.QMessageBox, 'question',
+                          return_value=QtWidgets.QMessageBox.StandardButton.Yes):
+            self.bridge.prepareCatalogSource('DEB')
+            self.wait_for_catalog()
+        prepare.assert_called_once_with('deb')
+        self.assertFalse(self.bridge.catalogSetupRequired)
+
+    def test_repository_install_requires_catalog_membership_and_workflow(self):
+        import container_ui
+        self.bridge._catalog_source = 'RPM'
+        self.bridge._catalog_all = self.repository_rows('RPM')
+        with patch.object(container_ui, 'Workflow') as workflow, \
+             patch.object(self.bridge, 'refresh') as refresh:
+            workflow.return_value.batch_result = 75
             self.bridge.installCatalogEntry('gimp', 'RPM')
-        dialog.assert_not_called()
+            workflow.assert_called_once_with(['--repo', 'rpm', 'gimp'])
+            workflow.return_value.exec.assert_called_once()
+            refresh.assert_not_called()
+            self.bridge.installCatalogEntry('unlisted', 'RPM')
+        self.assertEqual(workflow.call_count, 1)
+
+    def test_managed_repository_package_disables_duplicate_installs(self):
+        import container_ui
+        self.bridge._catalog_source = 'DEB'
+        self.bridge._catalog_all = self.repository_rows('DEB')
+        self.bridge.catalogModel.set_managed([
+            {'format': 'deb', 'key': 'deb:gimp'}])
+        self.bridge.catalogModel.replace(self._catalog_all)
+        self.assertTrue(self.bridge.catalogModel.data(
+            self.bridge.catalogModel.index(0, 0),
+            self.bridge.catalogModel.ManagedRole))
+        with patch.object(container_ui, 'Workflow') as workflow:
+            self.bridge.installCatalogEntry('gimp', 'DEB')
+        workflow.assert_not_called()
+        self.assertIn('already managed', self.bridge.catalogStatus)
 
     def test_appimage_entry_opens_official_page_when_no_direct_artifact(self):
         self.bridge._catalog_source = 'AppImage'
@@ -1016,6 +1092,7 @@ class QmlDiscoverTests(QmlManagerBase):
                          'discoverPanel', 'catalogList', 'catalogSearchField',
                          'catalogRetry', 'catalogViewMore', 'flatpakSourceButton',
                          'appimageSourceButton', 'debSourceButton', 'rpmSourceButton',
+                         'repositorySetupPanel', 'repositoryEnableButton',
                          'contentArea', 'appMenuBar'):
                 self.assertIsNotNone(window.findChild(QtCore.QObject, name), name)
             expr = lambda v: QtQml.QQmlExpression(
