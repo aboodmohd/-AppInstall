@@ -169,8 +169,26 @@ def port_owner(key):
     return monitor.redact(monitor.checked(['ss','-ltnp','sport = :'+str(port)],10))
 
 
+def allowed_cleanup_paths(key):
+    """The only extra cleanup directory is this app's recorded launch history.
+
+    The hash is derived from the registry key, never from user input paths.
+    Refuse missing and symlinked directories. Never remove shared containers.
+    """
+    base=Path(os.environ.get('XDG_STATE_HOME',Path.home()/'.local/state'))/'appinstall'/'launches'
+    path=base/hashlib.sha256(key.encode()).hexdigest()[:20]
+    return {str(path)} if path.is_dir() and not path.is_symlink() else set()
+
+
+def validate_cleanup(key, cleanup):
+    selected=set(cleanup)
+    if not selected.issubset(allowed_cleanup_paths(key)):
+        raise ValueError('Refusing deletion outside this app\'s verified AppInstall history.')
+    return selected
+
+
 def uninstall(key, cleanup=()):
-    cleanup = set(cleanup)
+    cleanup = validate_cleanup(key, cleanup)
     spec=monitor.registry()[key]
     if spec['format'] in ('deb','rpm'):
         from container_backend import Engine
@@ -180,39 +198,29 @@ def uninstall(key, cleanup=()):
     elif spec['format']=='flatpak':
         monitor.checked(['flatpak','uninstall','--user','--noninteractive','--assumeyes',spec['appid']],300)
         remove_owned_launcher(spec)
-        _remove_cleanup(spec, cleanup)
+        _remove_cleanup(spec, cleanup, key)
     elif spec['format']=='appimage':
         import shutil
         manifest=Path(spec['manifest']);info=json.loads(manifest.read_text())
         generation=Path(info['generation'])
         if not generation.name.startswith('.appinstall-') or generation.is_symlink():raise RuntimeError('The recorded AppImage directory is not safe to remove.')
         shutil.rmtree(generation);manifest.unlink();remove_owned_launcher(spec)
-        _remove_cleanup(spec, cleanup)
+        _remove_cleanup(spec, cleanup, key)
     else:raise RuntimeError('Uninstall is not supported for this entry.')
     monitor.update_registry(key,None)
     return 'Application removed. Personal application data and diagnostic history were kept.'
 
 
-def _remove_cleanup(spec, cleanup):
-    """Remove explicitly-selected app-tied paths that are still owned.
-
-    A path is removed only when it matches an export/icon record whose
-    on-disk sha256 still matches — user-modified launchers are preserved.
-    Directories (e.g. launch history) are removed whole when selected.
-    """
-    owned = {}
-    for entry in spec.get('exports', []) + spec.get('icons', []):
-        path = entry.get('path', '')
-        p = Path(path)
-        if p.is_file() and hashlib.sha256(p.read_bytes()).hexdigest() == entry.get('sha256', ''):
-            owned[str(p)] = p
+def _remove_cleanup(spec, cleanup, key):
+    """Remove only an explicitly selected, still-verified per-app history dir."""
     import shutil
     for path in cleanup:
-        p = Path(path)
-        if str(p) in owned:
-            p.unlink()
-        elif p.is_dir():
+        if path not in allowed_cleanup_paths(key):
+            raise RuntimeError('Managed cleanup path changed during uninstall.')
+        p=Path(path)
+        if not p.is_symlink() and p.is_dir():
             shutil.rmtree(p)
+
 
 
 def remove_owned_launcher(spec):

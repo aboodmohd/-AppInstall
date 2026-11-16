@@ -13,8 +13,9 @@ import uuid
 from pathlib import Path
 
 THEMES = ('auto', 'light', 'dark')
+UNINSTALL_MODES = ('ask', 'app_only', 'with_managed_data')
 DEFAULTS = {'theme': 'auto', 'favorites': [], 'notifications': False,
-            'last_update_check': 0}
+            'last_update_check': 0, 'uninstall_mode': 'ask'}
 
 
 def settings_path():
@@ -35,6 +36,9 @@ def _sanitize(values):
     notifications = values.get('notifications')
     if isinstance(notifications, bool):
         result['notifications'] = notifications
+    uninstall_mode = values.get('uninstall_mode')
+    if isinstance(uninstall_mode, str) and uninstall_mode in UNINSTALL_MODES:
+        result['uninstall_mode'] = uninstall_mode
     last_check = values.get('last_update_check')
     if isinstance(last_check, (int, float)):
         result['last_update_check'] = int(last_check)
