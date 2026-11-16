@@ -736,6 +736,57 @@ class QmlDropdownRegressionTests(QmlManagerBase):
                              for m in capture.messages))
 
 
+class QmlMenuBarTests(QmlManagerBase):
+    """Standard menu bar only exposes existing, supported actions."""
+
+    def test_menu_bar_renders_with_four_working_menus(self):
+        self.engine = QtQml.QQmlApplicationEngine()
+        self.engine.rootContext().setContextProperty('bridge', self.bridge)
+        self.engine.rootContext().setContextProperty('appsModel', self.model)
+        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        with QmlLoadCapture() as captured:
+            self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
+        self.assertTrue(self.engine.rootObjects(), captured.messages)
+        self.window = self.engine.rootObjects()[0]
+        self.window.show()
+        QtTest.QTest.qWait(60)
+        try:
+            menu = self.window.findChild(QtCore.QObject, 'appMenuBar')
+            self.assertIsNotNone(menu)
+            self.assertTrue(menu.property('visible'))
+            # The old top-right buttons are intentionally retained.
+            self.assertIsNotNone(self.window.findChild(
+                QtCore.QObject, 'menuInstallFile'))
+            self.assertIsNotNone(self.window.findChild(
+                QtCore.QObject, 'menuInstallUrl'))
+            self.assertIsNotNone(self.window.findChild(
+                QtCore.QObject, 'menuRefresh'))
+            self.assertIsNotNone(self.window.findChild(
+                QtCore.QObject, 'menuFocusSearch'))
+            self.assertIsNotNone(self.window.findChild(
+                QtCore.QObject, 'menuAbout'))
+            self.assertIsNotNone(self.window.findChild(
+                QtCore.QObject, 'aboutAppInstallDialog'))
+            self.assertFalse(any('Error' in msg or
+                                 'Unable to assign' in msg
+                                 for msg in captured.messages), captured.messages)
+        finally:
+            self.window.close()
+            self.engine.deleteLater()
+            self.app.processEvents()
+
+    def test_menu_actions_are_wired_to_existing_bridge_slots(self):
+        qml = (manager_qml.QML_DIR / 'main.qml').read_text()
+        for action in ('bridge.installFromFile()', 'bridge.installFromUrl()',
+                       'bridge.refresh()', 'searchField.forceActiveFocus()',
+                       'bridge.setTheme("auto")', 'bridge.setTheme("light")',
+                       'bridge.setTheme("dark")', 'bridge.checkUpdates(true)',
+                       'bridge.openDiagnostics("")', 'window.close()'):
+            self.assertIn(action, qml)
+        self.assertIn('onTriggered: aboutDialog.open()', qml)
+        self.assertIn('Qt.openUrlExternally(', qml)
+
+
 class InventoryLoadTests(QmlManagerBase):
     def test_refresh_uses_the_normal_loader(self):
         registry = self.root / 'data' / 'appinstall' / 'containers' / 'registry.json'

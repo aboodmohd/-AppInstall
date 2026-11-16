@@ -260,6 +260,123 @@ ApplicationWindow {
             }
         }
 
+        // Standard desktop menu, below the existing quick-action toolbar.
+        // Menu actions use the same bridge slots as their original buttons.
+        // No source/installer code is executed by opening a menu.
+        MenuBar {
+            id: appMenuBar
+            objectName: "appMenuBar"
+            Layout.fillWidth: true
+            implicitHeight: 36
+            padding: 2
+            spacing: 2
+
+            background: Rectangle {
+                color: Theme.colors.surface
+            }
+
+            delegate: MenuBarItem {
+                id: menuTab
+                implicitHeight: 32
+                implicitWidth: tabText.implicitWidth + 24
+                hoverEnabled: true
+                contentItem: Label {
+                    id: tabText
+                    text: menuTab.text
+                    color: Theme.colors.text
+                    font.pixelSize: 13
+                    verticalAlignment: Text.AlignVCenter
+                    horizontalAlignment: Text.AlignHCenter
+                }
+                background: Rectangle {
+                    radius: 6
+                    color: menuTab.down ? Theme.colors.pressed
+                         : menuTab.hovered ? Theme.colors.hover
+                         : "transparent"
+                    border.color: menuTab.visualFocus ? Theme.colors.focusRing : "transparent"
+                    border.width: menuTab.visualFocus ? 2 : 0
+                }
+            }
+
+            Menu {
+                title: qsTr("File")
+                MenuItem {
+                    objectName: "menuInstallFile"
+                    text: qsTr("Install from File…")
+                    onTriggered: bridge.installFromFile()
+                }
+                MenuItem {
+                    objectName: "menuInstallUrl"
+                    text: qsTr("Install from URL…")
+                    onTriggered: bridge.installFromUrl()
+                }
+                MenuSeparator {}
+                MenuItem {
+                    text: qsTr("Quit AppInstall")
+                    onTriggered: window.close() // Existing allowClose guard remains active.
+                }
+            }
+
+            Menu {
+                title: qsTr("View")
+                MenuItem {
+                    objectName: "menuRefresh"
+                    text: qsTr("Refresh Applications")
+                    onTriggered: bridge.refresh()
+                }
+                MenuItem {
+                    objectName: "menuFocusSearch"
+                    text: qsTr("Focus Search")
+                    onTriggered: searchField.forceActiveFocus()
+                }
+                MenuSeparator {}
+                MenuItem {
+                    text: qsTr("Follow System Theme")
+                    checkable: true
+                    checked: bridge.themeChoice === "auto"
+                    onTriggered: bridge.setTheme("auto")
+                }
+                MenuItem {
+                    text: qsTr("Light Theme")
+                    checkable: true
+                    checked: bridge.themeChoice === "light"
+                    onTriggered: bridge.setTheme("light")
+                }
+                MenuItem {
+                    text: qsTr("Dark Theme")
+                    checkable: true
+                    checked: bridge.themeChoice === "dark"
+                    onTriggered: bridge.setTheme("dark")
+                }
+            }
+
+            Menu {
+                title: qsTr("Tools")
+                MenuItem {
+                    text: qsTr("Check for AppInstall Updates")
+                    enabled: bridge.actionVisible && bridge.updateTag === ""
+                    onTriggered: bridge.checkUpdates(true)
+                }
+                MenuItem {
+                    text: qsTr("Application Diagnostics")
+                    onTriggered: bridge.openDiagnostics("")
+                }
+            }
+
+            Menu {
+                title: qsTr("Help")
+                MenuItem {
+                    objectName: "menuAbout"
+                    text: qsTr("About AppInstall…")
+                    onTriggered: aboutDialog.open()
+                }
+                MenuItem {
+                    text: qsTr("View Project on GitHub")
+                    onTriggered: Qt.openUrlExternally("https://github.com/aboodmohd/-AppInstall")
+                }
+            }
+        }
+
         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.colors.border }
 
         // ── toolbar: search first, then state filters ─────────────────
@@ -775,6 +892,42 @@ ApplicationWindow {
     }
 
     } // grabRoot
+
+    // Lightweight about dialog; no hardcoded version or unverified claims.
+    Dialog {
+        id: aboutDialog
+        objectName: "aboutAppInstallDialog"
+        title: qsTr("About AppInstall")
+        modal: true
+        standardButtons: Dialog.Close
+        width: Math.min(window.width - 48, 420)
+        x: Math.round((window.width - width) / 2)
+        y: Math.round((window.height - height) / 2)
+
+        background: Rectangle {
+            radius: 12
+            color: Theme.colors.surface
+            border.color: Theme.colors.border
+            border.width: 1
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+            Label {
+                text: qsTr("AppInstall")
+                font.pixelSize: 22
+                font.weight: Font.DemiBold
+                color: Theme.colors.text
+            }
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("An open-source Linux app installer and manager for AppImage, Flatpak, DEB, and RPM.")
+                wrapMode: Text.WordWrap
+                font.pixelSize: 13
+                color: Theme.colors.textSecondary
+            }
+        }
+    }
 
     // Format segmented control: checkable chip, selected state is the web
     // design's accent outline + readable text, visible focus ring. Exclusive
