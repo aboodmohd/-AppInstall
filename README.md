@@ -12,6 +12,24 @@ Double-click a supported file, review its source and destination, confirm instal
 
 Managed applications now use monitored launchers. Startup failures show useful errors and logs; open **AppInstall → Application Diagnostics** or run `appinstall --diagnostics` for launch history and safe repair actions. See [Launch Diagnostics](LAUNCH_DIAGNOSTICS.md) for tested behavior and limits.
 
+## Discover Apps (v1.7.0 development preview)
+
+The **Discover** tab searches Flathub's live public application catalog. It can
+show app names, descriptions, categories and genuine Flathub-hosted icons,
+with fallback letters when a catalog icon is unavailable. A featured selection
+comes from Flathub's popular-app collection rather than an AppInstall-owned
+hardcoded list.
+
+Choosing **Install** opens the existing AppInstall HTTPS download dialog for
+the application's canonical Flathub `.flatpakref` link. Installation still
+requires the normal explicit download, package review and confirmation.
+Search never installs applications, changes your Flathub remote or runs
+downloaded metadata. Some catalog searches require network connectivity and
+may fail when Flathub is offline or its API changes.
+
+This is a development-only feature until the v1.7.0 release is approved.
+The stable v1.6.0 packages do not yet include Discover.
+
 ## Install AppInstall
 
 **One-command installation** detects the host distribution (x86_64). Run this as your normal desktop user (not with `sudo`):

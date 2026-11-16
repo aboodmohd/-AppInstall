@@ -32,7 +32,7 @@ modules = (
     'native_backend.py', 'container_backend.py', 'container_ui.py',
     'launch_monitor.py', 'manager.py', 'manager_qml.py', 'result_ui.py',
     'runtime_probe.py', 'diagnostics_core.py', 'diagnostics_ui.py',
-    'url_install.py', 'url_dialog.py',
+    'url_install.py', 'url_dialog.py', 'flathub_catalog.py',
 )
 ICON_SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
 # Flat, makepkg-compatible source basenames; installed to hicolor destinations.
