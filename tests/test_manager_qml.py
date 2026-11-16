@@ -485,6 +485,62 @@ class CatalogModelTests(QmlManagerBase):
         dialog.assert_not_called()
         self.assertIn('already managed', self.bridge.catalogStatus)
 
+    def test_load_more_reveals_next_batch_without_replacing_installed_apps(self):
+        apps = [{**self.sample()[0], 'appId': f'org.example.App{i}'}
+                for i in range(59)]
+        self.bridge._catalog_source = 'Flatpak'
+        self.bridge._catalog_all = apps
+        self.bridge.catalogModel.replace(apps[:24])
+        self.assertTrue(self.bridge.catalogHasMore)
+        self.bridge.loadMoreCatalog()
+        self.assertEqual(self.bridge.catalogModel.count, 48)
+        self.assertTrue(self.bridge.catalogHasMore)
+        self.bridge.loadMoreCatalog()
+        self.assertEqual(self.bridge.catalogModel.count, 59)
+        self.assertFalse(self.bridge.catalogHasMore)
+        self.assertIn('59 applications found', self.bridge.catalogStatus)
+
+    def test_appimage_browse_uses_independent_feed(self):
+        items = [{**self.sample()[0], 'appId': 'Example_App',
+                  'source': 'AppImage', 'sourceUrl': 'https://appimage.github.io/apps/Example_App',
+                  'installUrl': ''}]
+        with patch.object(manager_qml.flathub_catalog, 'appimage_browse',
+                          return_value=items) as provider:
+            self.bridge.searchCatalog('', 'AppImage')
+            deadline = time.monotonic() + 6
+            while time.monotonic() < deadline and self.bridge.catalogLoading:
+                self.app.processEvents()
+                time.sleep(0.01)
+        provider.assert_called_once_with()
+        self.assertEqual(self.bridge.catalogModel.count, 1)
+        self.assertEqual(self.bridge.catalogModel.data(
+            self.bridge.catalogModel.index(0, 0),
+            self.bridge.catalogModel.SourceRole), 'AppImage')
+
+    def test_deb_and_rpm_never_auto_install_foreign_package_names(self):
+        with patch.object(manager, 'UrlInstallDialog') as dialog:
+            self.bridge.searchCatalog('gimp', 'DEB')
+            self.assertIn('distribution/architecture', self.bridge.catalogStatus)
+            self.assertEqual(self.bridge.catalogModel.count, 0)
+            self.bridge.searchCatalog('gimp', 'RPM')
+            self.assertEqual(self.bridge.catalogModel.count, 0)
+            self.bridge.installCatalogEntry('gimp', 'RPM')
+        dialog.assert_not_called()
+
+    def test_appimage_entry_opens_official_page_when_no_direct_artifact(self):
+        self.bridge._catalog_source = 'AppImage'
+        self.bridge._catalog_all = [{
+            'appId': 'Example_App', 'source': 'AppImage',
+            'sourceUrl': 'https://appimage.github.io/apps/Example_App',
+            'installUrl': '',
+        }]
+        with patch.object(QtGui.QDesktopServices, 'openUrl') as open_url, \
+             patch.object(manager, 'UrlInstallDialog') as dialog:
+            self.bridge.installCatalogEntry('Example_App', 'AppImage')
+        dialog.assert_not_called()
+        self.assertEqual(open_url.call_args.args[0].host(), 'appimage.github.io')
+
+
 
 class BridgeInstallTests(QmlManagerBase):
     """Header install actions reuse the widgets window's exact flows."""
@@ -958,7 +1014,9 @@ class QmlDiscoverTests(QmlManagerBase):
         try:
             for name in ('pageNavigation', 'managedTab', 'discoverTab',
                          'discoverPanel', 'catalogList', 'catalogSearchField',
-                         'catalogRetry', 'contentArea', 'appMenuBar'):
+                         'catalogRetry', 'catalogViewMore', 'flatpakSourceButton',
+                         'appimageSourceButton', 'debSourceButton', 'rpmSourceButton',
+                         'contentArea', 'appMenuBar'):
                 self.assertIsNotNone(window.findChild(QtCore.QObject, name), name)
             expr = lambda v: QtQml.QQmlExpression(
                 QtQml.qmlContext(window), window, v).evaluate()[0]
@@ -968,6 +1026,7 @@ class QmlDiscoverTests(QmlManagerBase):
             window.setProperty('discoverSelected', True)
             self.app.processEvents()
             self.assertTrue(expr('discoverPanel.visible'))
+            self.assertGreaterEqual(expr('catalogList.columns'), 1)
             self.assertFalse(expr('contentArea.visible'))
             self.assertFalse(expr('filtersPanel.visible'))
             self.assertTrue(expr('appMenuBar.visible'))
