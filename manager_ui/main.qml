@@ -162,92 +162,87 @@ ApplicationWindow {
                     }
                 }
 
-                MenuBar {
+                // Explicit RowLayout ensures the four navigation actions remain
+                // side by side on KDE and other Qt Quick desktop styles.
+                // Only the menu *contents* pop down; tabs never stack vertically.
+                RowLayout {
                     id: appMenuBar
                     objectName: "appMenuBar"
                     visible: window.menuExpanded
+                    Layout.alignment: Qt.AlignVCenter
                     Layout.preferredWidth: implicitWidth
-                    implicitHeight: 32
-                    padding: 1
-                    spacing: 1
+                    spacing: 2
 
-                    background: Rectangle { color: "transparent" }
-
-                    delegate: MenuBarItem {
-                        id: menuTab
-                        implicitHeight: 30
-                        implicitWidth: tabText.implicitWidth + 18
-                        hoverEnabled: true
-                        contentItem: Label {
-                            id: tabText
-                            text: menuTab.text
-                            color: Theme.colors.text
-                            font.pixelSize: 13
-                            verticalAlignment: Text.AlignVCenter
-                            horizontalAlignment: Text.AlignHCenter
-                        }
-                        background: Rectangle {
-                            radius: 7
-                            color: menuTab.down ? Theme.colors.pressed
-                                 : menuTab.hovered ? Theme.colors.hover : "transparent"
-                            border.color: menuTab.visualFocus ? Theme.colors.focusRing : "transparent"
-                            border.width: menuTab.visualFocus ? 2 : 0
-                        }
-                    }
-
-                    Menu {
-                        title: qsTr("View")
-                        MenuItem {
-                            objectName: "menuRefresh"
-                            text: qsTr("Refresh Applications")
-                            onTriggered: bridge.refresh()
-                        }
-                        MenuItem {
-                            objectName: "menuFocusSearch"
-                            text: qsTr("Focus Search")
-                            onTriggered: {
-                                window.filtersExpanded = true
-                                searchField.forceActiveFocus()
+                    HeaderMenuButton {
+                        id: viewMenuButton
+                        objectName: "viewMenuButton"
+                        text: qsTr("View")
+                        onClicked: viewMenuPopup.popup(viewMenuButton, 0, height + 4)
+                        Menu {
+                            id: viewMenuPopup
+                            MenuItem {
+                                objectName: "menuRefresh"
+                                text: qsTr("Refresh Applications")
+                                onTriggered: bridge.refresh()
+                            }
+                            MenuItem {
+                                objectName: "menuFocusSearch"
+                                text: qsTr("Focus Search")
+                                onTriggered: {
+                                    window.filtersExpanded = true
+                                    searchField.forceActiveFocus()
+                                }
+                            }
+                            MenuItem {
+                                text: window.filtersExpanded ? qsTr("Hide Filters") : qsTr("Show Filters")
+                                onTriggered: window.filtersExpanded = !window.filtersExpanded
                             }
                         }
-                        MenuItem {
-                            text: window.filtersExpanded ? qsTr("Hide Filters") : qsTr("Show Filters")
-                            onTriggered: window.filtersExpanded = !window.filtersExpanded
+                    }
+
+                    HeaderMenuButton {
+                        id: toolsMenuButton
+                        objectName: "toolsMenuButton"
+                        text: qsTr("Tools")
+                        onClicked: toolsMenuPopup.popup(toolsMenuButton, 0, height + 4)
+                        Menu {
+                            id: toolsMenuPopup
+                            MenuItem {
+                                text: qsTr("Check for AppInstall Updates")
+                                enabled: bridge.actionVisible && bridge.updateTag === ""
+                                onTriggered: bridge.checkUpdates(true)
+                            }
+                            MenuItem {
+                                text: qsTr("Application Diagnostics")
+                                onTriggered: bridge.openDiagnostics("")
+                            }
                         }
                     }
 
-                    Menu {
-                        title: qsTr("Tools")
-                        MenuItem {
-                            text: qsTr("Check for AppInstall Updates")
-                            enabled: bridge.actionVisible && bridge.updateTag === ""
-                            onTriggered: bridge.checkUpdates(true)
-                        }
-                        MenuItem {
-                            text: qsTr("Application Diagnostics")
-                            onTriggered: bridge.openDiagnostics("")
-                        }
+                    HeaderMenuButton {
+                        id: settingsMenuButton
+                        objectName: "settingsMenuButton"
+                        text: qsTr("Settings")
+                        onClicked: settingsDialog.open()
+                        Accessible.name: qsTr("Open AppInstall Settings")
                     }
 
-                    Menu {
-                        title: qsTr("Settings")
-                        MenuItem {
-                            objectName: "menuPreferences"
-                            text: qsTr("Preferences…")
-                            onTriggered: settingsDialog.open()
-                        }
-                    }
-
-                    Menu {
-                        title: qsTr("Help")
-                        MenuItem {
-                            objectName: "menuAbout"
-                            text: qsTr("About AppInstall…")
-                            onTriggered: aboutDialog.open()
-                        }
-                        MenuItem {
-                            text: qsTr("View Project on GitHub")
-                            onTriggered: Qt.openUrlExternally("https://github.com/aboodmohd/-AppInstall")
+                    HeaderMenuButton {
+                        id: helpMenuButton
+                        objectName: "helpMenuButton"
+                        text: qsTr("Help")
+                        onClicked: helpMenuPopup.popup(helpMenuButton, 0, height + 4)
+                        Menu {
+                            id: helpMenuPopup
+                            MenuItem {
+                                objectName: "menuAbout"
+                                text: qsTr("About AppInstall…")
+                                onTriggered: aboutDialog.open()
+                            }
+                            MenuItem {
+                                text: qsTr("View Project on GitHub")
+                                onTriggered: Qt.openUrlExternally("https://github.com/aboodmohd/-AppInstall")
+                            }
                         }
                     }
                 }
@@ -986,6 +981,31 @@ ApplicationWindow {
                 font.pixelSize: 13
                 color: Theme.colors.textSecondary
             }
+        }
+    }
+
+    // A conventional header tab, but laid out explicitly in a single row.
+    component HeaderMenuButton: Button {
+        id: headerNav
+        implicitHeight: 32
+        implicitWidth: headerNavLabel.implicitWidth + 18
+        font.pixelSize: 13
+        hoverEnabled: true
+        activeFocusOnTab: true
+        background: Rectangle {
+            radius: 7
+            color: headerNav.down ? Theme.colors.pressed
+                 : headerNav.hovered ? Theme.colors.hover : "transparent"
+            border.color: headerNav.visualFocus ? Theme.colors.focusRing : "transparent"
+            border.width: headerNav.visualFocus ? 2 : 0
+        }
+        contentItem: Label {
+            id: headerNavLabel
+            text: headerNav.text
+            color: Theme.colors.text
+            font: headerNav.font
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
         }
     }
 

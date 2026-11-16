@@ -772,14 +772,43 @@ class QmlMenuBarTests(QmlManagerBase):
         QtTest.QTest.qWait(75)
         try:
             for name in ('appMenuBar', 'menuToggle', 'filtersToggle',
+                         'viewMenuButton', 'toolsMenuButton',
+                         'settingsMenuButton', 'helpMenuButton',
                          'filtersPanel', 'installDropdown', 'menuInstallFile',
                          'menuInstallUrl', 'menuRefresh', 'menuFocusSearch',
-                         'menuPreferences', 'menuAbout', 'settingsDialog',
-                         'notificationCheck', 'uninstallAsk',
-                         'uninstallAppOnly', 'uninstallWithData'):
+                         'menuAbout', 'settingsDialog', 'notificationCheck',
+                         'uninstallAsk', 'uninstallAppOnly', 'uninstallWithData'):
                 self.assertIsNotNone(window.findChild(QtCore.QObject, name), name)
             self.assertFalse(any('Error' in m or 'Unable to assign' in m
                                  for m in capture.messages), capture.messages)
+        finally:
+            window.close()
+            self.engine.deleteLater()
+            self.app.processEvents()
+
+    def test_primary_menus_are_side_by_side_not_vertical(self):
+        self.engine = QtQml.QQmlApplicationEngine()
+        self.engine.rootContext().setContextProperty('bridge', self.bridge)
+        self.engine.rootContext().setContextProperty('appsModel', self.model)
+        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
+        self.assertTrue(self.engine.rootObjects())
+        window = self.engine.rootObjects()[0]
+        window.setWidth(940)
+        window.show()
+        QtTest.QTest.qWait(100)
+        try:
+            names = ('viewMenuButton', 'toolsMenuButton',
+                     'settingsMenuButton', 'helpMenuButton')
+            buttons = [window.findChild(QtCore.QObject, name)
+                       for name in names]
+            self.assertTrue(all(buttons))
+            positions = [(button.property('x'), button.property('y'))
+                         for button in buttons]
+            self.assertTrue(all(positions[i][0] < positions[i + 1][0]
+                                for i in range(3)), positions)
+            self.assertLessEqual(max(y for x, y in positions) -
+                                 min(y for x, y in positions), 1, positions)
         finally:
             window.close()
             self.engine.deleteLater()
@@ -822,7 +851,7 @@ class QmlMenuBarTests(QmlManagerBase):
                        'bridge.setUninstallMode("app_only")',
                        'bridge.setUninstallMode("with_managed_data")'):
             self.assertIn(action, qml)
-        self.assertIn('onTriggered: settingsDialog.open()', qml)
+        self.assertIn('onClicked: settingsDialog.open()', qml)
         self.assertIn('onTriggered: aboutDialog.open()', qml)
         self.assertIn('Qt.openUrlExternally(', qml)
         self.assertNotIn('title: qsTr("File")', qml)
