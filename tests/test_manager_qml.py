@@ -551,6 +551,47 @@ class CatalogModelTests(QmlManagerBase):
                 self.bridge.catalogModel.index(0, 0),
                 self.bridge.catalogModel.SourceRole), source)
 
+    def test_deb_and_rpm_browse_when_tab_opens_without_typing(self):
+        for source, kind in (('DEB', 'deb'), ('RPM', 'rpm')):
+            rows = [{**self.repository_rows(source)[0],
+                     'appId': f'example-app-{i:02d}',
+                     'name': f'Example app {i}'}
+                    for i in range(31)]
+            with self.subTest(source=source), \
+                 patch.object(manager_qml.repository_catalog, 'ready',
+                              return_value=True), \
+                 patch.object(manager_qml.repository_catalog, 'browse',
+                              return_value=rows) as browse, \
+                 patch.object(manager_qml.repository_catalog, 'icons_for_results',
+                              return_value={}):
+                self.bridge.searchCatalog('', source)
+                self.wait_for_catalog()
+            browse.assert_called_once_with(kind)
+            self.assertEqual(self.bridge.catalogModel.count, 24)
+            self.assertTrue(self.bridge.catalogHasMore)
+            self.bridge.loadMoreCatalog()
+            self.assertEqual(self.bridge.catalogModel.count, 31)
+            self.assertFalse(self.bridge.catalogHasMore)
+            self.assertIn('31 applications found', self.bridge.catalogStatus)
+
+    def test_clearing_a_repository_query_restores_browse_cards(self):
+        source = 'DEB'
+        with patch.object(manager_qml.repository_catalog, 'ready',
+                          return_value=True), \
+             patch.object(manager_qml.repository_catalog, 'search',
+                          return_value=self.repository_rows(source)) as typed, \
+             patch.object(manager_qml.repository_catalog, 'browse',
+                          return_value=self.repository_rows(source)), \
+             patch.object(manager_qml.repository_catalog, 'icons_for_results',
+                          return_value={}):
+            self.bridge.searchCatalog('gimp', source)
+            self.wait_for_catalog()
+            typed.assert_called_once_with('deb', 'gimp')
+            self.bridge.searchCatalog('', source)
+            self.wait_for_catalog()
+        self.assertFalse(self.bridge.catalogLoading)
+        self.assertEqual(self.bridge.catalogModel.count, 1)
+
     def test_repository_icons_update_cards_without_losing_results(self):
         icon_url = ('https://appstream.debian.org/media/pool/org/gimp/GIMP/'
                     'abcd/icons/128x128/gimp_gimp.png')
@@ -583,8 +624,8 @@ class CatalogModelTests(QmlManagerBase):
             self.bridge.catalogModel.IconRole), '')
 
     def test_missing_repository_requires_explicit_enable(self):
-        with patch.object(manager_qml.repository_catalog, 'search',
-                          side_effect=manager_qml.repository_catalog.CatalogNotReady()):
+        with patch.object(manager_qml.repository_catalog, 'ready',
+                          return_value=False):
             self.bridge.searchCatalog('', 'DEB')
             self.wait_for_catalog()
         self.assertTrue(self.bridge.catalogSetupRequired)
@@ -604,6 +645,8 @@ class CatalogModelTests(QmlManagerBase):
         with patch.object(manager_qml.repository_catalog, 'prepare') as prepare, \
              patch.object(manager_qml.repository_catalog, 'ready',
                           return_value=True), \
+             patch.object(manager_qml.repository_catalog, 'browse',
+                          return_value=[]), \
              patch.object(QtWidgets.QMessageBox, 'question',
                           return_value=QtWidgets.QMessageBox.StandardButton.Yes):
             self.bridge.prepareCatalogSource('DEB')
