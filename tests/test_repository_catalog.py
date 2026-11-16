@@ -99,6 +99,100 @@ class RepositoryCatalogTests(unittest.TestCase):
         engine.close.assert_called_once()
 
 
+
+class RepositoryIconTests(unittest.TestCase):
+    """App artwork is optional and cannot affect package search or install."""
+
+    ICON = "https://appstream.debian.org/media/pool/org/gimp/GIMP/abcd/icons/128x128/gimp_gimp.png"
+
+    def setUp(self):
+        catalog._debian_appstream_icon.cache_clear()
+
+    def tearDown(self):
+        catalog._debian_appstream_icon.cache_clear()
+
+    def test_html_parser_extracts_genuine_debian_appstream_icon(self):
+        html = ('<html><body><img alt="Icon" '
+                'src="/media/pool/org/gimp/GIMP/abcd/icons/128x128/gimp_gimp.png">'
+                '</body></html>').encode()
+
+        class Response:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def geturl(self):
+                return "https://appstream.debian.org/trixie/main/metainfo/gimp.html"
+
+            def read(self, count):
+                return html[:count]
+
+        with patch.object(catalog.urllib.request, "build_opener") as opener:
+            opener.return_value.open.return_value = Response()
+            url = catalog._debian_appstream_icon("gimp")
+        self.assertEqual(url, self.ICON)
+        sent = opener.return_value.open.call_args.args[0]
+        self.assertEqual(sent.full_url,
+                         "https://appstream.debian.org/trixie/main/metainfo/gimp.html")
+
+    def test_untrusted_icon_sources_and_unsafe_paths_are_rejected(self):
+        bad = [
+            "https://evil.invalid/media/pool/icons/128x128/a.png",
+            "https://appstream.debian.org.evil.invalid/media/pool/icons/a.png",
+            "http://appstream.debian.org/media/pool/icons/a.png",
+            "/media/pool/../../etc/passwd/icons/a.png",
+            "/media/pool/icons/a.svg",
+            "file:///etc/passwd",
+            "/media/pool/icons/a.png?token=1",
+        ]
+        for src in bad:
+            with self.subTest(src=src):
+                self.assertEqual(catalog._trusted_icon_url(src), "")
+
+    def test_dependency_and_non_gui_package_names_never_request_artwork(self):
+        for name in ("gimp-data", "libgimp-3.0-0", "gir1.2-gimp-3.0",
+                     "gimp-help-de", "gimp-common", "gimp-doc", "fonts-noto-color-emoji"):
+            with self.subTest(name=name):
+                self.assertFalse(catalog._is_visual_package(name))
+        self.assertTrue(catalog._is_visual_package("gimp"))
+        self.assertTrue(catalog._is_visual_package("libreoffice"))
+        with patch.object(catalog.urllib.request, "build_opener") as opener:
+            self.assertEqual(catalog._debian_appstream_icon("gimp-data"), "")
+        opener.assert_not_called()
+
+    def test_icons_for_results_only_enriches_eligible_unique_names(self):
+        rows = [
+            {"appId": "gimp"}, {"appId": "gimp-data"},
+            {"appId": "libgimp-3.0-0"}, {"appId": "gimp"},
+        ]
+        with patch.object(catalog, "_debian_appstream_icon",
+                          side_effect=lambda name: self.ICON if name == "gimp" else "") as icon:
+            mapped = catalog.icons_for_results(rows)
+        self.assertEqual(mapped, {"gimp": self.ICON})
+        icon.assert_called_once_with("gimp")
+
+    def test_metadata_failure_only_affects_icons_not_search(self):
+        class Oversize:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return None
+
+            def geturl(self):
+                return "https://appstream.debian.org/trixie/main/metainfo/gimp.html"
+
+            def read(self, count):
+                return b"x" * count
+
+        with patch.object(catalog.urllib.request, "build_opener") as opener:
+            opener.return_value.open.return_value = Oversize()
+            self.assertEqual(catalog._debian_appstream_icon("gimp"), "")
+
+
+
 class RepositoryBackendTests(unittest.TestCase):
     def info(self):
         return {"kind": "deb", "name": "gimp", "version": "3.0",
