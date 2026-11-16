@@ -230,7 +230,7 @@ def _is_visual_package(name):
     """Heuristic for *artwork lookups*, not a claim that a package is a GUI."""
     if not isinstance(name, str) or not PACKAGE_RE.fullmatch(name):
         return False
-    if name.lower().startswith(_NO_ICON_PREFIXES):
+    if name.lower().startswith(_NO_ICON_PREFIXES) and not name.lower().startswith("libreoffice"):
         return False
     parts = ("-" + name.lower() + "-")
     return not any(piece in parts for piece in (
