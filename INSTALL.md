@@ -25,6 +25,50 @@ Use `--dry-run` to inspect the package selection and `--uninstall` to remove
 AppInstall. Use `--set-defaults` to opt into changing per-user file handlers
 or `--no-defaults` to keep them. Previous defaults are backed up.
 
+## v1.7.0 portable source route for other Linux distributions
+
+**Use this route if the native one-command installer rejects your host.**
+It is suitable for Linux desktop systems capable of running Python 3, Bash,
+freedesktop xdg-utils and PySide6/Qt Quick. It does not need root for
+AppInstall itself and does not attempt to run foreign package managers.
+Not all distributions or desktop sessions are tested.
+
+Once the **published** v1.7.0 release includes the portable archive and
+a matching SHA256SUMS manifest, download both from the same release page,
+verify the archive's hash, then install as your regular desktop user:
+
+```bash
+sha256sum --ignore-missing -c SHA256SUMS
+tar -xzf appinstall-1.7.0-portable.tar.gz
+cd appinstall-1.7.0
+bash ./install-user.sh
+~/.local/bin/appinstall --version
+~/.local/bin/appinstall --manage
+```
+
+On a distribution where `git` is available, an equivalent source workflow
+can be used **after the v1.7.0 tag is published**:
+
+```bash
+git clone --depth 1 --branch v1.7.0 https://github.com/aboodmohd/-AppInstall.git
+cd -- -AppInstall
+bash ./install-user.sh
+```
+
+The portable route is user-local. Uninstall it using
+`~/.local/bin/appinstall-uninstall`, not `sudo dnf/pacman/apt remove`.
+It warns and requests interactive permission if a native AppInstall is
+installed by pacman, dpkg or RPM. If the PySide6/Qt Quick dependency is
+absent, Discover Apps cannot open; KDialog/Zenity CLI fallback may still
+work for some operations. Install graphical dependencies through your
+distribution's repository, not a guessed native AppInstall package.
+
+The v1.7.0 native CI targets remain **Arch/CachyOS, Debian 13,
+Ubuntu 24.04/26.04, Linux Mint 22 and Fedora 44**, on x86_64.
+Other distributions require independent compatibility checks; this
+portable option is not a guarantee that every application will work.
+See `RELEASE_NOTES.md`.
+
 ## Native Fedora 44 RPM (v1.6.0)
 
 Fedora 44 (x86_64) uses DNF and the native
