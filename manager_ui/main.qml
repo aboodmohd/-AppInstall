@@ -1079,7 +1079,7 @@ ApplicationWindow {
                               ? qsTr("Enable Debian repository")
                               : qsTr("Enable Fedora repository")
                         enabled: !bridge.catalogLoading
-                        onClicked: bridge.prepareCatalogSource(window.catalogSource)
+                        onClicked: bridge.prepareCatalogSource(window.catalogSource, catalogSearchField.text)
                     }
                 }
             }
