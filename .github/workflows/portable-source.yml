@@ -1,0 +1,109 @@
+name: Portable source bundle (cross-distro smoke)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  portable:
+    name: Portable source install — ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Debian 13
+            image: debian:13
+            family: debian
+          - name: Fedora 44
+            image: fedora:44
+            family: fedora
+          - name: Arch Linux
+            image: archlinux:base
+            family: arch
+          - name: Alpine 3.22 (portable CLI only)
+            image: alpine:3.22
+            family: alpine
+    container:
+      image: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install only portable source prerequisites
+        run: |
+          set -eu
+          case "${{ matrix.family }}" in
+            debian)
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                bash python3 git tar gzip coreutils xdg-utils util-linux passwd
+              ;;
+            fedora)
+              dnf -y install bash python3 git tar gzip coreutils xdg-utils util-linux shadow-utils
+              ;;
+            arch)
+              pacman -Syu --noconfirm
+              pacman -S --needed --noconfirm bash python git tar gzip coreutils xdg-utils util-linux shadow
+              ;;
+            alpine)
+              apk add --no-cache bash python3 git tar gzip coreutils xdg-utils util-linux shadow
+              ;;
+          esac
+
+      - name: Build and inspect the versioned portable archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/build_portable.sh dist
+          version="$(sed -n 's/^pkgver=//p' PKGBUILD)"
+          archive="dist/appinstall-${version}-portable.tar.gz"
+          test -s "$archive"
+          tar -tzf "$archive" | grep -Fx "appinstall-${version}/install-user.sh"
+          tar -tzf "$archive" | grep -Fx "appinstall-${version}/manager_ui/main.qml"
+          tar -tzf "$archive" | grep -Fx "appinstall-${version}/repository_catalog.py"
+          mkdir -p /tmp/appinstall-portable-check
+          tar -xzf "$archive" -C /tmp/appinstall-portable-check
+          printf '%s\n' "$version" >/tmp/appinstall-expected-version
+          test -f "/tmp/appinstall-portable-check/appinstall-${version}/integration.py"
+          sha256sum "$archive" >dist/PORTABLE-SHA256SUMS
+          sha256sum -c dist/PORTABLE-SHA256SUMS
+
+      - name: Test non-root source install and uninstall with no native package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(cat /tmp/appinstall-expected-version)"
+          useradd -m -s /bin/bash appinstall-test
+          chown -R appinstall-test:appinstall-test /tmp/appinstall-portable-check
+          runuser -u appinstall-test -- env \
+            HOME=/home/appinstall-test \
+            XDG_DATA_HOME=/home/appinstall-test/.local/share \
+            XDG_CONFIG_HOME=/home/appinstall-test/.config \
+            QT_QPA_PLATFORM=offscreen \
+            bash -c '
+              set -e
+              cd /tmp/appinstall-portable-check/appinstall-'"$version"'
+              bash ./install-user.sh
+              test -x "$HOME/.local/bin/appinstall"
+              test "$("$HOME/.local/bin/appinstall" --version)" = "appinstall '"$version"'"
+              test -f "$HOME/.local/share/appinstall/manager_ui/main.qml"
+              test -f "$HOME/.local/share/appinstall/repository_catalog.py"
+              "$HOME/.local/bin/appinstall-uninstall"
+              test ! -e "$HOME/.local/bin/appinstall"
+            '
+          test ! -e /usr/bin/appinstall
+
+      - name: Upload portable source candidate and checksum
+        if: matrix.family == 'debian'
+        uses: actions/upload-artifact@v4
+        with:
+          name: appinstall-portable-${{ github.sha }}
+          path: |
+            dist/appinstall-*-portable.tar.gz
+            dist/PORTABLE-SHA256SUMS
