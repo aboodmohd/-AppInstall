@@ -402,6 +402,90 @@ class BridgePreferenceTests(QmlManagerBase):
         self.assertIn('Invalid uninstall preference', self.bridge._status_text)
 
 
+class CatalogModelTests(QmlManagerBase):
+    """Discover results and installed app records stay separate."""
+
+    def sample(self):
+        return [{
+            'appId': 'org.gimp.GIMP', 'name': 'GIMP',
+            'summary': 'Image editor',
+            'iconUrl': '', 'category': 'Graphics',
+        }]
+
+    def test_model_roles_and_managed_detection(self):
+        model = self.bridge.catalogModel
+        model.replace(self.sample())
+        self.assertEqual(model.count, 1)
+        index = model.index(0, 0)
+        self.assertEqual(model.data(index, model.AppIdRole), 'org.gimp.GIMP')
+        self.assertFalse(model.data(index, model.ManagedRole))
+        model.set_managed([{'key': 'flatpak:org.gimp.GIMP', 'format': 'flatpak'}])
+        self.assertTrue(model.data(index, model.ManagedRole))
+        model.set_managed([{'key': 'appimage:org.gimp.GIMP', 'format': 'appimage'}])
+        self.assertFalse(model.data(index, model.ManagedRole))
+
+    def test_async_search_queries_flathub_without_blocking_ui(self):
+        self.assertFalse(self.bridge.catalogLoading)
+        with patch.object(manager_qml.flathub_catalog, 'search',
+                          return_value=self.sample()) as lookup:
+            self.bridge.searchCatalog('gimp')
+            self.assertTrue(self.bridge.catalogLoading)
+            deadline = time.monotonic() + 6
+            while time.monotonic() < deadline:
+                self.app.processEvents()
+                if not self.bridge.catalogLoading:
+                    break
+                time.sleep(0.01)
+        lookup.assert_called_once_with('gimp')
+        self.assertFalse(self.bridge.catalogLoading)
+        self.assertEqual(self.bridge.catalogModel.count, 1)
+        self.assertIn('1 application found', self.bridge.catalogStatus)
+
+    def test_discover_initial_browse_uses_live_popular_provider(self):
+        with patch.object(manager_qml.flathub_catalog, 'popular',
+                          return_value=self.sample()) as popular:
+            self.bridge.searchCatalog('')
+            deadline = time.monotonic() + 6
+            while time.monotonic() < deadline and self.bridge.catalogLoading:
+                self.app.processEvents()
+                time.sleep(0.01)
+        popular.assert_called_once()
+        self.assertEqual(self.bridge.catalogModel.count, 1)
+
+    def test_short_search_stops_before_network(self):
+        with patch.object(manager_qml.flathub_catalog, 'search') as lookup, \
+             patch.object(manager_qml.flathub_catalog, 'popular') as popular:
+            self.bridge.searchCatalog('g')
+        self.assertEqual(self.bridge.catalogModel.count, 0)
+        lookup.assert_not_called()
+        popular.assert_not_called()
+
+    def test_install_from_flathub_uses_existing_confirmation_dialog(self):
+        with patch.object(manager, 'UrlInstallDialog') as dialog, \
+             patch.object(self.bridge, 'refresh') as refresh:
+            self.bridge.installFromFlathub('org.gimp.GIMP')
+        dialog.assert_called_once_with(self.anchor)
+        widget = dialog.return_value
+        widget.url_edit.setText.assert_called_once_with(
+            'https://dl.flathub.org/repo/appstream/org.gimp.GIMP.flatpakref')
+        widget.installed.connect.assert_called_once_with(refresh)
+        widget.exec.assert_called_once()
+
+    def test_invalid_catalog_id_cannot_open_install_dialog(self):
+        with patch.object(manager, 'UrlInstallDialog') as dialog:
+            self.bridge.installFromFlathub('https://evil.invalid/a.flatpakref')
+        dialog.assert_not_called()
+        self.assertIn('Invalid', self.bridge.catalogStatus)
+
+    def test_managed_app_does_not_start_duplicate_install(self):
+        self.bridge.catalogModel.set_managed([
+            {'format': 'flatpak', 'key': 'flatpak:org.gimp.GIMP'}])
+        with patch.object(manager, 'UrlInstallDialog') as dialog:
+            self.bridge.installFromFlathub('org.gimp.GIMP')
+        dialog.assert_not_called()
+        self.assertIn('already managed', self.bridge.catalogStatus)
+
+
 class BridgeInstallTests(QmlManagerBase):
     """Header install actions reuse the widgets window's exact flows."""
 
@@ -855,6 +939,48 @@ class QmlMenuBarTests(QmlManagerBase):
         self.assertIn('onTriggered: aboutDialog.open()', qml)
         self.assertIn('Qt.openUrlExternally(', qml)
         self.assertNotIn('title: qsTr("File")', qml)
+
+
+class QmlDiscoverTests(QmlManagerBase):
+    """New tab must not disturb My Applications, header or startup."""
+
+    def test_discover_switches_pages_and_keeps_header(self):
+        self.engine = QtQml.QQmlApplicationEngine()
+        self.engine.rootContext().setContextProperty('bridge', self.bridge)
+        self.engine.rootContext().setContextProperty('appsModel', self.model)
+        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        with QmlLoadCapture() as capture:
+            self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
+        self.assertTrue(self.engine.rootObjects(), capture.messages)
+        window = self.engine.rootObjects()[0]
+        window.show()
+        QtTest.QTest.qWait(70)
+        try:
+            for name in ('pageNavigation', 'managedTab', 'discoverTab',
+                         'discoverPanel', 'catalogList', 'catalogSearchField',
+                         'catalogRetry', 'contentArea', 'appMenuBar'):
+                self.assertIsNotNone(window.findChild(QtCore.QObject, name), name)
+            expr = lambda v: QtQml.QQmlExpression(
+                QtQml.qmlContext(window), window, v).evaluate()[0]
+            self.assertFalse(expr('discoverPanel.visible'))
+            self.assertTrue(expr('contentArea.visible'))
+            self.assertTrue(expr('appMenuBar.visible'))
+            window.setProperty('discoverSelected', True)
+            self.app.processEvents()
+            self.assertTrue(expr('discoverPanel.visible'))
+            self.assertFalse(expr('contentArea.visible'))
+            self.assertFalse(expr('filtersPanel.visible'))
+            self.assertTrue(expr('appMenuBar.visible'))
+            window.setProperty('discoverSelected', False)
+            self.app.processEvents()
+            self.assertTrue(expr('contentArea.visible'))
+            self.assertFalse(expr('discoverPanel.visible'))
+            self.assertFalse(any('Error' in m for m in capture.messages),
+                             capture.messages)
+        finally:
+            window.close()
+            self.engine.deleteLater()
+            self.app.processEvents()
 
 
 class InventoryLoadTests(QmlManagerBase):
