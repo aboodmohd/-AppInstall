@@ -31,6 +31,24 @@ class ThreeFormatReleaseVersionTests(unittest.TestCase):
         self.assertIn('Release:        @RELEASE@', spec)
         self.assertIn('BuildArch:      noarch', spec)
 
+    def test_portable_source_bundle_is_separate_from_native_formats(self):
+        portable = (ROOT / "tools/build_portable.sh").read_text()
+        source = (ROOT / "install-user.sh").read_text()
+        self.assertIn('git -C "$root" archive', portable)
+        self.assertIn('appinstall-$version-portable.tar.gz', portable)
+        self.assertIn('install-user.sh', portable)
+        self.assertIn('manager_ui/main.qml', portable)
+        self.assertIn('dpkg-query', source)
+        self.assertIn('rpm -q appinstall', source)
+        self.assertIn('pacman -Qq appinstall', source)
+
+    def test_candidate_release_notes_match_version(self):
+        pkg = (ROOT / "PKGBUILD").read_text()
+        version = re.search(r"^pkgver=([0-9][A-Za-z0-9.]+)$", pkg, re.M).group(1)
+        notes = (ROOT / "RELEASE_NOTES.md").read_text()
+        self.assertTrue(notes.startswith(f'# AppInstall v{version}'))
+        self.assertIn(f'appinstall-{version}-portable.tar.gz', notes)
+
     def test_installer_selects_all_three_native_formats(self):
         installer = (ROOT / "install.sh").read_text()
         for name in ('"arch"', '"debian"', '"fedora"'):
