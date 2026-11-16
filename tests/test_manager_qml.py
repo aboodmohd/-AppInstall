@@ -536,6 +536,8 @@ class CatalogModelTests(QmlManagerBase):
     def test_deb_and_rpm_show_real_repository_results(self):
         for source, kind in (('DEB', 'deb'), ('RPM', 'rpm')):
             with self.subTest(source=source), \
+                 patch.object(manager_qml.repository_catalog, 'ready',
+                              return_value=True), \
                  patch.object(manager_qml.repository_catalog, 'search',
                               return_value=self.repository_rows(source)) as lookup:
                 self.bridge.searchCatalog('gimp', source)
@@ -567,6 +569,8 @@ class CatalogModelTests(QmlManagerBase):
             self.bridge.prepareCatalogSource('DEB')
         prepare.assert_not_called()
         with patch.object(manager_qml.repository_catalog, 'prepare') as prepare, \
+             patch.object(manager_qml.repository_catalog, 'ready',
+                          return_value=True), \
              patch.object(QtWidgets.QMessageBox, 'question',
                           return_value=QtWidgets.QMessageBox.StandardButton.Yes):
             self.bridge.prepareCatalogSource('DEB')
@@ -594,7 +598,7 @@ class CatalogModelTests(QmlManagerBase):
         self.bridge._catalog_all = self.repository_rows('DEB')
         self.bridge.catalogModel.set_managed([
             {'format': 'deb', 'key': 'deb:gimp'}])
-        self.bridge.catalogModel.replace(self._catalog_all)
+        self.bridge.catalogModel.replace(self.bridge._catalog_all)
         self.assertTrue(self.bridge.catalogModel.data(
             self.bridge.catalogModel.index(0, 0),
             self.bridge.catalogModel.ManagedRole))
