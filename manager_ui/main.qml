@@ -969,6 +969,7 @@ ApplicationWindow {
         // ── list ─────────────────────────────────────────────────────
         Item {
             id: contentArea
+            objectName: "contentArea"
             visible: !window.discoverSelected
             Layout.fillWidth: true
             Layout.fillHeight: true
