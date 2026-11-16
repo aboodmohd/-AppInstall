@@ -36,9 +36,15 @@ repository**. A separate explicit confirmation explains that Podman and
 Distrobox will create or reuse AppInstall's named rootless container and
 download official distribution repository metadata. This may require a large
 container image and uses local disk space. Setup does **not** install an
-application. Search results come from the corresponding package manager's
-cached repository indexes, not from manually entered app lists. For these
-formats, type at least two characters to search by package name. App cards
+application. Search and browsing results come from the corresponding package manager's
+cached repository indexes, not from a hardcoded list of apps. Opening **DEB**
+automatically browses Debian APT application-like packages using relevant
+package-description metadata. Opening **RPM** browses Fedora DNF packages
+providing desktop launcher files, with a repository-name metadata fallback
+where filelists are unavailable. These are relevance-ranked browse selections,
+not download/popularity rankings. Select **View more** to reveal another 24
+results; clearing the search restores browsing. Type two or more characters
+to search the full package-name index. App cards
 may represent CLI or other non-graphical packages, which will not create
 an application launcher after installation.
 
@@ -49,7 +55,8 @@ confirmation before applying changes. APT/DNF resolve dependencies from
 the configured distribution repositories. Package installation remains in
 the dedicated rootless container, with AppInstall tracking its managed
 record and exporting a desktop launcher if the package supplies one.
-Search does not alter packages or run installation scripts.
+Search does not alter packages or run installation scripts. Browsing never creates containers without confirmation and never
+requires typing a query once a repository is enabled.
 
 **DEB/RPM application artwork:** app cards initially show a letter placeholder
 while genuine package-specific icons are looked up on Debian's public
