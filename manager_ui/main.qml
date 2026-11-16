@@ -16,6 +16,7 @@ ApplicationWindow {
     property bool filtersExpanded: true
     property bool discoverSelected: false
     property bool discoverRequested: false
+    property string catalogSource: "Flatpak"
 
     // Screenshot contract for --screenshot: the QML engine returns the
     // base QWindow wrapper for this root, which lacks grabWindow(); QML
@@ -769,7 +770,7 @@ ApplicationWindow {
             }
         }
 
-        // ── Discover Apps: live Flathub catalog (not local-only records) ───
+        // ── Discover Apps: responsive store cards and source switching ──
         ColumnLayout {
             id: discoverPanel
             objectName: "discoverPanel"
@@ -783,12 +784,67 @@ ApplicationWindow {
 
             RowLayout {
                 Layout.fillWidth: true
+                spacing: 7
+
+                Button {
+                    id: flatpakSourceButton
+                    objectName: "flatpakSourceButton"
+                    text: qsTr("Flatpak")
+                    font.bold: window.catalogSource === "Flatpak"
+                    onClicked: {
+                        window.catalogSource = "Flatpak"
+                        bridge.searchCatalog(catalogSearchField.text, "Flatpak")
+                    }
+                }
+                Button {
+                    id: appimageSourceButton
+                    objectName: "appimageSourceButton"
+                    text: qsTr("AppImage")
+                    font.bold: window.catalogSource === "AppImage"
+                    onClicked: {
+                        window.catalogSource = "AppImage"
+                        bridge.searchCatalog(catalogSearchField.text, "AppImage")
+                    }
+                }
+                Button {
+                    id: debSourceButton
+                    objectName: "debSourceButton"
+                    text: qsTr("DEB")
+                    font.bold: window.catalogSource === "DEB"
+                    onClicked: {
+                        window.catalogSource = "DEB"
+                        bridge.searchCatalog(catalogSearchField.text, "DEB")
+                    }
+                }
+                Button {
+                    id: rpmSourceButton
+                    objectName: "rpmSourceButton"
+                    text: qsTr("RPM")
+                    font.bold: window.catalogSource === "RPM"
+                    onClicked: {
+                        window.catalogSource = "RPM"
+                        bridge.searchCatalog(catalogSearchField.text, "RPM")
+                    }
+                }
+                Item { Layout.fillWidth: true }
+                Label {
+                    text: window.catalogSource === "Flatpak" ? "Flathub"
+                          : window.catalogSource === "AppImage" ? "AppImageHub"
+                          : window.catalogSource === "DEB" ? "Debian packages"
+                          : "Fedora packages"
+                    font.pixelSize: 12
+                    color: Theme.colors.textSecondary
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
                 spacing: 10
                 TextField {
                     id: catalogSearchField
                     objectName: "catalogSearchField"
                     Layout.fillWidth: true
-                    placeholderText: qsTr("Search Flathub apps, games, tools…")
+                    placeholderText: qsTr("Search applications, games, tools…")
                     font.pixelSize: 14
                     color: Theme.colors.text
                     placeholderTextColor: Theme.colors.textSecondary
@@ -797,7 +853,7 @@ ApplicationWindow {
                     onTextChanged: catalogTimer.restart()
                     onAccepted: {
                         catalogTimer.stop()
-                        bridge.searchCatalog(text)
+                        bridge.searchCatalog(text, window.catalogSource)
                     }
                     Keys.onEscapePressed: (event) => {
                         if (text) { text = ""; event.accepted = true }
@@ -816,14 +872,14 @@ ApplicationWindow {
                     objectName: "catalogRetry"
                     text: qsTr("Refresh")
                     enabled: !bridge.catalogLoading
-                    onClicked: bridge.searchCatalog(catalogSearchField.text)
+                    onClicked: bridge.searchCatalog(catalogSearchField.text, window.catalogSource)
                     implicitHeight: 36
                 }
                 Timer {
                     id: catalogTimer
                     interval: 480
                     repeat: false
-                    onTriggered: bridge.searchCatalog(catalogSearchField.text)
+                    onTriggered: bridge.searchCatalog(catalogSearchField.text, window.catalogSource)
                 }
             }
 
@@ -848,7 +904,7 @@ ApplicationWindow {
                     color: Theme.colors.textSecondary
                     font.pixelSize: 12
                     elide: Text.ElideRight
-                    Layout.maximumWidth: 335
+                    Layout.maximumWidth: 430
                     textFormat: Text.PlainText
                 }
             }
@@ -857,96 +913,116 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
 
-                ListView {
+                GridView {
                     id: catalogList
                     objectName: "catalogList"
                     anchors.fill: parent
+                    visible: window.catalogSource === "Flatpak" || window.catalogSource === "AppImage"
+                    property int columns: Math.max(1, Math.floor(width / 280))
+                    cellWidth: Math.floor(width / columns)
+                    cellHeight: 206
                     model: bridge.catalogModel
                     clip: true
-                    spacing: 8
                     ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
                     delegate: Rectangle {
                         id: catalogCard
-                        width: catalogList.width
-                        implicitHeight: 88
-                        radius: 11
+                        width: catalogList.cellWidth - 12
+                        height: catalogList.cellHeight - 8
+                        radius: 12
                         color: Theme.colors.surface
                         border.color: Theme.colors.border
                         border.width: 1
 
-                        RowLayout {
+                        ColumnLayout {
                             anchors.fill: parent
-                            anchors.leftMargin: 12
-                            anchors.rightMargin: 12
-                            anchors.topMargin: 9
-                            anchors.bottomMargin: 9
-                            spacing: 12
+                            anchors.margins: 13
+                            spacing: 8
 
-                            Rectangle {
-                                Layout.preferredWidth: 48
-                                Layout.preferredHeight: 48
-                                radius: 10
-                                color: Theme.colors.iconFallbackBg
-                                Image {
-                                    id: catalogIcon
-                                    anchors.fill: parent
-                                    anchors.margins: 3
-                                    source: model.iconUrl
-                                    asynchronous: true
-                                    cache: true
-                                    fillMode: Image.PreserveAspectFit
-                                    visible: status === Image.Ready
-                                }
-                                Label {
-                                    anchors.fill: parent
-                                    text: model.name.length ? model.name[0].toUpperCase() : "?"
-                                    visible: catalogIcon.status !== Image.Ready
-                                    color: Theme.colors.textSecondary
-                                    horizontalAlignment: Text.AlignHCenter
-                                    verticalAlignment: Text.AlignVCenter
-                                    font.pixelSize: 19
-                                }
-                            }
-
-                            ColumnLayout {
+                            RowLayout {
                                 Layout.fillWidth: true
-                                spacing: 3
-                                Label {
-                                    text: model.name
-                                    textFormat: Text.PlainText
-                                    font.pixelSize: 15
-                                    font.weight: Font.DemiBold
-                                    color: Theme.colors.text
-                                    Layout.fillWidth: true
-                                    elide: Text.ElideRight
+                                spacing: 11
+                                Rectangle {
+                                    Layout.preferredWidth: 53
+                                    Layout.preferredHeight: 53
+                                    radius: 10
+                                    color: Theme.colors.iconFallbackBg
+                                    Image {
+                                        id: catalogIcon
+                                        anchors.fill: parent
+                                        anchors.margins: 3
+                                        source: model.iconUrl
+                                        asynchronous: true
+                                        cache: true
+                                        fillMode: Image.PreserveAspectFit
+                                        visible: status === Image.Ready
+                                    }
+                                    Label {
+                                        anchors.fill: parent
+                                        text: model.name.length ? model.name[0].toUpperCase() : "?"
+                                        visible: catalogIcon.status !== Image.Ready
+                                        color: Theme.colors.textSecondary
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        font.pixelSize: 19
+                                    }
                                 }
-                                Label {
-                                    text: model.summary || model.appId
-                                    textFormat: Text.PlainText
-                                    font.pixelSize: 12
-                                    color: Theme.colors.textSecondary
+                                ColumnLayout {
                                     Layout.fillWidth: true
-                                    elide: Text.ElideRight
-                                    maximumLineCount: 1
-                                }
-                                Label {
-                                    text: model.category ? ("Flathub · " + model.category) : "Flathub · Flatpak"
-                                    textFormat: Text.PlainText
-                                    font.pixelSize: 11
-                                    color: Theme.colors.textSecondary
-                                    Layout.fillWidth: true
-                                    elide: Text.ElideRight
+                                    spacing: 3
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: model.name
+                                        textFormat: Text.PlainText
+                                        font.pixelSize: 15
+                                        font.weight: Font.DemiBold
+                                        color: Theme.colors.text
+                                        elide: Text.ElideRight
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: model.source === "AppImage" ? "AppImageHub · AppImage"
+                                              : "Flathub · Flatpak"
+                                        font.pixelSize: 11
+                                        color: Theme.colors.textSecondary
+                                        elide: Text.ElideRight
+                                    }
                                 }
                             }
 
-                            Button {
-                                text: model.managed ? qsTr("Managed") : qsTr("Install")
-                                enabled: !model.managed
-                                implicitHeight: 32
-                                implicitWidth: 90
-                                Accessible.name: qsTr("Install %1 from Flathub").arg(model.name)
-                                onClicked: bridge.installFromFlathub(model.appId)
+                            Label {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                text: model.summary || model.appId
+                                textFormat: Text.PlainText
+                                wrapMode: Text.WordWrap
+                                elide: Text.ElideRight
+                                maximumLineCount: 3
+                                font.pixelSize: 12
+                                color: Theme.colors.textSecondary
+                                verticalAlignment: Text.AlignTop
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: model.category || qsTr("Application")
+                                    color: Theme.colors.textSecondary
+                                    font.pixelSize: 11
+                                    elide: Text.ElideRight
+                                    textFormat: Text.PlainText
+                                }
+                                Button {
+                                    text: model.managed ? qsTr("Managed")
+                                        : model.source === "AppImage" && !model.installUrl
+                                          ? qsTr("Downloads") : qsTr("Install")
+                                    enabled: !model.managed
+                                    implicitHeight: 32
+                                    implicitWidth: 92
+                                    Accessible.name: text + " " + model.name
+                                    onClicked: bridge.installCatalogEntry(model.appId, model.source)
+                                }
                             }
                         }
                     }
@@ -954,7 +1030,8 @@ ApplicationWindow {
 
                 Label {
                     anchors.centerIn: parent
-                    visible: bridge.catalogModel.count === 0 && !bridge.catalogLoading
+                    visible: catalogList.visible && bridge.catalogModel.count === 0
+                             && !bridge.catalogLoading
                     text: bridge.catalogStatus
                     color: Theme.colors.textSecondary
                     font.pixelSize: 14
@@ -963,6 +1040,53 @@ ApplicationWindow {
                     horizontalAlignment: Text.AlignHCenter
                     textFormat: Text.PlainText
                 }
+
+                ColumnLayout {
+                    anchors.centerIn: parent
+                    width: Math.min(parent.width - 32, 590)
+                    visible: window.catalogSource === "DEB" || window.catalogSource === "RPM"
+                    spacing: 16
+                    Label {
+                        Layout.fillWidth: true
+                        text: window.catalogSource === "DEB"
+                              ? qsTr("Browse Debian DEB packages")
+                              : qsTr("Browse Fedora RPM packages")
+                        font.pixelSize: 20
+                        font.weight: Font.DemiBold
+                        color: Theme.colors.text
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                    Label {
+                        Layout.fillWidth: true
+                        text: qsTr("These packages depend on distribution, release and architecture. Use the official package directory to choose a real file, then install it through AppInstall's File or URL confirmation flow. Direct in-app DEB/RPM discovery is not enabled yet.")
+                        color: Theme.colors.textSecondary
+                        wrapMode: Text.WordWrap
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                    Button {
+                        Layout.alignment: Qt.AlignHCenter
+                        text: window.catalogSource === "DEB"
+                              ? qsTr("Open Debian packages")
+                              : qsTr("Open Fedora packages")
+                        onClicked: bridge.openOfficialCatalog(window.catalogSource,
+                                                               catalogSearchField.text)
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                visible: catalogList.visible && bridge.catalogHasMore
+                Item { Layout.fillWidth: true }
+                Button {
+                    id: catalogViewMore
+                    objectName: "catalogViewMore"
+                    text: qsTr("View more")
+                    enabled: !bridge.catalogLoading
+                    onClicked: bridge.loadMoreCatalog()
+                    implicitWidth: 150
+                }
+                Item { Layout.fillWidth: true }
             }
         }
 
