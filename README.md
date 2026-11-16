@@ -12,7 +12,7 @@ Double-click a supported file, review its source and destination, confirm instal
 
 Managed applications now use monitored launchers. Startup failures show useful errors and logs; open **AppInstall → Application Diagnostics** or run `appinstall --diagnostics` for launch history and safe repair actions. See [Launch Diagnostics](LAUNCH_DIAGNOSTICS.md) for tested behavior and limits.
 
-## Discover Apps (v1.7.0 development preview)
+## Discover Apps (v1.7.0 release candidate)
 
 **Discover Apps** uses a responsive application-card grid. The **View more**
 button reveals additional results in batches of 24 without resetting My
@@ -78,10 +78,47 @@ automatic host-native package manager changes are made by Discover.
 `My Applications` and the accepted View/Tools/Settings/Help layout remain
 unchanged.
 
-This v1.7.0 preview is **not** part of the published v1.6.0 stable release.
-Owner desktop verification and merge approval are still required.
+The v1.7.0 source is a release candidate until the final packages, portable
+archive, and checksums are published. A merged branch alone is not a release.
+See RELEASE_NOTES.md for verification boundaries.
 
 ## Install AppInstall
+
+### Verified native packages
+
+The normal one-command installer still selects an **official native package**
+only for the currently verified hosts: Arch Linux/CachyOS, Debian 13,
+Ubuntu 24.04/26.04, Linux Mint 22, or Fedora 44 on x86_64. It always
+downloads the **latest published stable** release, not an unmerged PR or
+unpublished v1.7.0 build. No host package manager is invoked on an
+unverified distribution.
+
+### Other Linux desktops — portable source installation
+
+If your distro is not in the native list, AppInstall also has a
+**distribution-neutral, non-root source route**, not a falsely renamed
+DEB/RPM. Use a verified, published `appinstall-1.7.0-portable.tar.gz`
+archive, after v1.7.0 is published:
+
+```bash
+sha256sum --ignore-missing -c SHA256SUMS
+tar -xzf appinstall-1.7.0-portable.tar.gz
+cd appinstall-1.7.0
+bash ./install-user.sh
+~/.local/bin/appinstall --manage
+```
+
+Install Python 3, Bash, freedesktop `xdg-utils`, and for the Discover GUI,
+**PySide6 + Qt Quick/QML** from your host's own package manager before running.
+Flatpak, Podman and Distrobox are optional for their associated formats.
+Portable installation writes AppInstall to your home directory, and detects
+native pacman/dpkg/RPM AppInstall packages before adding a potentially
+shadowing user copy. The portable archive includes source code, **not**
+bundled Qt libraries, universal binaries, or guarantees of compatibility
+on every Linux distribution, libc, architecture or desktop session.
+For portable removal run `~/.local/bin/appinstall-uninstall`; the
+installer preserves managed packages and user data.
+
 
 **One-command installation** detects the host distribution (x86_64). Run this as your normal desktop user (not with `sudo`):
 
