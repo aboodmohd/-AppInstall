@@ -288,6 +288,78 @@ class Engine:
             self.save()
             raise
 
+    # ── Signed-distribution repository installs discovered by APT/DNF ──
+    def _checked_repository_info(self, info):
+        """Refresh the exact package identity immediately before a transaction."""
+        import repository_catalog
+        kind = info.get("kind")
+        name = repository_catalog.validate_name(info.get("name"))
+        if kind not in SPECS or info.get("install_method") != "repository":
+            raise RuntimeError("Not a repository-backed DEB/RPM package.")
+        container, image = SPECS[kind]
+        if info.get("container") != container or info.get("image") != image:
+            raise RuntimeError("Package container identity changed.")
+        actual = repository_catalog.package_info(kind, name)
+        if actual["version"] != info.get("version") or \
+                actual["architecture"] != info.get("architecture"):
+            raise RuntimeError("Repository package version or architecture changed. "
+                               "Search again and review the updated package.")
+        return actual
+
+    def transaction_repository(self, info):
+        """Set up and display the actual APT/DNF transaction before installation."""
+        self.ensure(info)
+        self._checked_repository_info(info)
+        name = info["name"]
+        if info["kind"] == "deb":
+            return self.enter(info, ["sudo", "apt-get", "--simulate",
+                                    "--no-remove", "install", name]).decode()
+        result = subprocess.run(
+            ["distrobox", "enter", "--name", info["container"], "--no-tty",
+             "--", "sudo", "dnf", "--assumeno", "install", name],
+            env=ENV, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=120)
+        preview = result.stdout.decode(errors="replace")
+        if result.returncode and not any(x in preview.lower()
+                                           for x in ("operation aborted", "is this ok",
+                                                     "operation cancelled", "transaction summary")):
+            raise RuntimeError(preview[-12000:])
+        return preview
+
+    def install_repository(self, info, choose):
+        """Install the reviewed repository name, never a shell command or a URL."""
+        self.ensure(info)
+        self._checked_repository_info(info)
+        key = self.key(info)
+        previous = self.registry.get(key)
+        if previous and previous.get("status") == "installed":
+            raise RuntimeError("This package is already managed by AppInstall.")
+        self.registry[key] = dict(info, status="installing",
+                                  exports=(previous or {}).get("exports", []),
+                                  icons=(previous or {}).get("icons", []))
+        self.save()
+        try:
+            if info["kind"] == "deb":
+                self.enter(info, ["sudo", "env", "DEBIAN_FRONTEND=noninteractive",
+                                  "apt-get", "--assume-yes", "--no-remove",
+                                  "install", info["name"]])
+                files = self.enter(info, ["dpkg-query", "-L", info["name"]]).decode().splitlines()
+            else:
+                self.enter(info, ["sudo", "dnf", "--assumeyes",
+                                  "install", info["name"]])
+                files = self.enter(info, ["rpm", "-ql", info["name"]]).decode().splitlines()
+            entries = self.visible_entries(info, files)
+            selected = choose(entries) if entries else None
+            exports = self.export(info, selected) if selected else []
+            record = dict(info, status="installed", desktop=selected, candidates=entries,
+                          exports=exports, launch_verified=False)
+            self.registry[key] = record
+            self.save()
+            return record
+        except BaseException:
+            self.registry[key]["status"] = "needs-repair"
+            self.save()
+            raise
+
     def visible_entries(self, info, files):
         entries = []
         for path in files:
