@@ -146,7 +146,7 @@ def search(kind, query):
         # The glob is a single argv element, never passed through a shell.
         output = _run(kind, [
             "dnf", "repoquery", "--available", "--latest-limit=1",
-            "--queryformat=%{name}\\t%{summary}\\t%{version}\\t%{arch}",
+            "--queryformat=%{name}\t%{summary}\t%{version}\t%{arch}",
             "*" + query + "*"])
     return _rows(kind, output)
 
@@ -180,7 +180,7 @@ def package_info(kind, name):
         maintainer = fields.get("Maintainer", "")
     else:
         text = _run(kind, ["dnf", "repoquery", "--available", "--latest-limit=1",
-                           "--queryformat=%{name}\\t%{version}-%{release}\\t%{arch}\\t%{summary}",
+                           "--queryformat=%{name}\t%{version}-%{release}\t%{arch}\t%{summary}",
                            name])
         matches = [parts for line in text.splitlines()
                    if len(parts := line.split("\t", 3)) == 4
