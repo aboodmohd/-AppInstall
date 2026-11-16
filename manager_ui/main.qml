@@ -12,6 +12,8 @@ ApplicationWindow {
     visible: true
     title: qsTr("AppInstall — My Applications")
     color: Theme.colors.window
+    property bool menuExpanded: true
+    property bool filtersExpanded: true
 
     // Screenshot contract for --screenshot: the QML engine returns the
     // base QWindow wrapper for this root, which lacks grabWindow(); QML
@@ -114,270 +116,217 @@ ApplicationWindow {
         anchors.fill: parent
         spacing: 0
 
-        // ── header ───────────────────────────────────────────────────
+        // ── one-row header: menus and install actions share one line ──
         Rectangle {
             Layout.fillWidth: true
-            implicitHeight: headerRow.implicitHeight + 24
+            implicitHeight: 62
             color: Theme.colors.surface
-
-            Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
+            border.color: Theme.colors.border
+            border.width: 0
 
             RowLayout {
-                id: headerRow
                 anchors.fill: parent
-                anchors.leftMargin: 24
+                anchors.leftMargin: 16
                 anchors.rightMargin: 16
-                spacing: 12
+                spacing: 7
 
                 Label {
                     text: qsTr("My Applications")
-                    font.pixelSize: 18
+                    font.pixelSize: 17
                     font.weight: Font.DemiBold
                     color: Theme.colors.text
                     Accessible.role: Accessible.Heading
                 }
 
-                // Theme pill: shows the active mode, opens the same three
-                // choices the widgets window offers (system follow included).
                 Button {
-                    id: themeButton
-                    text: bridge.themeChoice === 'auto' ? qsTr("System")
-                          : bridge.themeChoice === 'dark' ? qsTr("Dark")
-                          : qsTr("Light")
-                    font.pixelSize: 13
-                    implicitHeight: 32
-                    implicitWidth: themeLabel.implicitWidth + 24
-                    hoverEnabled: true
-
+                    id: menuToggle
+                    objectName: "menuToggle"
+                    text: window.menuExpanded ? qsTr("Hide menu") : qsTr("Show menu")
+                    onClicked: window.menuExpanded = !window.menuExpanded
+                    Accessible.name: text
+                    font.pixelSize: 12
+                    implicitHeight: 30
+                    implicitWidth: contentItem.implicitWidth + 18
                     background: Rectangle {
-                        radius: 8
-                        color: themeButton.pressed ? Theme.colors.pressed
-                             : themeButton.hovered ? Theme.colors.hover
-                             : "transparent"
-                        border.color: themeButton.visualFocus ? Theme.colors.focusRing : Theme.colors.border
-                        border.width: themeButton.visualFocus ? 2 : 1
-
-                        Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
+                        radius: 7
+                        color: menuToggle.hovered ? Theme.colors.hover : "transparent"
+                        border.color: menuToggle.visualFocus ? Theme.colors.focusRing : Theme.colors.border
+                        border.width: 1
                     }
                     contentItem: Label {
-                        id: themeLabel
-                        text: themeButton.text
-                        font: themeButton.font
-                        color: Theme.colors.text
+                        text: menuToggle.text
+                        color: Theme.colors.textSecondary
+                        font: menuToggle.font
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
-                    onClicked: themeMenu.popup(themeButton, 0, themeButton.height + 4)
-                    Accessible.name: qsTr("Theme: %1").arg(themeButton.text)
+                }
+
+                MenuBar {
+                    id: appMenuBar
+                    objectName: "appMenuBar"
+                    visible: window.menuExpanded
+                    Layout.preferredWidth: implicitWidth
+                    implicitHeight: 32
+                    padding: 1
+                    spacing: 1
+
+                    background: Rectangle { color: "transparent" }
+
+                    delegate: MenuBarItem {
+                        id: menuTab
+                        implicitHeight: 30
+                        implicitWidth: tabText.implicitWidth + 18
+                        hoverEnabled: true
+                        contentItem: Label {
+                            id: tabText
+                            text: menuTab.text
+                            color: Theme.colors.text
+                            font.pixelSize: 13
+                            verticalAlignment: Text.AlignVCenter
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                        background: Rectangle {
+                            radius: 7
+                            color: menuTab.down ? Theme.colors.pressed
+                                 : menuTab.hovered ? Theme.colors.hover : "transparent"
+                            border.color: menuTab.visualFocus ? Theme.colors.focusRing : "transparent"
+                            border.width: menuTab.visualFocus ? 2 : 0
+                        }
+                    }
 
                     Menu {
-                        id: themeMenu
+                        title: qsTr("View")
+                        MenuItem {
+                            objectName: "menuRefresh"
+                            text: qsTr("Refresh Applications")
+                            onTriggered: bridge.refresh()
+                        }
+                        MenuItem {
+                            objectName: "menuFocusSearch"
+                            text: qsTr("Focus Search")
+                            onTriggered: {
+                                window.filtersExpanded = true
+                                searchField.forceActiveFocus()
+                            }
+                        }
+                        MenuItem {
+                            text: window.filtersExpanded ? qsTr("Hide Filters") : qsTr("Show Filters")
+                            onTriggered: window.filtersExpanded = !window.filtersExpanded
+                        }
+                    }
 
+                    Menu {
+                        title: qsTr("Tools")
                         MenuItem {
-                            text: qsTr("Follow system")
-                            checkable: true
-                            checked: bridge.themeChoice === 'auto'
-                            onTriggered: bridge.setTheme('auto')
+                            text: qsTr("Check for AppInstall Updates")
+                            enabled: bridge.actionVisible && bridge.updateTag === ""
+                            onTriggered: bridge.checkUpdates(true)
                         }
                         MenuItem {
-                            text: qsTr("Light")
-                            checkable: true
-                            checked: bridge.themeChoice === 'light'
-                            onTriggered: bridge.setTheme('light')
+                            text: qsTr("Application Diagnostics")
+                            onTriggered: bridge.openDiagnostics("")
+                        }
+                    }
+
+                    Menu {
+                        title: qsTr("Settings")
+                        MenuItem {
+                            objectName: "menuPreferences"
+                            text: qsTr("Preferences…")
+                            onTriggered: settingsDialog.open()
+                        }
+                    }
+
+                    Menu {
+                        title: qsTr("Help")
+                        MenuItem {
+                            objectName: "menuAbout"
+                            text: qsTr("About AppInstall…")
+                            onTriggered: aboutDialog.open()
                         }
                         MenuItem {
-                            text: qsTr("Dark")
-                            checkable: true
-                            checked: bridge.themeChoice === 'dark'
-                            onTriggered: bridge.setTheme('dark')
+                            text: qsTr("View Project on GitHub")
+                            onTriggered: Qt.openUrlExternally("https://github.com/aboodmohd/-AppInstall")
                         }
                     }
                 }
 
-                Item { Layout.fillWidth: true }
+                Item { Layout.fillWidth: true; Layout.minimumWidth: 2 }
 
-                // Install entry points: the widgets window's exact flows,
-                // reached through the bridge's normal-entry-point rule.
                 Button {
-                    id: installFileButton
-                    text: qsTr("Install from File…")
-                    font.pixelSize: 13
-                    implicitHeight: 32
-                    implicitWidth: installFileLabel.implicitWidth + 24
-                    hoverEnabled: true
-
+                    id: filtersToggle
+                    objectName: "filtersToggle"
+                    text: window.filtersExpanded ? qsTr("Hide filters") : qsTr("Show filters")
+                    onClicked: window.filtersExpanded = !window.filtersExpanded
+                    Accessible.name: text
+                    font.pixelSize: 12
+                    implicitHeight: 30
+                    implicitWidth: contentItem.implicitWidth + 18
                     background: Rectangle {
-                        radius: 8
-                        color: installFileButton.pressed ? Theme.colors.pressed
-                             : installFileButton.hovered ? Theme.colors.hover
-                             : "transparent"
-                        border.color: installFileButton.visualFocus ? Theme.colors.focusRing : Theme.colors.border
-                        border.width: installFileButton.visualFocus ? 2 : 1
-
-                        Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
+                        radius: 7
+                        color: filtersToggle.hovered ? Theme.colors.hover : "transparent"
+                        border.color: filtersToggle.visualFocus ? Theme.colors.focusRing : Theme.colors.border
+                        border.width: 1
                     }
                     contentItem: Label {
-                        id: installFileLabel
-                        text: installFileButton.text
-                        font: installFileButton.font
-                        color: Theme.colors.text
+                        text: filtersToggle.text
+                        font: filtersToggle.font
+                        color: Theme.colors.textSecondary
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
-                    onClicked: bridge.installFromFile()
-                    Accessible.name: qsTr("Install a package from a file")
                 }
 
+                // One install dropdown replaces the two separate file/URL buttons.
                 Button {
-                    id: installUrlButton
-                    text: qsTr("Install from URL…")
+                    id: installDropdown
+                    objectName: "installDropdown"
+                    text: qsTr("Install  ▾")
                     font.pixelSize: 13
+                    font.weight: Font.DemiBold
                     implicitHeight: 32
-                    implicitWidth: installUrlLabel.implicitWidth + 24
-                    hoverEnabled: true
-
+                    implicitWidth: contentItem.implicitWidth + 26
+                    onClicked: installMenu.popup(installDropdown, 0, installDropdown.height + 4)
+                    Accessible.name: qsTr("Install an application")
                     background: Rectangle {
                         radius: 8
-                        color: installUrlButton.pressed ? Theme.colors.pressed
-                             : installUrlButton.hovered ? Theme.colors.hover
-                             : "transparent"
-                        border.color: installUrlButton.visualFocus ? Theme.colors.focusRing : Theme.colors.border
-                        border.width: installUrlButton.visualFocus ? 2 : 1
-
-                        Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
+                        color: installDropdown.pressed ? Qt.darker(Theme.colors.accent, 1.12)
+                             : Theme.colors.accent
                     }
                     contentItem: Label {
-                        id: installUrlLabel
-                        text: installUrlButton.text
-                        font: installUrlButton.font
-                        color: Theme.colors.text
+                        text: installDropdown.text
+                        color: Theme.colors.accentText
+                        font: installDropdown.font
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
-                    onClicked: bridge.installFromUrl()
-                    Accessible.name: qsTr("Install a package from a URL")
-                }
-            }
-        }
-
-        // Standard desktop menu, below the existing quick-action toolbar.
-        // Menu actions use the same bridge slots as their original buttons.
-        // No source/installer code is executed by opening a menu.
-        MenuBar {
-            id: appMenuBar
-            objectName: "appMenuBar"
-            Layout.fillWidth: true
-            implicitHeight: 36
-            padding: 2
-            spacing: 2
-
-            background: Rectangle {
-                color: Theme.colors.surface
-            }
-
-            delegate: MenuBarItem {
-                id: menuTab
-                implicitHeight: 32
-                implicitWidth: tabText.implicitWidth + 24
-                hoverEnabled: true
-                contentItem: Label {
-                    id: tabText
-                    text: menuTab.text
-                    color: Theme.colors.text
-                    font.pixelSize: 13
-                    verticalAlignment: Text.AlignVCenter
-                    horizontalAlignment: Text.AlignHCenter
-                }
-                background: Rectangle {
-                    radius: 6
-                    color: menuTab.down ? Theme.colors.pressed
-                         : menuTab.hovered ? Theme.colors.hover
-                         : "transparent"
-                    border.color: menuTab.visualFocus ? Theme.colors.focusRing : "transparent"
-                    border.width: menuTab.visualFocus ? 2 : 0
-                }
-            }
-
-            Menu {
-                title: qsTr("File")
-                MenuItem {
-                    objectName: "menuInstallFile"
-                    text: qsTr("Install from File…")
-                    onTriggered: bridge.installFromFile()
-                }
-                MenuItem {
-                    objectName: "menuInstallUrl"
-                    text: qsTr("Install from URL…")
-                    onTriggered: bridge.installFromUrl()
-                }
-                MenuSeparator {}
-                MenuItem {
-                    text: qsTr("Quit AppInstall")
-                    onTriggered: window.close() // Existing allowClose guard remains active.
-                }
-            }
-
-            Menu {
-                title: qsTr("View")
-                MenuItem {
-                    objectName: "menuRefresh"
-                    text: qsTr("Refresh Applications")
-                    onTriggered: bridge.refresh()
-                }
-                MenuItem {
-                    objectName: "menuFocusSearch"
-                    text: qsTr("Focus Search")
-                    onTriggered: searchField.forceActiveFocus()
-                }
-                MenuSeparator {}
-                MenuItem {
-                    text: qsTr("Follow System Theme")
-                    checkable: true
-                    checked: bridge.themeChoice === "auto"
-                    onTriggered: bridge.setTheme("auto")
-                }
-                MenuItem {
-                    text: qsTr("Light Theme")
-                    checkable: true
-                    checked: bridge.themeChoice === "light"
-                    onTriggered: bridge.setTheme("light")
-                }
-                MenuItem {
-                    text: qsTr("Dark Theme")
-                    checkable: true
-                    checked: bridge.themeChoice === "dark"
-                    onTriggered: bridge.setTheme("dark")
-                }
-            }
-
-            Menu {
-                title: qsTr("Tools")
-                MenuItem {
-                    text: qsTr("Check for AppInstall Updates")
-                    enabled: bridge.actionVisible && bridge.updateTag === ""
-                    onTriggered: bridge.checkUpdates(true)
-                }
-                MenuItem {
-                    text: qsTr("Application Diagnostics")
-                    onTriggered: bridge.openDiagnostics("")
-                }
-            }
-
-            Menu {
-                title: qsTr("Help")
-                MenuItem {
-                    objectName: "menuAbout"
-                    text: qsTr("About AppInstall…")
-                    onTriggered: aboutDialog.open()
-                }
-                MenuItem {
-                    text: qsTr("View Project on GitHub")
-                    onTriggered: Qt.openUrlExternally("https://github.com/aboodmohd/-AppInstall")
+                    Menu {
+                        id: installMenu
+                        MenuItem {
+                            objectName: "menuInstallFile"
+                            text: qsTr("Install from File…")
+                            onTriggered: bridge.installFromFile()
+                        }
+                        MenuItem {
+                            objectName: "menuInstallUrl"
+                            text: qsTr("Install from URL…")
+                            onTriggered: bridge.installFromUrl()
+                        }
+                    }
                 }
             }
         }
 
         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.colors.border }
+
+        // Filters can be collapsed without hiding the update banner or apps.
+        ColumnLayout {
+            id: filtersPanel
+            objectName: "filtersPanel"
+            visible: window.filtersExpanded
+            Layout.fillWidth: true
+            spacing: 0
 
         // ── toolbar: search first, then state filters ─────────────────
         RowLayout {
@@ -689,6 +638,8 @@ ApplicationWindow {
             }
         }
 
+        } // filtersPanel
+
         // ── update banner ────────────────────────────────────────────
         Rectangle {
             id: updateBanner
@@ -892,6 +843,115 @@ ApplicationWindow {
     }
 
     } // grabRoot
+
+    // Working preferences stored atomically in ~/.local/share/appinstall/settings.json.
+    // Every change passes through the existing settings sanitizer; no dummy toggles.
+    Dialog {
+        id: settingsDialog
+        objectName: "settingsDialog"
+        title: qsTr("AppInstall Settings")
+        modal: true
+        standardButtons: Dialog.Close
+        width: Math.min(window.width - 48, 475)
+        x: Math.round((window.width - width) / 2)
+        y: Math.round((window.height - height) / 2)
+
+        background: Rectangle {
+            radius: 12
+            color: Theme.colors.surface
+            border.color: Theme.colors.border
+            border.width: 1
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 10
+
+            Label {
+                text: qsTr("Appearance")
+                font.pixelSize: 16
+                font.weight: Font.DemiBold
+                color: Theme.colors.text
+            }
+            ButtonGroup { id: appearanceChoice }
+            RadioButton {
+                text: qsTr("Follow system theme")
+                ButtonGroup.group: appearanceChoice
+                checked: bridge.themeChoice === "auto"
+                onClicked: bridge.setTheme("auto")
+                Accessible.name: text
+            }
+            RadioButton {
+                text: qsTr("Light")
+                ButtonGroup.group: appearanceChoice
+                checked: bridge.themeChoice === "light"
+                onClicked: bridge.setTheme("light")
+            }
+            RadioButton {
+                text: qsTr("Dark")
+                ButtonGroup.group: appearanceChoice
+                checked: bridge.themeChoice === "dark"
+                onClicked: bridge.setTheme("dark")
+            }
+            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.colors.border }
+
+            Label {
+                text: qsTr("Notifications")
+                font.pixelSize: 16
+                font.weight: Font.DemiBold
+                color: Theme.colors.text
+            }
+            CheckBox {
+                id: notificationCheck
+                objectName: "notificationCheck"
+                text: qsTr("Notify me about available AppInstall updates")
+                checked: bridge.notificationsEnabled
+                onClicked: bridge.setNotificationsEnabled(checked)
+            }
+            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.colors.border }
+
+            Label {
+                text: qsTr("Default uninstall choice")
+                font.pixelSize: 16
+                font.weight: Font.DemiBold
+                color: Theme.colors.text
+            }
+            ButtonGroup { id: uninstallChoice }
+            RadioButton {
+                objectName: "uninstallAsk"
+                text: qsTr("Ask every time (remove app only by default)")
+                ButtonGroup.group: uninstallChoice
+                checked: bridge.uninstallMode === "ask"
+                onClicked: bridge.setUninstallMode("ask")
+            }
+            RadioButton {
+                objectName: "uninstallAppOnly"
+                text: qsTr("Remove app only")
+                ButtonGroup.group: uninstallChoice
+                checked: bridge.uninstallMode === "app_only"
+                onClicked: bridge.setUninstallMode("app_only")
+            }
+            RadioButton {
+                objectName: "uninstallWithData"
+                text: qsTr("Remove app + verified AppInstall history")
+                ButtonGroup.group: uninstallChoice
+                checked: bridge.uninstallMode === "with_managed_data"
+                onClicked: bridge.setUninstallMode("with_managed_data")
+            }
+            Label {
+                text: qsTr("Every uninstall still asks for confirmation. Personal folders, downloads and shared containers are always kept.")
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                font.pixelSize: 12
+                color: Theme.colors.textSecondary
+            }
+            Label {
+                text: qsTr("Preferences are saved as you change them.")
+                Layout.fillWidth: true
+                font.pixelSize: 12
+                color: Theme.colors.textSecondary
+            }
+        }
+    }
 
     // Lightweight about dialog; no hardcoded version or unverified claims.
     Dialog {
