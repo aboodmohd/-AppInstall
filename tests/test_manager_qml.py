@@ -538,6 +538,8 @@ class CatalogModelTests(QmlManagerBase):
             with self.subTest(source=source), \
                  patch.object(manager_qml.repository_catalog, 'ready',
                               return_value=True), \
+                 patch.object(manager_qml.repository_catalog, 'icons_for_results',
+                              return_value={}), \
                  patch.object(manager_qml.repository_catalog, 'search',
                               return_value=self.repository_rows(source)) as lookup:
                 self.bridge.searchCatalog('gimp', source)
@@ -548,6 +550,37 @@ class CatalogModelTests(QmlManagerBase):
             self.assertEqual(self.bridge.catalogModel.data(
                 self.bridge.catalogModel.index(0, 0),
                 self.bridge.catalogModel.SourceRole), source)
+
+    def test_repository_icons_update_cards_without_losing_results(self):
+        icon_url = ('https://appstream.debian.org/media/pool/org/gimp/GIMP/'
+                    'abcd/icons/128x128/gimp_gimp.png')
+        with patch.object(manager_qml.repository_catalog, 'ready',
+                          return_value=True), \
+             patch.object(manager_qml.repository_catalog, 'search',
+                          return_value=self.repository_rows('DEB')), \
+             patch.object(manager_qml.repository_catalog, 'icons_for_results',
+                          return_value={'gimp': icon_url}) as lookup:
+            self.bridge.searchCatalog('gimp', 'DEB')
+            self.wait_for_catalog()
+        lookup.assert_called_once()
+        self.assertEqual(self.bridge.catalogModel.count, 1)
+        index = self.bridge.catalogModel.index(0, 0)
+        self.assertEqual(self.bridge.catalogModel.data(
+            index, self.bridge.catalogModel.IconRole), icon_url)
+        self.assertEqual(self.bridge._catalog_all[0]['iconUrl'], icon_url)
+        self.assertFalse(self.bridge.catalogHasMore)
+
+    def test_stale_icon_updates_cannot_replace_another_source(self):
+        old = self.repository_rows('DEB')
+        self.bridge._catalog_all = old
+        self.bridge._catalog.replace(old)
+        self.bridge._catalog_source = 'RPM'
+        self.bridge._catalog_icons_ready('gimp', 'DEB',
+                                         {'gimp': 'https://example.invalid/fake.png'})
+        self.assertEqual(self.bridge._catalog_all[0]['iconUrl'], '')
+        self.assertEqual(self.bridge.catalogModel.data(
+            self.bridge.catalogModel.index(0, 0),
+            self.bridge.catalogModel.IconRole), '')
 
     def test_missing_repository_requires_explicit_enable(self):
         with patch.object(manager_qml.repository_catalog, 'search',
