@@ -844,7 +844,9 @@ ApplicationWindow {
                     id: catalogSearchField
                     objectName: "catalogSearchField"
                     Layout.fillWidth: true
-                    placeholderText: qsTr("Search applications, games, tools…")
+                    placeholderText: (window.catalogSource === "DEB" ? qsTr("Search Debian APT packages…")
+                             : window.catalogSource === "RPM" ? qsTr("Search Fedora DNF packages…")
+                             : qsTr("Search applications, games, tools…"))
                     font.pixelSize: 14
                     color: Theme.colors.text
                     placeholderTextColor: Theme.colors.textSecondary
@@ -917,7 +919,7 @@ ApplicationWindow {
                     id: catalogList
                     objectName: "catalogList"
                     anchors.fill: parent
-                    visible: window.catalogSource === "Flatpak" || window.catalogSource === "AppImage"
+                    visible: !bridge.catalogSetupRequired
                     property int columns: Math.max(1, Math.floor(width / 280))
                     cellWidth: Math.floor(width / columns)
                     cellHeight: 206
@@ -982,6 +984,8 @@ ApplicationWindow {
                                     Label {
                                         Layout.fillWidth: true
                                         text: model.source === "AppImage" ? "AppImageHub · AppImage"
+                                              : model.source === "DEB" ? "Debian · DEB"
+                                              : model.source === "RPM" ? "Fedora · RPM"
                                               : "Flathub · Flatpak"
                                         font.pixelSize: 11
                                         color: Theme.colors.textSecondary
@@ -1042,15 +1046,18 @@ ApplicationWindow {
                 }
 
                 ColumnLayout {
+                    id: repositorySetupPanel
+                    objectName: "repositorySetupPanel"
                     anchors.centerIn: parent
                     width: Math.min(parent.width - 32, 590)
-                    visible: window.catalogSource === "DEB" || window.catalogSource === "RPM"
+                    visible: bridge.catalogSetupRequired
+                             && (window.catalogSource === "DEB" || window.catalogSource === "RPM")
                     spacing: 16
                     Label {
                         Layout.fillWidth: true
                         text: window.catalogSource === "DEB"
-                              ? qsTr("Browse Debian DEB packages")
-                              : qsTr("Browse Fedora RPM packages")
+                              ? qsTr("Enable Debian DEB discovery")
+                              : qsTr("Enable Fedora RPM discovery")
                         font.pixelSize: 20
                         font.weight: Font.DemiBold
                         color: Theme.colors.text
@@ -1058,18 +1065,21 @@ ApplicationWindow {
                     }
                     Label {
                         Layout.fillWidth: true
-                        text: qsTr("These packages depend on distribution, release and architecture. Use the official package directory to choose a real file, then install it through AppInstall's File or URL confirmation flow. Direct in-app DEB/RPM discovery is not enabled yet.")
+                        text: qsTr("AppInstall searches the official package index inside its managed rootless container. Initial setup downloads a container image and package metadata; it will ask for permission first. Distrobox shares your home and desktop, so it is not a security sandbox.")
                         color: Theme.colors.textSecondary
                         wrapMode: Text.WordWrap
                         horizontalAlignment: Text.AlignHCenter
+                        textFormat: Text.PlainText
                     }
                     Button {
+                        id: repositoryEnableButton
+                        objectName: "repositoryEnableButton"
                         Layout.alignment: Qt.AlignHCenter
                         text: window.catalogSource === "DEB"
-                              ? qsTr("Open Debian packages")
-                              : qsTr("Open Fedora packages")
-                        onClicked: bridge.openOfficialCatalog(window.catalogSource,
-                                                               catalogSearchField.text)
+                              ? qsTr("Enable Debian repository")
+                              : qsTr("Enable Fedora repository")
+                        enabled: !bridge.catalogLoading
+                        onClicked: bridge.prepareCatalogSource(window.catalogSource)
                     }
                 }
             }
