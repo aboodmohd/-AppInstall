@@ -149,6 +149,9 @@ BROWSE_APT_PATTERN = (
     "painting program|video editor|screen recorder|desktop application|"
     "graphical interface|desktop environment|computer game"
 )
+# DNF5 repoquery emits *no per-package newline* unless the queryformat
+# explicitly includes a literal \\n escape (which DNF5 expands itself).
+# Without that delimiter, all results join into one unreadable row.
 BROWSE_DNF_FILE = "/usr/share/applications/*.desktop"
 BROWSE_DNF_GLOBS = (
     "*browser*", "*editor*", "*player*", "*viewer*", "*office*",
@@ -202,7 +205,7 @@ def browse(kind):
     if kind == "deb":
         output = _run(kind, ["apt-cache", "search", BROWSE_APT_PATTERN], timeout=90)
     else:
-        fmt = "--queryformat=%{name}\t%{summary}\t%{version}\t%{arch}"
+        fmt = "--queryformat=%{name}\t%{summary}\t%{version}\t%{arch}\\n"
         query = [
             "dnf", "repoquery", "--available", "--latest-limit=1",
             fmt, "--file=" + BROWSE_DNF_FILE,
@@ -213,11 +216,15 @@ def browse(kind):
             # Some rpm metadata mirrors do not publish filelists to libdnf5;
             # fall back to real matching package names, never fake app cards.
             output = ""
-        if not output.strip():
-            output = _run(kind, [
-                "dnf", "repoquery", "--available", "--latest-limit=1",
-                fmt, *BROWSE_DNF_GLOBS,
-            ], timeout=90)
+        rows = _browse_results(kind, output)
+        if rows:
+            return rows
+        # A DNF query can exit zero while returning no usable package rows.
+        # Treat that as missing data and try the general name metadata query.
+        output = _run(kind, [
+            "dnf", "repoquery", "--available", "--latest-limit=1",
+            fmt, *BROWSE_DNF_GLOBS,
+        ], timeout=90)
     return _browse_results(kind, output)
 
 
@@ -236,7 +243,7 @@ def search(kind, query):
         # The glob is a single argv element, never passed through a shell.
         output = _run(kind, [
             "dnf", "repoquery", "--available", "--latest-limit=1",
-            "--queryformat=%{name}\t%{summary}\t%{version}\t%{arch}",
+            "--queryformat=%{name}\t%{summary}\t%{version}\t%{arch}\\n",
             "*" + query + "*"])
     return _rows(kind, output)
 
@@ -270,7 +277,7 @@ def package_info(kind, name):
         maintainer = fields.get("Maintainer", "")
     else:
         text = _run(kind, ["dnf", "repoquery", "--available", "--latest-limit=1",
-                           "--queryformat=%{name}\t%{version}-%{release}\t%{arch}\t%{summary}",
+                           "--queryformat=%{name}\t%{version}-%{release}\t%{arch}\t%{summary}\\n",
                            name])
         matches = [parts for line in text.splitlines()
                    if len(parts := line.split("\t", 3)) == 4
