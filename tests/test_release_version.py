@@ -34,7 +34,9 @@ class ThreeFormatReleaseVersionTests(unittest.TestCase):
     def test_portable_source_bundle_is_separate_from_native_formats(self):
         portable = (ROOT / "tools/build_portable.sh").read_text()
         source = (ROOT / "install-user.sh").read_text()
-        self.assertIn('git -C "$root" archive', portable)
+        self.assertIn('ast.parse', portable)
+        self.assertIn('tarfile.open', portable)
+        self.assertIn('names.update(values["modules"])', portable)
         self.assertIn('appinstall-$version-portable.tar.gz', portable)
         self.assertIn('install-user.sh', portable)
         self.assertIn('manager_ui/main.qml', portable)
