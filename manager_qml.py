@@ -411,6 +411,8 @@ class CatalogWorker(QtCore.QThread):
                 kind = repository_catalog.kind_for(self.source)
                 if self.initializing:
                     repository_catalog.prepare(kind)
+                if not repository_catalog.ready(kind):
+                    raise repository_catalog.CatalogNotReady("Repository not prepared.")
                 results = repository_catalog.search(kind, self.query) if self.query else []
             elif self.source == "AppImage":
                 results = (flathub_catalog.appimage_search(self.query)
