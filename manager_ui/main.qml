@@ -861,7 +861,7 @@ ApplicationWindow {
                     id: catalogList
                     objectName: "catalogList"
                     anchors.fill: parent
-                    model: catalogModel
+                    model: bridge.catalogModel
                     clip: true
                     spacing: 8
                     ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
@@ -954,7 +954,7 @@ ApplicationWindow {
 
                 Label {
                     anchors.centerIn: parent
-                    visible: catalogModel.count === 0 && !bridge.catalogLoading
+                    visible: bridge.catalogModel.count === 0 && !bridge.catalogLoading
                     text: bridge.catalogStatus
                     color: Theme.colors.textSecondary
                     font.pixelSize: 14
