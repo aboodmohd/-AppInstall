@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.parse
 from pathlib import Path
 
 from qt_compat import QtCore, QtGui, QtWidgets
@@ -308,6 +309,8 @@ class CatalogModel(QtCore.QAbstractListModel):
     IconRole = QtCore.Qt.ItemDataRole.UserRole + 4
     CategoryRole = QtCore.Qt.ItemDataRole.UserRole + 5
     ManagedRole = QtCore.Qt.ItemDataRole.UserRole + 6
+    SourceRole = QtCore.Qt.ItemDataRole.UserRole + 7
+    InstallUrlRole = QtCore.Qt.ItemDataRole.UserRole + 8
     countChanged = QtCore.Signal()
 
     def __init__(self, parent=None):
@@ -327,6 +330,8 @@ class CatalogModel(QtCore.QAbstractListModel):
             self.IconRole: b'iconUrl',
             self.CategoryRole: b'category',
             self.ManagedRole: b'managed',
+            self.SourceRole: b'source',
+            self.InstallUrlRole: b'installUrl',
         }
 
     def rowCount(self, parent=QtCore.QModelIndex()):
@@ -342,13 +347,24 @@ class CatalogModel(QtCore.QAbstractListModel):
             self.SummaryRole: row['summary'],
             self.IconRole: row['iconUrl'],
             self.CategoryRole: row['category'],
-            self.ManagedRole: row['appId'] in self._managed,
+            self.ManagedRole: row.get('source', 'Flatpak') == 'Flatpak' and row['appId'] in self._managed,
+            self.SourceRole: row.get('source', 'Flatpak'),
+            self.InstallUrlRole: row.get('installUrl', ''),
         }.get(role)
 
     def replace(self, rows):
         self.beginResetModel()
         self._rows = list(rows)
         self.endResetModel()
+        self.countChanged.emit()
+
+    def append(self, rows):
+        if not rows:
+            return
+        start = len(self._rows)
+        self.beginInsertRows(QtCore.QModelIndex(), start, start + len(rows) - 1)
+        self._rows.extend(rows)
+        self.endInsertRows()
         self.countChanged.emit()
 
     def set_managed(self, inventory):
@@ -368,14 +384,19 @@ class CatalogWorker(QtCore.QThread):
     ready = QtCore.Signal(str, list)
     failed = QtCore.Signal(str, str)
 
-    def __init__(self, query, parent=None):
+    def __init__(self, query, source="Flatpak", parent=None):
         super().__init__(parent)
         self.query = query
+        self.source = source
 
     def run(self):
         try:
-            results = (flathub_catalog.search(self.query)
-                       if self.query else flathub_catalog.popular())
+            if self.source == "AppImage":
+                results = (flathub_catalog.appimage_search(self.query)
+                           if self.query else flathub_catalog.appimage_browse())
+            else:
+                results = (flathub_catalog.search(self.query)
+                           if self.query else flathub_catalog.popular())
             self.ready.emit(self.query, results)
         except (flathub_catalog.CatalogError, ValueError) as error:
             self.failed.emit(self.query, str(error))
@@ -396,6 +417,7 @@ class Bridge(QtCore.QObject):
     updateActionVisibleChanged = QtCore.Signal(bool)
     catalogLoadingChanged = QtCore.Signal(bool)
     catalogStatusChanged = QtCore.Signal(str)
+    catalogResultsChanged = QtCore.Signal()
 
     @QtCore.Property(bool, notify=updateActionVisibleChanged)
     def actionVisible(self):
@@ -411,6 +433,8 @@ class Bridge(QtCore.QObject):
         self._catalog = CatalogModel(self)
         self._catalog_loading = False
         self._catalog_status = 'Search Flathub or browse popular applications.'
+        self._catalog_source = 'Flatpak'
+        self._catalog_all = []
         self._catalog_worker = None
         self._catalog_pending = None
         # APPINSTALL_UI_DARK=1 forces dark mode for evidence capture,
@@ -506,6 +530,10 @@ class Bridge(QtCore.QObject):
     def catalogStatus(self):
         return self._catalog_status
 
+    @QtCore.Property(bool, notify=catalogResultsChanged)
+    def catalogHasMore(self):
+        return self._catalog.count < len(self._catalog_all)
+
     def _set_catalog_status(self, message):
         self._catalog_status = str(message)
         self.catalogStatusChanged.emit(self._catalog_status)
@@ -555,34 +583,51 @@ class Bridge(QtCore.QObject):
         self.loadingChanged.emit(False)
         self._set_status('Could not load inventory: ' + message)
 
-    # ── Flathub catalog (read-only until explicitly installing) ──────────
-
+    # ── Discover catalog, independent of local installed-app inventory ───
     @QtCore.Slot(str)
-    def searchCatalog(self, query):
-        """Latest-wins search with debounce in QML and one worker at a time."""
-        query = str(query).strip()
-        if len(query) > 90:
-            query = query[:90]
+    @QtCore.Slot(str, str)
+    def searchCatalog(self, query, source='Flatpak'):
+        """Debounced latest-wins fetch. DEB/RPM link to their official indexes."""
+        query = str(query).strip()[:90]
+        source = source if source in ('Flatpak', 'AppImage', 'DEB', 'RPM') else 'Flatpak'
+        self._catalog_source = source
+        if source in ('DEB', 'RPM'):
+            self._catalog_pending = None if self._catalog_worker is None else (query, source)
+            self._catalog_all = []
+            self._catalog.replace([])
+            self.catalogResultsChanged.emit()
+            self._set_catalog_status(
+                source + ' packages require distribution/architecture matching. '
+                'Browse the official package directory; install a downloaded '
+                'package with AppInstall’s normal File or URL review.')
+            return
         if query and len(query) < 2:
             self._catalog_pending = None
-            if self._catalog_worker is None or not self._catalog_worker.isRunning():
-                self._catalog.replace([])
-                self._set_catalog_status('Enter at least two characters.')
+            self._catalog_all = []
+            self._catalog.replace([])
+            self.catalogResultsChanged.emit()
+            self._set_catalog_status('Enter at least two characters.')
             return
-        self._catalog_pending = query
+        self._catalog_pending = (query, source)
         if self._catalog_worker is not None and self._catalog_worker.isRunning():
             return
         self._start_catalog_worker()
 
     def _start_catalog_worker(self):
-        query = self._catalog_pending
-        if query is None:
+        pending = self._catalog_pending
+        if pending is None:
             return
         self._catalog_pending = None
+        query, source = pending
+        if source in ('DEB', 'RPM'):
+            self._catalog_loading = False
+            self.catalogLoadingChanged.emit(False)
+            return
         self._catalog_loading = True
         self.catalogLoadingChanged.emit(True)
-        self._set_catalog_status('Searching Flathub…')
-        worker = CatalogWorker(query, self)
+        self._set_catalog_status('Searching ' + ('AppImageHub' if source == 'AppImage'
+                                                  else 'Flathub') + '…')
+        worker = CatalogWorker(query, source, self)
         self._catalog_worker = worker
         worker.ready.connect(self._catalog_ready)
         worker.failed.connect(self._catalog_failed)
@@ -590,17 +635,43 @@ class Bridge(QtCore.QObject):
         worker.start()
 
     def _catalog_ready(self, query, entries):
-        if self._catalog_pending is not None:
-            return  # A newer search will run as soon as this worker exits.
-        self._catalog.replace(entries)
-        self._set_catalog_status(
-            str(len(entries)) + (' application found' if len(entries) == 1
-                                  else ' applications found') + ' on Flathub.'
-            if entries else 'No Flathub applications matched this search.')
+        worker = self._catalog_worker
+        if self._catalog_pending is not None or worker is None or \
+                worker.source != self._catalog_source:
+            return
+        self._catalog_all = list(entries)
+        self._catalog.replace(self._catalog_all[:24])
+        self.catalogResultsChanged.emit()
+        self._announce_catalog_results()
+
+    def _announce_catalog_results(self):
+        total = len(self._catalog_all)
+        shown = self._catalog.count
+        provider = 'AppImageHub' if self._catalog_source == 'AppImage' else 'Flathub'
+        if not total:
+            status = 'No applications matched this search on ' + provider + '.'
+        elif shown < total:
+            status = f'Showing {shown} of {total} applications on {provider}.'
+        else:
+            status = (f'{total} application found on {provider}.'
+                      if total == 1 else f'{total} applications found on {provider}.')
+        self._set_catalog_status(status)
+
+    @QtCore.Slot()
+    def loadMoreCatalog(self):
+        if self._catalog_loading or not self.catalogHasMore:
+            return
+        n = self._catalog.count
+        self._catalog.append(self._catalog_all[n:n + 24])
+        self.catalogResultsChanged.emit()
+        self._announce_catalog_results()
 
     def _catalog_failed(self, query, message):
-        if self._catalog_pending is None:
+        if self._catalog_pending is None and self._catalog_worker is not None and \
+                self._catalog_worker.source == self._catalog_source:
+            self._catalog_all = []
             self._catalog.replace([])
+            self.catalogResultsChanged.emit()
             self._set_catalog_status(message)
 
     def _catalog_finished(self):
@@ -627,8 +698,44 @@ class Bridge(QtCore.QObject):
         dialog.installed.connect(self.refresh)
         dialog.exec()
 
+    @QtCore.Slot(str, str)
+    def installCatalogEntry(self, app_id, source):
+        """Never install from a browsing-page URL or arbitrary QML input."""
+        if source == 'Flatpak':
+            if any(row['appId'] == app_id for row in self._catalog_all):
+                self.installFromFlathub(app_id)
+            return
+        if source != 'AppImage' or self._catalog_source != 'AppImage':
+            return
+        row = next((row for row in self._catalog_all
+                    if row['appId'] == app_id and row.get('source') == 'AppImage'), None)
+        if row is None:
+            return
+        url = row.get('installUrl', '')
+        if url and url == flathub_catalog._appimage_download(
+                {'links': [{'type': 'Download', 'url': url}]}):
+            dialog = manager.UrlInstallDialog(self.anchor)
+            dialog.url_edit.setText(url)
+            dialog.installed.connect(self.refresh)
+            dialog.exec()
+        else:
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl(row['sourceUrl']))
+
+    @QtCore.Slot(str, str)
+    def openOfficialCatalog(self, source, query):
+        """Open official directories; no unverified package-name installation."""
+        search = urllib.parse.quote(str(query).strip()[:90], safe='')
+        if source == 'DEB':
+            url = ('https://packages.debian.org/search?keywords=' + search
+                   + '&searchon=names&suite=trixie&section=all')
+        elif source == 'RPM':
+            url = 'https://packages.fedoraproject.org/?q=' + search
+        else:
+            return
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl(url))
+
     def shutdownCatalog(self):
-        """Drain the read-only search before QApplication tears down QThreads."""
+        """Drain read-only catalog searches before QApplication tears down QThreads."""
         if self._catalog_worker is not None and self._catalog_worker.isRunning():
             self._catalog_pending = None
             self._catalog_worker.requestInterruption()
