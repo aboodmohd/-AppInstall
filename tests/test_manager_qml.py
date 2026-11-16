@@ -402,6 +402,302 @@ class BridgePreferenceTests(QmlManagerBase):
         self.assertIn('Invalid uninstall preference', self.bridge._status_text)
 
 
+class CatalogModelTests(QmlManagerBase):
+    """Discover results and installed app records stay separate."""
+
+    def sample(self):
+        return [{
+            'appId': 'org.gimp.GIMP', 'name': 'GIMP',
+            'summary': 'Image editor',
+            'iconUrl': '', 'category': 'Graphics',
+        }]
+
+    def test_model_roles_and_managed_detection(self):
+        model = self.bridge.catalogModel
+        model.replace(self.sample())
+        self.assertEqual(model.count, 1)
+        index = model.index(0, 0)
+        self.assertEqual(model.data(index, model.AppIdRole), 'org.gimp.GIMP')
+        self.assertFalse(model.data(index, model.ManagedRole))
+        model.set_managed([{'key': 'flatpak:org.gimp.GIMP', 'format': 'flatpak'}])
+        self.assertTrue(model.data(index, model.ManagedRole))
+        model.set_managed([{'key': 'appimage:org.gimp.GIMP', 'format': 'appimage'}])
+        self.assertFalse(model.data(index, model.ManagedRole))
+
+    def test_async_search_queries_flathub_without_blocking_ui(self):
+        self.assertFalse(self.bridge.catalogLoading)
+        with patch.object(manager_qml.flathub_catalog, 'search',
+                          return_value=self.sample()) as lookup:
+            self.bridge.searchCatalog('gimp')
+            self.assertTrue(self.bridge.catalogLoading)
+            deadline = time.monotonic() + 6
+            while time.monotonic() < deadline:
+                self.app.processEvents()
+                if not self.bridge.catalogLoading:
+                    break
+                time.sleep(0.01)
+        lookup.assert_called_once_with('gimp')
+        self.assertFalse(self.bridge.catalogLoading)
+        self.assertEqual(self.bridge.catalogModel.count, 1)
+        self.assertIn('1 application found', self.bridge.catalogStatus)
+
+    def test_discover_initial_browse_uses_live_popular_provider(self):
+        with patch.object(manager_qml.flathub_catalog, 'popular',
+                          return_value=self.sample()) as popular:
+            self.bridge.searchCatalog('')
+            deadline = time.monotonic() + 6
+            while time.monotonic() < deadline and self.bridge.catalogLoading:
+                self.app.processEvents()
+                time.sleep(0.01)
+        popular.assert_called_once()
+        self.assertEqual(self.bridge.catalogModel.count, 1)
+
+    def test_short_search_stops_before_network(self):
+        with patch.object(manager_qml.flathub_catalog, 'search') as lookup, \
+             patch.object(manager_qml.flathub_catalog, 'popular') as popular:
+            self.bridge.searchCatalog('g')
+        self.assertEqual(self.bridge.catalogModel.count, 0)
+        lookup.assert_not_called()
+        popular.assert_not_called()
+
+    def test_install_from_flathub_uses_existing_confirmation_dialog(self):
+        with patch.object(manager, 'UrlInstallDialog') as dialog, \
+             patch.object(self.bridge, 'refresh') as refresh:
+            self.bridge.installFromFlathub('org.gimp.GIMP')
+        dialog.assert_called_once_with(self.anchor)
+        widget = dialog.return_value
+        widget.url_edit.setText.assert_called_once_with(
+            'https://dl.flathub.org/repo/appstream/org.gimp.GIMP.flatpakref')
+        widget.installed.connect.assert_called_once_with(refresh)
+        widget.exec.assert_called_once()
+
+    def test_invalid_catalog_id_cannot_open_install_dialog(self):
+        with patch.object(manager, 'UrlInstallDialog') as dialog:
+            self.bridge.installFromFlathub('https://evil.invalid/a.flatpakref')
+        dialog.assert_not_called()
+        self.assertIn('Invalid', self.bridge.catalogStatus)
+
+    def test_managed_app_does_not_start_duplicate_install(self):
+        self.bridge.catalogModel.set_managed([
+            {'format': 'flatpak', 'key': 'flatpak:org.gimp.GIMP'}])
+        with patch.object(manager, 'UrlInstallDialog') as dialog:
+            self.bridge.installFromFlathub('org.gimp.GIMP')
+        dialog.assert_not_called()
+        self.assertIn('already managed', self.bridge.catalogStatus)
+
+    def test_load_more_reveals_next_batch_without_replacing_installed_apps(self):
+        apps = [{**self.sample()[0], 'appId': f'org.example.App{i}'}
+                for i in range(59)]
+        self.bridge._catalog_source = 'Flatpak'
+        self.bridge._catalog_all = apps
+        self.bridge.catalogModel.replace(apps[:24])
+        self.assertTrue(self.bridge.catalogHasMore)
+        self.bridge.loadMoreCatalog()
+        self.assertEqual(self.bridge.catalogModel.count, 48)
+        self.assertTrue(self.bridge.catalogHasMore)
+        self.bridge.loadMoreCatalog()
+        self.assertEqual(self.bridge.catalogModel.count, 59)
+        self.assertFalse(self.bridge.catalogHasMore)
+        self.assertIn('59 applications found', self.bridge.catalogStatus)
+
+    def test_appimage_browse_uses_independent_feed(self):
+        items = [{**self.sample()[0], 'appId': 'Example_App',
+                  'source': 'AppImage', 'sourceUrl': 'https://appimage.github.io/apps/Example_App',
+                  'installUrl': ''}]
+        with patch.object(manager_qml.flathub_catalog, 'appimage_browse',
+                          return_value=items) as provider:
+            self.bridge.searchCatalog('', 'AppImage')
+            deadline = time.monotonic() + 6
+            while time.monotonic() < deadline and self.bridge.catalogLoading:
+                self.app.processEvents()
+                time.sleep(0.01)
+        provider.assert_called_once_with()
+        self.assertEqual(self.bridge.catalogModel.count, 1)
+        self.assertEqual(self.bridge.catalogModel.data(
+            self.bridge.catalogModel.index(0, 0),
+            self.bridge.catalogModel.SourceRole), 'AppImage')
+
+    def repository_rows(self, source):
+        return [{
+            'appId': 'gimp', 'name': 'gimp',
+            'summary': 'Image editor', 'iconUrl': '',
+            'category': 'Debian 13' if source == 'DEB' else 'Fedora 44',
+            'source': source, 'installUrl': '', 'version': '3.0',
+        }]
+
+    def wait_for_catalog(self):
+        deadline = time.monotonic() + 6
+        while time.monotonic() < deadline:
+            self.app.processEvents()
+            if not self.bridge.catalogLoading:
+                break
+            time.sleep(0.01)
+
+    def test_deb_and_rpm_show_real_repository_results(self):
+        for source, kind in (('DEB', 'deb'), ('RPM', 'rpm')):
+            with self.subTest(source=source), \
+                 patch.object(manager_qml.repository_catalog, 'ready',
+                              return_value=True), \
+                 patch.object(manager_qml.repository_catalog, 'icons_for_results',
+                              return_value={}), \
+                 patch.object(manager_qml.repository_catalog, 'search',
+                              return_value=self.repository_rows(source)) as lookup:
+                self.bridge.searchCatalog('gimp', source)
+                self.wait_for_catalog()
+            lookup.assert_called_once_with(kind, 'gimp')
+            self.assertFalse(self.bridge.catalogLoading)
+            self.assertEqual(self.bridge.catalogModel.count, 1)
+            self.assertEqual(self.bridge.catalogModel.data(
+                self.bridge.catalogModel.index(0, 0),
+                self.bridge.catalogModel.SourceRole), source)
+
+    def test_deb_and_rpm_browse_when_tab_opens_without_typing(self):
+        for source, kind in (('DEB', 'deb'), ('RPM', 'rpm')):
+            rows = [{**self.repository_rows(source)[0],
+                     'appId': f'example-app-{i:02d}',
+                     'name': f'Example app {i}'}
+                    for i in range(31)]
+            with self.subTest(source=source), \
+                 patch.object(manager_qml.repository_catalog, 'ready',
+                              return_value=True), \
+                 patch.object(manager_qml.repository_catalog, 'browse',
+                              return_value=rows) as browse, \
+                 patch.object(manager_qml.repository_catalog, 'icons_for_results',
+                              return_value={}):
+                self.bridge.searchCatalog('', source)
+                self.wait_for_catalog()
+            browse.assert_called_once_with(kind)
+            self.assertEqual(self.bridge.catalogModel.count, 24)
+            self.assertTrue(self.bridge.catalogHasMore)
+            self.bridge.loadMoreCatalog()
+            self.assertEqual(self.bridge.catalogModel.count, 31)
+            self.assertFalse(self.bridge.catalogHasMore)
+            self.assertIn('31 applications found', self.bridge.catalogStatus)
+
+    def test_clearing_a_repository_query_restores_browse_cards(self):
+        source = 'DEB'
+        with patch.object(manager_qml.repository_catalog, 'ready',
+                          return_value=True), \
+             patch.object(manager_qml.repository_catalog, 'search',
+                          return_value=self.repository_rows(source)) as typed, \
+             patch.object(manager_qml.repository_catalog, 'browse',
+                          return_value=self.repository_rows(source)), \
+             patch.object(manager_qml.repository_catalog, 'icons_for_results',
+                          return_value={}):
+            self.bridge.searchCatalog('gimp', source)
+            self.wait_for_catalog()
+            typed.assert_called_once_with('deb', 'gimp')
+            self.bridge.searchCatalog('', source)
+            self.wait_for_catalog()
+        self.assertFalse(self.bridge.catalogLoading)
+        self.assertEqual(self.bridge.catalogModel.count, 1)
+
+    def test_repository_icons_update_cards_without_losing_results(self):
+        icon_url = ('https://appstream.debian.org/media/pool/org/gimp/GIMP/'
+                    'abcd/icons/128x128/gimp_gimp.png')
+        with patch.object(manager_qml.repository_catalog, 'ready',
+                          return_value=True), \
+             patch.object(manager_qml.repository_catalog, 'search',
+                          return_value=self.repository_rows('DEB')), \
+             patch.object(manager_qml.repository_catalog, 'icons_for_results',
+                          return_value={'gimp': icon_url}) as lookup:
+            self.bridge.searchCatalog('gimp', 'DEB')
+            self.wait_for_catalog()
+        lookup.assert_called_once()
+        self.assertEqual(self.bridge.catalogModel.count, 1)
+        index = self.bridge.catalogModel.index(0, 0)
+        self.assertEqual(self.bridge.catalogModel.data(
+            index, self.bridge.catalogModel.IconRole), icon_url)
+        self.assertEqual(self.bridge._catalog_all[0]['iconUrl'], icon_url)
+        self.assertFalse(self.bridge.catalogHasMore)
+
+    def test_stale_icon_updates_cannot_replace_another_source(self):
+        old = self.repository_rows('DEB')
+        self.bridge._catalog_all = old
+        self.bridge._catalog.replace(old)
+        self.bridge._catalog_source = 'RPM'
+        self.bridge._catalog_icons_ready('gimp', 'DEB',
+                                         {'gimp': 'https://example.invalid/fake.png'})
+        self.assertEqual(self.bridge._catalog_all[0]['iconUrl'], '')
+        self.assertEqual(self.bridge.catalogModel.data(
+            self.bridge.catalogModel.index(0, 0),
+            self.bridge.catalogModel.IconRole), '')
+
+    def test_missing_repository_requires_explicit_enable(self):
+        with patch.object(manager_qml.repository_catalog, 'ready',
+                          return_value=False):
+            self.bridge.searchCatalog('', 'DEB')
+            self.wait_for_catalog()
+        self.assertTrue(self.bridge.catalogSetupRequired)
+        self.assertEqual(self.bridge.catalogModel.count, 0)
+        self.assertIn('Enable', self.bridge.catalogStatus)
+
+    def test_repository_setup_requests_permission_before_pulling(self):
+        import container_ui
+        with patch.object(manager_qml.repository_catalog, 'prepare') as prepare, \
+             patch.object(manager_qml.repository_catalog, 'search',
+                          return_value=[]), \
+             patch.object(QtWidgets.QMessageBox, 'question',
+                          return_value=QtWidgets.QMessageBox.StandardButton.No):
+            self.bridge._catalog_source = 'DEB'
+            self.bridge.prepareCatalogSource('DEB')
+        prepare.assert_not_called()
+        with patch.object(manager_qml.repository_catalog, 'prepare') as prepare, \
+             patch.object(manager_qml.repository_catalog, 'ready',
+                          return_value=True), \
+             patch.object(manager_qml.repository_catalog, 'browse',
+                          return_value=[]), \
+             patch.object(QtWidgets.QMessageBox, 'question',
+                          return_value=QtWidgets.QMessageBox.StandardButton.Yes):
+            self.bridge.prepareCatalogSource('DEB')
+            self.wait_for_catalog()
+        prepare.assert_called_once_with('deb')
+        self.assertFalse(self.bridge.catalogSetupRequired)
+
+    def test_repository_install_requires_catalog_membership_and_workflow(self):
+        import container_ui
+        self.bridge._catalog_source = 'RPM'
+        self.bridge._catalog_all = self.repository_rows('RPM')
+        with patch.object(container_ui, 'Workflow') as workflow, \
+             patch.object(self.bridge, 'refresh') as refresh:
+            workflow.return_value.batch_result = 75
+            self.bridge.installCatalogEntry('gimp', 'RPM')
+            workflow.assert_called_once_with(['--repo', 'rpm', 'gimp'])
+            workflow.return_value.exec.assert_called_once()
+            refresh.assert_not_called()
+            self.bridge.installCatalogEntry('unlisted', 'RPM')
+        self.assertEqual(workflow.call_count, 1)
+
+    def test_managed_repository_package_disables_duplicate_installs(self):
+        import container_ui
+        self.bridge._catalog_source = 'DEB'
+        self.bridge._catalog_all = self.repository_rows('DEB')
+        self.bridge.catalogModel.set_managed([
+            {'format': 'deb', 'key': 'deb:gimp'}])
+        self.bridge.catalogModel.replace(self.bridge._catalog_all)
+        self.assertTrue(self.bridge.catalogModel.data(
+            self.bridge.catalogModel.index(0, 0),
+            self.bridge.catalogModel.ManagedRole))
+        with patch.object(container_ui, 'Workflow') as workflow:
+            self.bridge.installCatalogEntry('gimp', 'DEB')
+        workflow.assert_not_called()
+        self.assertIn('already managed', self.bridge.catalogStatus)
+
+    def test_appimage_entry_opens_official_page_when_no_direct_artifact(self):
+        self.bridge._catalog_source = 'AppImage'
+        self.bridge._catalog_all = [{
+            'appId': 'Example_App', 'source': 'AppImage',
+            'sourceUrl': 'https://appimage.github.io/apps/Example_App',
+            'installUrl': '',
+        }]
+        with patch.object(QtGui.QDesktopServices, 'openUrl') as open_url, \
+             patch.object(manager, 'UrlInstallDialog') as dialog:
+            self.bridge.installCatalogEntry('Example_App', 'AppImage')
+        dialog.assert_not_called()
+        self.assertEqual(open_url.call_args.args[0].host(), 'appimage.github.io')
+
+
+
 class BridgeInstallTests(QmlManagerBase):
     """Header install actions reuse the widgets window's exact flows."""
 
@@ -855,6 +1151,52 @@ class QmlMenuBarTests(QmlManagerBase):
         self.assertIn('onTriggered: aboutDialog.open()', qml)
         self.assertIn('Qt.openUrlExternally(', qml)
         self.assertNotIn('title: qsTr("File")', qml)
+
+
+class QmlDiscoverTests(QmlManagerBase):
+    """New tab must not disturb My Applications, header or startup."""
+
+    def test_discover_switches_pages_and_keeps_header(self):
+        self.engine = QtQml.QQmlApplicationEngine()
+        self.engine.rootContext().setContextProperty('bridge', self.bridge)
+        self.engine.rootContext().setContextProperty('appsModel', self.model)
+        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        with QmlLoadCapture() as capture:
+            self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
+        self.assertTrue(self.engine.rootObjects(), capture.messages)
+        window = self.engine.rootObjects()[0]
+        window.show()
+        QtTest.QTest.qWait(70)
+        try:
+            for name in ('pageNavigation', 'managedTab', 'discoverTab',
+                         'discoverPanel', 'catalogList', 'catalogSearchField',
+                         'catalogRetry', 'catalogViewMore', 'flatpakSourceButton',
+                         'appimageSourceButton', 'debSourceButton', 'rpmSourceButton',
+                         'repositorySetupPanel', 'repositoryEnableButton',
+                         'contentArea', 'appMenuBar'):
+                self.assertIsNotNone(window.findChild(QtCore.QObject, name), name)
+            expr = lambda v: QtQml.QQmlExpression(
+                QtQml.qmlContext(window), window, v).evaluate()[0]
+            self.assertFalse(expr('discoverPanel.visible'))
+            self.assertTrue(expr('contentArea.visible'))
+            self.assertTrue(expr('appMenuBar.visible'))
+            window.setProperty('discoverSelected', True)
+            self.app.processEvents()
+            self.assertTrue(expr('discoverPanel.visible'))
+            self.assertGreaterEqual(expr('catalogList.columns'), 1)
+            self.assertFalse(expr('contentArea.visible'))
+            self.assertFalse(expr('filtersPanel.visible'))
+            self.assertTrue(expr('appMenuBar.visible'))
+            window.setProperty('discoverSelected', False)
+            self.app.processEvents()
+            self.assertTrue(expr('contentArea.visible'))
+            self.assertFalse(expr('discoverPanel.visible'))
+            self.assertFalse(any('Error' in m for m in capture.messages),
+                             capture.messages)
+        finally:
+            window.close()
+            self.engine.deleteLater()
+            self.app.processEvents()
 
 
 class InventoryLoadTests(QmlManagerBase):

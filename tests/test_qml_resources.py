@@ -57,6 +57,10 @@ class QmlResourceDeploymentTests(unittest.TestCase):
         # Python module deployed.
         self.assertTrue(self.state('manager_qml.py').is_file(),
                         'manager_qml.py not deployed')
+        self.assertTrue(self.state('flathub_catalog.py').is_file(),
+                        'Flathub provider not deployed')
+        self.assertTrue(self.state('repository_catalog.py').is_file(),
+                        'DEB/RPM provider not deployed')
         # QML files deployed alongside.
         for qml in ('qmldir', 'Theme.qml', 'main.qml', 'AppCard.qml'):
             self.assertTrue(self.state('manager_ui', qml).is_file(),
@@ -90,6 +94,10 @@ class QmlResourceDeploymentTests(unittest.TestCase):
         # QML resources removed.
         self.assertFalse(self.state('manager_qml.py').exists(),
                          'manager_qml.py not removed')
+        self.assertFalse(self.state('flathub_catalog.py').exists(),
+                         'Flathub provider not removed')
+        self.assertFalse(self.state('repository_catalog.py').exists(),
+                         'DEB/RPM provider not removed')
         self.assertFalse(self.state('manager_ui', 'main.qml').exists(),
                          'manager_ui/main.qml not removed')
         self.assertFalse(self.state('manager_ui', 'Theme.qml').exists(),

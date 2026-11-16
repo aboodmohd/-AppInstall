@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.parse
 from pathlib import Path
 
 from qt_compat import QtCore, QtGui, QtWidgets
@@ -33,6 +34,8 @@ except ModuleNotFoundError as error:
 
 import manager
 import settings
+import flathub_catalog
+import repository_catalog
 
 QML_DIR = Path(__file__).resolve().with_name('manager_ui')
 
@@ -298,6 +301,153 @@ class AppModel(QtCore.QAbstractListModel):
         return pinned + rest
 
 
+class CatalogModel(QtCore.QAbstractListModel):
+    """Flathub search results, separate from the installed-app inventory."""
+
+    AppIdRole = QtCore.Qt.ItemDataRole.UserRole + 1
+    NameRole = QtCore.Qt.ItemDataRole.UserRole + 2
+    SummaryRole = QtCore.Qt.ItemDataRole.UserRole + 3
+    IconRole = QtCore.Qt.ItemDataRole.UserRole + 4
+    CategoryRole = QtCore.Qt.ItemDataRole.UserRole + 5
+    ManagedRole = QtCore.Qt.ItemDataRole.UserRole + 6
+    SourceRole = QtCore.Qt.ItemDataRole.UserRole + 7
+    InstallUrlRole = QtCore.Qt.ItemDataRole.UserRole + 8
+    countChanged = QtCore.Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._rows = []
+        self._managed = set()
+        self._managed_packages = set()
+
+    @QtCore.Property(int, notify=countChanged)
+    def count(self):
+        return len(self._rows)
+
+    def roleNames(self):
+        return {
+            self.AppIdRole: b'appId',
+            self.NameRole: b'name',
+            self.SummaryRole: b'summary',
+            self.IconRole: b'iconUrl',
+            self.CategoryRole: b'category',
+            self.ManagedRole: b'managed',
+            self.SourceRole: b'source',
+            self.InstallUrlRole: b'installUrl',
+        }
+
+    def rowCount(self, parent=QtCore.QModelIndex()):
+        return 0 if parent.isValid() else len(self._rows)
+
+    def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
+        if not index.isValid() or index.row() >= len(self._rows):
+            return None
+        row = self._rows[index.row()]
+        return {
+            self.AppIdRole: row['appId'],
+            self.NameRole: row['name'],
+            self.SummaryRole: row['summary'],
+            self.IconRole: row['iconUrl'],
+            self.CategoryRole: row['category'],
+            self.ManagedRole: (
+                row['appId'] in self._managed
+                if row.get('source', 'Flatpak') == 'Flatpak'
+                else (row.get('source'), row['appId']) in self._managed_packages
+            ),
+            self.SourceRole: row.get('source', 'Flatpak'),
+            self.InstallUrlRole: row.get('installUrl', ''),
+        }.get(role)
+
+    def replace(self, rows):
+        self.beginResetModel()
+        self._rows = list(rows)
+        self.endResetModel()
+        self.countChanged.emit()
+
+    def append(self, rows):
+        if not rows:
+            return
+        start = len(self._rows)
+        self.beginInsertRows(QtCore.QModelIndex(), start, start + len(rows) - 1)
+        self._rows.extend(rows)
+        self.endInsertRows()
+        self.countChanged.emit()
+
+    def apply_icons(self, icons):
+        """Update visible card artwork without resetting positions or selection."""
+        for index, row in enumerate(self._rows):
+            icon = icons.get(row['appId'])
+            if icon and icon != row.get('iconUrl', ''):
+                row['iconUrl'] = icon
+                item = self.index(index, 0)
+                self.dataChanged.emit(item, item, [self.IconRole])
+
+    def set_managed(self, inventory):
+        managed = {app['key'].split(':', 1)[-1] for app in inventory
+                   if app['format'] == 'flatpak' and app['key'].startswith('flatpak:')}
+        managed_packages = {
+            (app['format'].upper(), app['key'].split(':', 1)[-1])
+            for app in inventory
+            if app['format'] in ('deb', 'rpm')
+            and app['key'].startswith(app['format'] + ':')
+        }
+        if managed != self._managed or managed_packages != self._managed_packages:
+            self._managed = managed
+            self._managed_packages = managed_packages
+            if self._rows:
+                self.dataChanged.emit(self.index(0, 0),
+                                      self.index(len(self._rows) - 1, 0),
+                                      [self.ManagedRole])
+
+
+class CatalogWorker(QtCore.QThread):
+    """Network requests run exclusively off the Qt/UI thread."""
+
+    ready = QtCore.Signal(str, list)
+    iconsReady = QtCore.Signal(str, str, dict)
+    failed = QtCore.Signal(str, str)
+
+    setup_required = QtCore.Signal(str)
+
+    def __init__(self, query, source="Flatpak", parent=None, initialize=False):
+        super().__init__(parent)
+        self.query = query
+        self.source = source
+        self.initializing = initialize
+
+    def run(self):
+        try:
+            if self.source in ("DEB", "RPM"):
+                kind = repository_catalog.kind_for(self.source)
+                if self.initializing:
+                    repository_catalog.prepare(kind)
+                if not repository_catalog.ready(kind):
+                    raise repository_catalog.CatalogNotReady("Repository not prepared.")
+                results = (repository_catalog.search(kind, self.query)
+                           if self.query else repository_catalog.browse(kind))
+            elif self.source == "AppImage":
+                results = (flathub_catalog.appimage_search(self.query)
+                           if self.query else flathub_catalog.appimage_browse())
+            else:
+                results = (flathub_catalog.search(self.query)
+                           if self.query else flathub_catalog.popular())
+            self.ready.emit(self.query, results)
+            # Blank-query native browse returns packages from the official
+            # repository, just as a typed search does.
+            # Show package cards immediately. Official AppStream icons resolve
+            # later on this worker, never holding up the main QML/UI thread.
+            if self.source in ("DEB", "RPM") and results:
+                icons = repository_catalog.icons_for_results(results)
+                if icons:
+                    self.iconsReady.emit(self.query, self.source, icons)
+        except repository_catalog.CatalogNotReady:
+            self.setup_required.emit(self.source)
+        except (flathub_catalog.CatalogError, ValueError) as error:
+            self.failed.emit(self.query, str(error))
+        except Exception as error:
+            self.failed.emit(self.query, 'Flathub search failed: ' + str(error))
+
+
 class Bridge(QtCore.QObject):
     """Actions and state the QML screen reads; every action calls the
     existing manager backend through its normal entry point."""
@@ -309,6 +459,9 @@ class Bridge(QtCore.QObject):
     preferencesChanged = QtCore.Signal()
     updateStatusChanged = QtCore.Signal(str)
     updateActionVisibleChanged = QtCore.Signal(bool)
+    catalogLoadingChanged = QtCore.Signal(bool)
+    catalogStatusChanged = QtCore.Signal(str)
+    catalogResultsChanged = QtCore.Signal()
 
     @QtCore.Property(bool, notify=updateActionVisibleChanged)
     def actionVisible(self):
@@ -321,6 +474,16 @@ class Bridge(QtCore.QObject):
         super().__init__(parent)
         self.anchor = anchor  # hidden QWidget used to parent the existing dialogs
         self._model = AppModel(self)
+        self._catalog = CatalogModel(self)
+        self._catalog_loading = False
+        self._catalog_setup_required = False
+        self._catalog_initializing = False
+        self._catalog_status = 'Search Flathub or browse popular applications.'
+        self._catalog_source = 'Flatpak'
+        self._catalog_query = ''
+        self._catalog_all = []
+        self._catalog_worker = None
+        self._catalog_pending = None
         # APPINSTALL_UI_DARK=1 forces dark mode for evidence capture,
         # overriding settings and system preference.
         env_dark = os.environ.get('APPINSTALL_UI_DARK')
@@ -402,6 +565,30 @@ class Bridge(QtCore.QObject):
     def model(self):
         return self._model
 
+    @QtCore.Property(QtCore.QObject, constant=True)
+    def catalogModel(self):
+        return self._catalog
+
+    @QtCore.Property(bool, notify=catalogLoadingChanged)
+    def catalogLoading(self):
+        return self._catalog_loading
+
+    @QtCore.Property(str, notify=catalogStatusChanged)
+    def catalogStatus(self):
+        return self._catalog_status
+
+    @QtCore.Property(bool, notify=catalogResultsChanged)
+    def catalogSetupRequired(self):
+        return self._catalog_setup_required
+
+    @QtCore.Property(bool, notify=catalogResultsChanged)
+    def catalogHasMore(self):
+        return self._catalog.count < len(self._catalog_all)
+
+    def _set_catalog_status(self, message):
+        self._catalog_status = str(message)
+        self.catalogStatusChanged.emit(self._catalog_status)
+
     @QtCore.Property(str, notify=updateStatusChanged)
     def updateStatus(self):
         return self._update_status
@@ -428,6 +615,7 @@ class Bridge(QtCore.QObject):
 
     def _loaded(self, inventory):
         self._model.refresh_inventory(inventory)
+        self._catalog.set_managed(inventory)
         self._loading = False
         self.loadingChanged.emit(False)
         self._announce_count()
@@ -445,6 +633,240 @@ class Bridge(QtCore.QObject):
         self._loading = False
         self.loadingChanged.emit(False)
         self._set_status('Could not load inventory: ' + message)
+
+    # ── Live Discover sources, never coupled to the installed-app inventory ──
+    @QtCore.Slot(str)
+    @QtCore.Slot(str, str)
+    def searchCatalog(self, query, source='Flatpak'):
+        """Latest-wins search using a single asynchronous worker."""
+        query = str(query).strip()[:90]
+        source = source if source in ('Flatpak', 'AppImage', 'DEB', 'RPM') else 'Flatpak'
+        was_setup_required = (self._catalog_source == source
+                              and self._catalog_setup_required)
+        self._catalog_source = source
+        self._catalog_query = query
+        self._catalog_setup_required = was_setup_required if query and len(query) < 2 else False
+        self.catalogResultsChanged.emit()
+        if query and len(query) < 2:
+            self._catalog_pending = None
+            self._catalog_all = []
+            self._catalog.replace([])
+            self.catalogResultsChanged.emit()
+            self._set_catalog_status('Enter at least two characters.')
+            return
+        self._catalog_pending = (query, source)
+        if self._catalog_worker is not None and self._catalog_worker.isRunning():
+            return
+        self._start_catalog_worker()
+
+    def _start_catalog_worker(self, initialize=False):
+        pending = self._catalog_pending
+        if pending is None:
+            return
+        self._catalog_pending = None
+        query, source = pending
+        self._catalog_loading = True
+        self.catalogLoadingChanged.emit(True)
+        self._catalog_initializing = initialize
+        if initialize:
+            self._set_catalog_status('Preparing ' + source + ' repository metadata…')
+        else:
+            provider = ('AppImageHub' if source == 'AppImage' else
+                        'Flathub' if source == 'Flatpak' else
+                        'Debian APT' if source == 'DEB' else 'Fedora DNF')
+            self._set_catalog_status('Searching ' + provider + '…')
+        worker = CatalogWorker(query, source, self, initialize=initialize)
+        self._catalog_worker = worker
+        worker.ready.connect(self._catalog_ready)
+        worker.iconsReady.connect(self._catalog_icons_ready)
+        worker.failed.connect(self._catalog_failed)
+        worker.setup_required.connect(self._catalog_needs_setup)
+        worker.finished.connect(self._catalog_finished)
+        worker.start()
+
+    @QtCore.Slot(str)
+    @QtCore.Slot(str, str)
+    def prepareCatalogSource(self, source, query=''):
+        """One-time explicit approval to create/index a persistent rootless container."""
+        if source not in ('DEB', 'RPM') or self._catalog_source != source:
+            return
+        if self._catalog_worker is not None and self._catalog_worker.isRunning():
+            return
+        name = 'Debian 13' if source == 'DEB' else 'Fedora 44'
+        answer = QtWidgets.QMessageBox.question(
+            self.anchor, 'Enable ' + source + ' discovery',
+            'Prepare the AppInstall-managed ' + name + ' rootless Distrobox container '
+            'and refresh its official package index? The first setup may download '
+            'a large container image and dependencies. Distrobox shares your home '
+            'directory and desktop; it is not a security sandbox. '
+            'No application packages will be installed without a later review.')
+        if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        self._catalog_setup_required = False
+        self.catalogResultsChanged.emit()
+        query = str(query).strip()[:90]
+        self._catalog_query = query if len(query) >= 2 else ''
+        self._catalog_pending = (self._catalog_query, source)
+        self._start_catalog_worker(initialize=True)
+
+    def _catalog_needs_setup(self, source):
+        if source == self._catalog_source and self._catalog_pending is None:
+            self._catalog_setup_required = True
+            self._catalog_all = []
+            self._catalog.replace([])
+            self.catalogResultsChanged.emit()
+            self._set_catalog_status('Enable the ' + source + ' repository to search available packages.')
+
+    def _catalog_ready(self, query, entries):
+        worker = self._catalog_worker
+        if worker is None:
+            return
+        if worker.initializing:
+            self._catalog_setup_required = False
+            self.catalogResultsChanged.emit()
+        if self._catalog_pending is not None or worker.source != self._catalog_source:
+            return
+        self._catalog_all = list(entries)
+        self._catalog.replace(self._catalog_all[:24])
+        self.catalogResultsChanged.emit()
+        self._announce_catalog_results()
+
+    def _catalog_icons_ready(self, query, source, icons):
+        worker = self._catalog_worker
+        if (worker is None or self._catalog_pending is not None
+                or source != self._catalog_source or worker.source != source
+                or worker.query != query):
+            return
+        for row in self._catalog_all:
+            icon = icons.get(row['appId'])
+            if icon:
+                row['iconUrl'] = icon
+        self._catalog.apply_icons(icons)
+
+    def _announce_catalog_results(self):
+        total = len(self._catalog_all)
+        shown = self._catalog.count
+        provider = {'Flatpak': 'Flathub', 'AppImage': 'AppImageHub',
+                    'DEB': 'Debian APT', 'RPM': 'Fedora DNF'}[self._catalog_source]
+        if not total and self._catalog_source in ('DEB', 'RPM') \
+                and not self._catalog_setup_required and not self._catalog_query:
+            status = ('No browse results from ' + provider
+                      + '. Search by package name or refresh the repository.')
+        elif not total:
+            status = 'No applications matched this search on ' + provider + '.'
+        elif shown < total:
+            status = f'Showing {shown} of {total} applications on {provider}.'
+        else:
+            status = (f'{total} application found on {provider}.'
+                      if total == 1 else f'{total} applications found on {provider}.')
+        self._set_catalog_status(status)
+
+    @QtCore.Slot()
+    def loadMoreCatalog(self):
+        if self._catalog_loading or not self.catalogHasMore:
+            return
+        n = self._catalog.count
+        self._catalog.append(self._catalog_all[n:n + 24])
+        self.catalogResultsChanged.emit()
+        self._announce_catalog_results()
+
+    def _catalog_failed(self, query, message):
+        if self._catalog_pending is None and self._catalog_worker is not None and \
+                self._catalog_worker.source == self._catalog_source:
+            if self._catalog_worker.initializing:
+                self._catalog_setup_required = True
+            self._catalog_all = []
+            self._catalog.replace([])
+            self.catalogResultsChanged.emit()
+            self._set_catalog_status(message)
+
+    def _catalog_finished(self):
+        self._catalog_worker = None
+        self._catalog_initializing = False
+        if self._catalog_pending is not None:
+            self._start_catalog_worker()
+        else:
+            self._catalog_loading = False
+            self.catalogLoadingChanged.emit(False)
+
+    @QtCore.Slot(str)
+    def installFromFlathub(self, app_id):
+        """Open the existing URL confirmation dialog, never install silently."""
+        try:
+            url = flathub_catalog.flathub_ref_url(app_id)
+        except ValueError:
+            self._set_catalog_status('Invalid Flathub application ID.')
+            return
+        if app_id in self._catalog._managed:
+            self._set_catalog_status('This app is already managed by AppInstall.')
+            return
+        dialog = manager.UrlInstallDialog(self.anchor)
+        dialog.url_edit.setText(url)
+        dialog.installed.connect(self.refresh)
+        dialog.exec()
+
+    @QtCore.Slot(str, str)
+    def installCatalogEntry(self, app_id, source):
+        """Never install from a browsing-page URL or arbitrary QML input."""
+        if source == 'Flatpak':
+            if any(row['appId'] == app_id for row in self._catalog_all):
+                self.installFromFlathub(app_id)
+            return
+        if source in ('DEB', 'RPM'):
+            if self._catalog_source != source or not any(
+                    row['appId'] == app_id and row.get('source') == source
+                    for row in self._catalog_all):
+                return
+            if (source, app_id) in self._catalog._managed_packages:
+                self._set_catalog_status('This package is already managed by AppInstall.')
+                return
+            try:
+                repository_catalog.validate_name(app_id)
+            except ValueError:
+                self._set_catalog_status('Invalid repository package name.')
+                return
+            import container_ui
+            workflow = container_ui.Workflow(
+                ['--repo', repository_catalog.kind_for(source), app_id])
+            workflow.exec()
+            if workflow.batch_result == 0:
+                self.refresh()
+            return
+        if source != 'AppImage' or self._catalog_source != 'AppImage':
+            return
+        row = next((row for row in self._catalog_all
+                    if row['appId'] == app_id and row.get('source') == 'AppImage'), None)
+        if row is None:
+            return
+        url = row.get('installUrl', '')
+        if url and url == flathub_catalog._appimage_download(
+                {'links': [{'type': 'Download', 'url': url}]}):
+            dialog = manager.UrlInstallDialog(self.anchor)
+            dialog.url_edit.setText(url)
+            dialog.installed.connect(self.refresh)
+            dialog.exec()
+        else:
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl(row['sourceUrl']))
+
+    @QtCore.Slot(str, str)
+    def openOfficialCatalog(self, source, query):
+        """Open official directories; no unverified package-name installation."""
+        search = urllib.parse.quote(str(query).strip()[:90], safe='')
+        if source == 'DEB':
+            url = ('https://packages.debian.org/search?keywords=' + search
+                   + '&searchon=names&suite=trixie&section=all')
+        elif source == 'RPM':
+            url = 'https://packages.fedoraproject.org/?q=' + search
+        else:
+            return
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl(url))
+
+    def shutdownCatalog(self):
+        """Drain read-only catalog searches before QApplication tears down QThreads."""
+        if self._catalog_worker is not None and self._catalog_worker.isRunning():
+            self._catalog_pending = None
+            self._catalog_worker.requestInterruption()
+            self._catalog_worker.wait(18000)
 
     # ── theme ────────────────────────────────────────────────────────────
 
@@ -775,6 +1197,10 @@ class Bridge(QtCore.QObject):
         pipeline is cancelled first (the close is ignored once); an
         AppInstall upgrade in progress blocks closing; a running update
         check is killed, then the close proceeds."""
+        if self._catalog_initializing and self._catalog_worker is not None \
+                and self._catalog_worker.isRunning():
+            self._set_catalog_status('Preparing repository metadata; close after setup completes.')
+            return False
         if self._batch_dialog is not None and \
                 getattr(self._batch_dialog, 'process', None) is not None:
             self._batch_dialog.reject()
@@ -824,6 +1250,7 @@ def main():
     bridge = Bridge(anchor)
     bridge.applyTheme()
     bridge.refresh()
+    app.aboutToQuit.connect(bridge.shutdownCatalog)
 
     def _log_qml_message(mode, context, message):
         # QML errors would otherwise be silent on a failed engine.load.
@@ -833,6 +1260,7 @@ def main():
     engine = QtQml.QQmlApplicationEngine()
     engine.rootContext().setContextProperty('bridge', bridge)
     engine.rootContext().setContextProperty('appsModel', bridge.model)
+    engine.rootContext().setContextProperty('catalogModel', bridge.catalogModel)
     engine.addImportPath(str(QML_DIR.parent))
     engine.load(str(QML_DIR / 'main.qml'))
     if not engine.rootObjects():

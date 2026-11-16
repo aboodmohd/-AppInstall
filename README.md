@@ -12,7 +12,113 @@ Double-click a supported file, review its source and destination, confirm instal
 
 Managed applications now use monitored launchers. Startup failures show useful errors and logs; open **AppInstall → Application Diagnostics** or run `appinstall --diagnostics` for launch history and safe repair actions. See [Launch Diagnostics](LAUNCH_DIAGNOSTICS.md) for tested behavior and limits.
 
+## Discover Apps (v1.7.0 release candidate)
+
+**Discover Apps** uses a responsive application-card grid. The **View more**
+button reveals additional results in batches of 24 without resetting My
+Applications. The catalog limit is 240 per query or collection; upstream
+sources may return fewer.
+
+Four searchable formats appear in separate source tabs:
+
+- **Flatpak**: Flathub search and popular-app metadata. Install opens the
+  existing HTTPS `.flatpakref` review dialog.
+- **AppImage**: a real AppImageHub index. A supported direct HTTPS AppImage
+  download goes through the existing review dialog; where there is no
+  verifiable direct artifact, **Downloads** opens the AppImageHub page.
+- **DEB**: search Debian 13's official APT package index from an
+  AppInstall-managed rootless Debian Distrobox container.
+- **RPM**: search Fedora 44's official DNF package index from an
+  AppInstall-managed rootless Fedora Distrobox container.
+
+**First-time DEB/RPM setup**: choose DEB or RPM, then select **Enable
+repository**. A separate explicit confirmation explains that Podman and
+Distrobox will create or reuse AppInstall's named rootless container and
+download official distribution repository metadata. This may require a large
+container image and uses local disk space. Setup does **not** install an
+application. Search and browsing results come from the corresponding package manager's
+cached repository indexes, not from a hardcoded list of apps. Opening **DEB**
+automatically browses Debian APT application-like packages using relevant
+package-description metadata. Opening **RPM** browses Fedora DNF packages
+providing desktop launcher files, with a repository-name metadata fallback
+where filelists are unavailable. These are relevance-ranked browse selections,
+not download/popularity rankings. Select **View more** to reveal another 24
+results; clearing the search restores browsing. Type two or more characters
+to search the full package-name index. App cards
+may represent CLI or other non-graphical packages, which will not create
+an application launcher after installation.
+
+Selecting **Install** on a DEB/RPM card rechecks the package version and
+architecture, displays the existing container package preview, prepares an
+APT/DNF transaction for review, and requires another explicit **Install**
+confirmation before applying changes. APT/DNF resolve dependencies from
+the configured distribution repositories. Package installation remains in
+the dedicated rootless container, with AppInstall tracking its managed
+record and exporting a desktop launcher if the package supplies one.
+Search does not alter packages or run installation scripts. Browsing never creates containers without confirmation and never
+requires typing a query once a repository is enabled.
+
+**DEB/RPM application artwork:** app cards initially show a letter placeholder
+while genuine package-specific icons are looked up on Debian's public
+AppStream service. A matched upstream application's Debian AppStream icon may
+also be shown in the Fedora tab; this is artwork only, never package provenance
+or an installation source. Official AppStream metadata does not provide
+individual application icons for most libraries, documentation, services or
+development packages; those cards retain placeholders. The icon lookup is
+bounded, cached per session, HTTPS-only, and non-blocking. If AppStream is
+unavailable, package search and review continue normally.
+
+**Security and compatibility:** Distrobox integrates with the host home
+directory and graphical desktop and **is not a security sandbox**. Only
+AppInstall-owned containers with the expected Debian/Fedora image and
+validated repositories are used. Not every DEB/RPM package is a graphical
+application, compatible with Distrobox, or safe to run. The DEB/RPM first
+use requires Podman, Distrobox and related optional tools installed. No
+automatic host-native package manager changes are made by Discover.
+`My Applications` and the accepted View/Tools/Settings/Help layout remain
+unchanged.
+
+The v1.7.0 source is a release candidate until the final packages, portable
+archive, and checksums are published. A merged branch alone is not a release.
+See RELEASE_NOTES.md for verification boundaries.
+
 ## Install AppInstall
+
+### Verified native packages
+
+The normal one-command installer still selects an **official native package**
+only for the currently verified hosts: Arch Linux/CachyOS, Debian 13,
+Ubuntu 24.04/26.04, Linux Mint 22, or Fedora 44 on x86_64. It always
+downloads the **latest published stable** release, not an unmerged PR or
+unpublished v1.7.0 build. No host package manager is invoked on an
+unverified distribution.
+
+### Other Linux desktops — portable source installation
+
+If your distro is not in the native list, AppInstall also has a
+**distribution-neutral, non-root source route**, not a falsely renamed
+DEB/RPM. Use a verified, published `appinstall-1.7.0-portable.tar.gz`
+archive, after v1.7.0 is published:
+
+```bash
+sha256sum --ignore-missing -c SHA256SUMS
+tar -xzf appinstall-1.7.0-portable.tar.gz
+cd appinstall-1.7.0
+bash ./install-user.sh
+~/.local/bin/appinstall --manage
+```
+
+Install Python 3, Bash, freedesktop `xdg-utils`, and for the Discover GUI,
+**PySide6 + Qt Quick/QML** from your host's own package manager before running.
+Flatpak, Podman and Distrobox are optional for their associated formats.
+Portable installation writes AppInstall to your home directory, and detects
+native pacman/dpkg/RPM AppInstall packages before adding a potentially
+shadowing user copy. The portable archive includes source code, **not**
+bundled Qt libraries, universal binaries, or guarantees of compatibility
+on every Linux distribution, libc, architecture or desktop session.
+For portable removal run `~/.local/bin/appinstall-uninstall`; the
+installer preserves managed packages and user data.
+
 
 **One-command installation** detects the host distribution (x86_64). Run this as your normal desktop user (not with `sudo`):
 

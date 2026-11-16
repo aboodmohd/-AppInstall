@@ -1,0 +1,140 @@
+name: v1.7 multi-distro release candidate assets
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  arch:
+    name: Build native pacman package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: archlinux:base-devel
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build Arch/CachyOS package as unprivileged user
+        shell: bash
+        run: |
+          set -euo pipefail
+          pacman -Syu --noconfirm
+          pacman -S --needed --noconfirm python pyside6 qt6-declarative xdg-utils curl
+          useradd -m -s /bin/bash appbuilder
+          chown -R appbuilder:appbuilder "$GITHUB_WORKSPACE"
+          runuser -u appbuilder -- bash -c 'cd "$1" && makepkg --noconfirm --clean' _ "$GITHUB_WORKSPACE"
+          pkgver="$(sed -n 's/^pkgver=//p' PKGBUILD)"
+          pkgrel="$(sed -n 's/^pkgrel=//p' PKGBUILD)"
+          mkdir -p dist
+          mv -- "appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst" dist/
+          test -s "dist/appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate-arch
+          path: dist/appinstall-*.pkg.tar.zst
+          if-no-files-found: error
+
+  deb:
+    name: Build native APT package
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: debian:13
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build .deb from canonical package recipe
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends bash coreutils dpkg-dev sed
+          bash tools/build_deb.sh dist
+          test -n "$(find dist -maxdepth 1 -name 'appinstall_*_all.deb' -print -quit)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate-deb
+          path: dist/appinstall_*_all.deb
+          if-no-files-found: error
+
+  rpm:
+    name: Build native Fedora 44 package
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container:
+      image: fedora:44
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build RPM as unprivileged user
+        shell: bash
+        run: |
+          set -euo pipefail
+          dnf -y install rpm-build rpm tar gzip shadow-utils util-linux sudo python3 coreutils findutils
+          useradd -m -s /bin/bash appbuilder
+          chown -R appbuilder:appbuilder "$GITHUB_WORKSPACE"
+          runuser -u appbuilder -- bash -c 'cd "$1" && bash tools/build_rpm.sh dist' _ "$GITHUB_WORKSPACE"
+          test -n "$(find dist -maxdepth 1 -name 'appinstall-*.noarch.rpm' -print -quit)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate-rpm
+          path: dist/appinstall-*.noarch.rpm
+          if-no-files-found: error
+
+  portable:
+    name: Build portable user-source bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build source archive without vendored binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tools/build_portable.sh dist
+          test -n "$(find dist -maxdepth 1 -name 'appinstall-*-portable.tar.gz' -print -quit)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-candidate-portable
+          path: dist/appinstall-*-portable.tar.gz
+          if-no-files-found: error
+
+  assemble:
+    name: Verify four release formats and one SHA256SUMS
+    needs: [arch, deb, rpm, portable]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-candidate-*
+          merge-multiple: true
+          path: release
+      - name: Verify exact version and common checksum manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          pkgver="$(sed -n 's/^pkgver=//p' PKGBUILD)"
+          pkgrel="$(sed -n 's/^pkgrel=//p' PKGBUILD)"
+          expected=(
+            "appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst"
+            "appinstall_${pkgver}-${pkgrel}_all.deb"
+            "appinstall-${pkgver}-${pkgrel}.noarch.rpm"
+            "appinstall-${pkgver}-portable.tar.gz"
+          )
+          for name in "${expected[@]}"; do
+            test -s "release/$name" || { echo "Missing candidate: $name" >&2; exit 1; }
+          done
+          cd release
+          sha256sum -- "${expected[@]}" > SHA256SUMS
+          sha256sum -c SHA256SUMS
+          test "$(wc -l < SHA256SUMS)" -eq 4
+          echo "The four candidate archives and one manifest are ready for review."
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appinstall-v1.7.0-release-candidate
+          path: release/
+          if-no-files-found: error

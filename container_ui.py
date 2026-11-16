@@ -157,6 +157,13 @@ class Workflow(QDialog):
                                 headline=headline).exec()
         self.description.setText('Operation failed. Review details below.'); self.action.setEnabled(False)
     def read(self):
+        if self.args[0] == '--repo':
+            import repository_catalog
+            if len(self.args) != 3:
+                raise ValueError("Expected a repository type and package name.")
+            kind, name = self.args[1:3]
+            repository_catalog.validate_name(name)
+            return repository_catalog.package_info(kind, name)
         if self.args[0]=='--info':
             return inspect_package(self.args[1])
         if self.args[0].startswith('--'):
@@ -183,7 +190,10 @@ class Workflow(QDialog):
         if self.stage=='preview':
             if QMessageBox.question(self,'AppInstall','Prepare or reuse the persistent container using its official image and repositories? First setup may download a large image and Distrobox integration dependencies.') != QMessageBox.StandardButton.Yes: return
             def prepare():
-                self.engine=Engine(); return self.engine.transaction(self.info)
+                self.engine=Engine()
+                if self.args[0] == '--repo':
+                    return self.engine.transaction_repository(self.info)
+                return self.engine.transaction(self.info)
             self.description.setText('Checking requirements and preparing the container…')
             self.work(prepare,self.transaction,'Checking requirements / preparing installation')
         elif self.stage=='transaction':
@@ -205,7 +215,11 @@ class Workflow(QDialog):
         self.description.setText('Installing in the container… Live progress appears below.')
         def choose(entries):
             return entries[0] if len(entries)==1 else None
-        self.work(lambda:self.engine.install(self.info,choose),self.installed,'Installing application')
+        if self.args[0] == '--repo':
+            action = lambda: self.engine.install_repository(self.info, choose)
+        else:
+            action = lambda: self.engine.install(self.info, choose)
+        self.work(action, self.installed, 'Installing application')
     def installed(self,record):
         if not record: return
         self.batch_result = 0

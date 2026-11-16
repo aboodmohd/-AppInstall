@@ -1,68 +1,85 @@
-# AppInstall v1.6.0
+# AppInstall v1.7.0 — Discover Apps
 
-AppInstall v1.6.0 introduces a **native Fedora 44 RPM package** alongside the
-existing Arch/CachyOS and Debian-family packages. The one-command installer
-automatically selects the host-native package from the latest *published*
-stable release, verifies its SHA-256 checksum, and uses the host package
-manager. The updated QML My Applications manager from v1.5.0 remains the
-default, with the Widgets interface still available.
+**Release preparation notes — publishing requires completed packaging checks,
+uploaded matching assets, checksums, and owner acceptance.** A version-number
+change or merged pull request is not by itself a published GitHub release.
 
-## New in v1.6.0
+## What's new
 
-- **Fedora 44 (x86_64):** Native `.noarch.rpm`, Fedora PySide6/Qt Quick
-  dependencies, DNF installation, upgrade, and uninstall support.
-- **One-command install:** Fedora 44 selection checks the stable release tag,
-  RPM filename, canonical download URL, SHA256SUMS, and package metadata.
-  It does not fall back to installing an Arch or Debian package on Fedora.
-- **Compatibility:** Native RPM build and install/remove cycles, QML offscreen
-  startup, verified install from a simulated stable GitHub release and
-  preservation of unrelated user files/defaults are exercised in Fedora 44 CI.
-- **Existing platforms:** Arch/CachyOS and Debian/Ubuntu/Mint installations
-  retain their package formats, settings, previous associations and launcher
-  behavior; cross-distro CI guards against regression.
+- **Discover Apps** alongside **My Applications**. A responsive, multi-column
+  card grid retains the accepted horizontal View / Tools / Settings / Help menu.
+  Browse first, search by name, and use **View more** for 24 more cards at a time.
+- **Flatpak:** live Flathub metadata, icons, and search; click Install to open
+  AppInstall's existing download, review, and confirmation dialogue.
+- **AppImage:** live AppImageHub metadata; supported direct HTTPS AppImage
+  artifacts enter the normal reviewed installer. Other listings open the
+  AppImageHub downloads page; no fabricated download URLs.
+- **DEB:** browse Debian 13 APT application metadata and search actual packages
+  from an AppInstall-owned rootless Debian Distrobox.
+- **RPM:** browse Fedora 44 DNF5 repository metadata and search actual packages
+  from an AppInstall-owned rootless Fedora Distrobox. DNF5 record formatting,
+  empty-query fallbacks, and a live Fedora package-catalog regression check
+  protect against the previously empty RPM tab.
+- Preparing DEB/RPM repositories requires explicit authorization to create
+  or refresh the appropriate container. Installing a selected package requires
+  a separate transaction preview and confirmation. No app installs by clicking
+  a card or searching a repository.
+- Real application artwork is best-effort; packages without a published
+  AppStream icon keep their letter placeholder.
+- The accepted **My Applications** view, favorites, menu layout and settings
+  remain intact.
 
-## Supported installation targets
+## Installation options
 
-| Host distribution | Package | Package manager |
+| Host | Installation method | Verified boundary |
 | --- | --- | --- |
-| Arch Linux / CachyOS (x86_64) | `appinstall-1.6.0-1-any.pkg.tar.zst` | pacman |
-| Debian 13, Ubuntu 24.04/26.04, Linux Mint 22 (x86_64) | `appinstall_1.6.0-1_all.deb` | APT |
-| Fedora 44 (x86_64) | `appinstall-1.6.0-1.noarch.rpm` | DNF |
+| Arch Linux / CachyOS | native `appinstall-1.7.0-1-any.pkg.tar.zst` through pacman | Arch CI + CachyOS desktop preview |
+| Debian 13, Ubuntu 24.04/26.04, Linux Mint 22 | native `appinstall_1.7.0-1_all.deb` through APT | distro-specific container CI |
+| Fedora 44 | native `appinstall-1.7.0-1.noarch.rpm` through DNF | Fedora 44 CI, including live repoquery; no physical desktop acceptance |
+| Other Linux desktops | `appinstall-1.7.0-portable.tar.gz` source bundle and `./install-user.sh` | works only where prerequisites and desktop integration are available; not a universal compatibility guarantee |
 
-`noarch` and `all` describe the **package payload**; tested host
-architectures remain x86_64. Fedora 43/45, RHEL, openSUSE, and other
-distributions are not claimed to be supported by the one-command installer.
-Source installation remains an alternative for advanced users.
+The native one-command installer **refuses unsupported hosts**; it will not
+try to force Debian, Arch or Fedora binaries onto another distribution.
+For other Linux systems, extract the portable archive and install as a
+normal, non-root user. Python 3, Bash, freedesktop desktop integration,
+PySide6/Qt Quick for the Discover GUI, and optional Flatpak/Podman/Distrobox
+backends must be supplied by the host distro. Its QML UI and DEB/RPM
+container workflows may not work on every desktop or architecture.
 
-## Install, verify, and roll back
-
-As a regular (non-root) desktop user, run:
+Once the v1.7.0 release is published with the relevant host-native assets
+and a matching `SHA256SUMS`, users of verified hosts can run:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash
 ```
 
-For a no-changes preview, append `-s -- --dry-run` to the bash invocation.
-For manual installation, download the **matching native package** and
-`SHA256SUMS` from this release and verify the selected SHA-256 line first.
-See `INSTALL.md` and `UPGRADE.md`.
+For portable installation, obtain the **matching published v1.7.0 archive**,
+verify its checksum, extract it, enter its directory and run:
 
-After installing, check `appinstall --version`, `appinstall --manage`, and
-`appinstall --manage --widgets`. Preserve user application records and
-previously downloaded packages for recovery. Never delete `~/Applications`
-or `~/.local/share/appinstall` as a shortcut to fix package conflicts.
+```bash
+./install-user.sh
+~/.local/bin/appinstall --version
+~/.local/bin/appinstall --manage
+```
 
-## Testing boundaries
+Portable removal: `~/.local/bin/appinstall-uninstall`. This uninstalls
+AppInstall's user-level integration, not managed application packages or data.
+The source installation asks before creating a copy that would shadow a
+pacman, dpkg or RPM installation. Do not run both package modes without an
+intentional decision.
 
-- The v1.5.0 QML interface was accepted on a real CachyOS KDE Wayland
-  desktop; v1.6.0's *exact final package* still requires its own acceptance.
-- Fedora 44 has package installation, Qt Quick offscreen GUI, and DNF lifecycle
-  coverage in a disposable CI container. This **is not** equivalent to live
-  Fedora GNOME/KDE desktop acceptance; interactions and desktop MIME handling
-  can vary.
-- Installing AppInstall itself with DNF is distinct from using AppInstall
-  to install a third-party DEB/RPM in rootless Distrobox. Distrobox is
-  not a security sandbox; package compatibility depends on the application.
+## Release and safety boundaries
 
-See `KNOWN_LIMITATIONS.md` and `SECURITY_REVIEW.md` for additional
-limitations and appropriate trust checks.
+- Distributions not included in the native CI list have a **portable source
+  option**, not a guarantee of all-features/all-apps compatibility.
+- Distrobox is not a security sandbox. DEB/RPM packages can need unsupported
+  services, system integration, or dependencies.
+- DEB/RPM third-party installation and uninstall need a separate real-desktop
+  lifecycle acceptance before advertising them as universally validated.
+- Exact GitHub release packages/portable archive, common `SHA256SUMS`,
+  installer upgrade/rollback, and source installer conflicts must be checked
+  before tagging/publishing.
+- Only tested hosts receive the official host-native installer path. New
+  families may be added later only with their own package and CI validation.
+
+See `INSTALL.md`, `KNOWN_LIMITATIONS.md` and `TESTING.md`.

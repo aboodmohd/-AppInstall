@@ -1,5 +1,26 @@
 # AppInstall Changelog
 
+## 1.7.0 — Discover Apps and a portable source route
+
+- Discover Apps now browses and searches Flathub Flatpaks and AppImageHub
+  AppImages, and the real Debian 13 APT and Fedora 44 DNF5 repository indexes.
+- Use a multi-column card layout with **View more** pagination (24 at a time,
+  up to 240 per query) and source-specific installation review.
+- DEB/RPM repository setup is opt-in. Search is read-only; installing requires
+  an explicit package and dependency transaction review/confirmation.
+- Correct Fedora DNF5 record delimiting and regression-test actual Fedora
+  repository browse results. Real application icons are best-effort metadata;
+  dependency packages can keep letter placeholders.
+- Retain the My Applications interface, managed-app records, favorites,
+  menu, default associations, and explicit uninstall cleanup.
+- Release builds retain native pacman/APT/DNF package paths on **verified
+  distributions only**. Add a separate, non-root portable **source archive**
+  for other Linux desktop environments with Python/Qt and freedesktop
+  prerequisites; compatibility is not universal.
+- Source installs now detect and ask before shadowing native pacman, dpkg,
+  or RPM AppInstall installations. Add portable-archive and cross-distro CI.
+
+
 ## 1.6.0 — Fedora 44 native RPM and one-command installation
 
 - Package AppInstall in three host-native formats: Arch/CachyOS `.pkg.tar.zst`,

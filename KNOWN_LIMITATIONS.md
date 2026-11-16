@@ -1,5 +1,21 @@
 # AppInstall Known Limitations
 
+## Distribution coverage
+
+- Official one-command **native package** selection is limited to verified
+  x86_64 hosts: Arch/CachyOS, Debian 13, Ubuntu 24.04/26.04, Mint 22,
+  and Fedora 44. Unsupported platforms are rejected rather than silently
+  installing an incompatible package.
+- The v1.7.0 **portable source bundle** offers a non-root alternative
+  wherever Python 3, Bash, Qt/PySide6 and freedesktop desktop tooling are
+  available. This is not a single self-contained executable. Alpine/musl,
+  openSUSE, Void, NixOS, ARM64 and other platforms require additional
+  verification; not all combinations have Qt bindings or working Distrobox.
+- Portable installation can shadow an existing native package, so it
+  explicitly checks pacman, dpkg and RPM and requires consent in that case.
+- On platforms lacking PySide6/Qt Quick, Discover Apps is unavailable even
+  if basic CLI functions or dialog fallbacks work.
+
 ## Package format compatibility
 
 - **DEB/RPM**: Compatibility is not universal. Some packages omit runtime
