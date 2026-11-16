@@ -14,21 +14,41 @@ Managed applications now use monitored launchers. Startup failures show useful e
 
 ## Discover Apps (v1.7.0 development preview)
 
-The **Discover** tab searches Flathub's live public application catalog. It can
-show app names, descriptions, categories and genuine Flathub-hosted icons,
-with fallback letters when a catalog icon is unavailable. A featured selection
-comes from Flathub's popular-app collection rather than an AppInstall-owned
-hardcoded list.
+The **Discover Apps** tab uses a responsive card grid: narrow windows show one
+column, while wider screens display multiple columns. **View more** reveals
+additional results in batches of 24 without resetting the managed inventory.
+Flathub discovery now processes up to 240 catalog entries per search or popular
+collection (the API itself may return fewer). Searching still uses a debounced,
+asynchronous request and real Flathub icons/metadata.
 
-Choosing **Install** opens the existing AppInstall HTTPS download dialog for
-the application's canonical Flathub `.flatpakref` link. Installation still
-requires the normal explicit download, package review and confirmation.
-Search never installs applications, changes your Flathub remote or runs
-downloaded metadata. Some catalog searches require network connectivity and
-may fail when Flathub is offline or its API changes.
+Source tabs distinguish four package formats:
 
-This is a development-only feature until the v1.7.0 release is approved.
-The stable v1.6.0 packages do not yet include Discover.
+- **Flatpak** — live Flathub popular/search results. Install opens AppInstall's
+  existing review/confirmation dialog for the official HTTPS `.flatpakref`.
+- **AppImage** — real community-maintained AppImageHub feed with icons,
+  categories and descriptions. A verified direct HTTPS `.AppImage` link from
+  a supported download host opens the normal review/confirmation flow. If the
+  catalog only supplies a release/download page, the action is labeled
+  **Downloads** and opens the official AppImageHub listing instead. AppImageHub
+  is a community catalog, not an AppInstall endorsement.
+- **DEB** — opens Debian's official package directory with the entered search
+  term. Use a downloaded package file or a direct URL in AppInstall's existing
+  reviewed installer after choosing a version/architecture.
+- **RPM** — opens Fedora's official package directory with the entered search
+  term. Use a downloaded package file or direct URL in the existing reviewed
+  installer once the correct package has been selected.
+
+**Important limitation:** DEB/RPM package discovery is currently an external
+official-directory link, not an in-app result grid or automatic package-name
+install. Both formats depend on distribution release, architecture and
+dependencies and run through AppInstall's rootless container backend on
+non-native systems. The catalog never installs packages automatically,
+modifies repositories or silently creates containers.
+
+The Flathub and AppImageHub adapters reject unexpected redirects and cap
+response size. Some searches require an internet connection and may fail when
+the upstream feeds change. The stable v1.6.0 release does not contain this
+development preview; merge/release still require owner approval.
 
 ## Install AppInstall
 
