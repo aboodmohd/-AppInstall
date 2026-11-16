@@ -10,6 +10,7 @@ downloaded metadata, or installs anything. The existing UrlInstallDialog owns
 download, review, confirmation, and installation.
 """
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
 import json
 import re
 import urllib.error
@@ -20,7 +21,7 @@ import urllib.request
 API = "https://flathub.org/api/v2"
 FEATURED_URL = API + "/collection/popular"
 SEARCH_URL = API + "/search"
-MAX_SEARCH_RESULTS = 24
+MAX_SEARCH_RESULTS = 240
 MAX_DETAILS = 16
 MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 REQUEST_TIMEOUT = 8
@@ -193,3 +194,118 @@ def search(query):
 def popular():
     """Dynamic Flathub collection, not a baked-in product list."""
     return _discover(_json_request(FEATURED_URL))
+
+
+# ── Independent AppImageHub discovery (never treated as a Flathub install) ──
+# AppImageHub's feed is community-maintained and contains many release-page
+# links rather than direct AppImage artifacts. Never invent a download link.
+APPIMAGE_FEED = "https://appimage.github.io/feed.json"
+MAX_APPIMAGE_FEED_BYTES = 16 * 1024 * 1024
+
+
+@lru_cache(maxsize=1)
+def _appimage_feed():
+    """Fetch bounded JSON once per session; do not run AppImages or scripts."""
+    request = urllib.request.Request(
+        APPIMAGE_FEED, headers={"Accept": "application/json",
+                                "User-Agent": "AppInstall/1.7 Discover"})
+    opener = urllib.request.build_opener(_RejectRedirects)
+    try:
+        with opener.open(request, timeout=REQUEST_TIMEOUT) as response:
+            if response.geturl() != APPIMAGE_FEED:
+                raise CatalogError("AppImageHub redirected unexpectedly.")
+            body = response.read(MAX_APPIMAGE_FEED_BYTES + 1)
+    except (urllib.error.URLError, OSError, TimeoutError) as error:
+        raise CatalogError("Could not reach AppImageHub: " + str(error)) from error
+    if len(body) > MAX_APPIMAGE_FEED_BYTES:
+        raise CatalogError("AppImageHub feed is too large.")
+    try:
+        data = json.loads(body.decode("utf-8"))
+    except (ValueError, UnicodeError) as error:
+        raise CatalogError("AppImageHub returned invalid JSON.") from error
+    if not isinstance(data, dict) or not isinstance(data.get("items"), list):
+        raise CatalogError("AppImageHub returned an unsupported feed.")
+    return data["items"]
+
+
+def _appimage_icon(item):
+    icons = item.get("icons", [])
+    if not isinstance(icons, list):
+        return ""
+    for icon in icons:
+        if not isinstance(icon, str) or len(icon) > 260 or not icon:
+            continue
+        if (icon.startswith("/") or "\\\\" in icon or "?" in icon or "#" in icon
+                or any(piece in ("", ".", "..") for piece in icon.split("/"))
+                or not icon.lower().endswith((".png", ".webp", ".svg"))):
+            continue
+        return "https://appimage.github.io/database/" + urllib.parse.quote(icon, safe="/")
+    return ""
+
+
+def _appimage_download(item):
+    """Only direct HTTPS AppImage artifact URLs can enter review/install."""
+    links = item.get("links", [])
+    if not isinstance(links, list):
+        return ""
+    for link in links:
+        if not isinstance(link, dict) or link.get("type") != "Download":
+            continue
+        url = link.get("url")
+        if not isinstance(url, str) or len(url) > 1600:
+            continue
+        parts = urllib.parse.urlsplit(url)
+        if (parts.scheme == "https"
+                and parts.hostname in ("github.com", "gitlab.com", "codeberg.org")
+                and not parts.username and not parts.password
+                and not parts.query and not parts.fragment
+                and parts.path.lower().endswith(".appimage")):
+            return url
+    return ""
+
+
+def _appimage_rows(query=""):
+    """Return actual AppImageHub results; browsing is not popularity ranked."""
+    term = _clean_text(query, 90).casefold()
+    rows = []
+    seen = set()
+    for item in _appimage_feed():
+        if not isinstance(item, dict):
+            continue
+        raw_name = item.get("name")
+        if not isinstance(raw_name, str) or not raw_name or len(raw_name) > 120:
+            continue
+        if any(c in raw_name for c in ("/", "\\\\", "?", "#")):
+            continue
+        name = _clean_text(raw_name, 120)
+        if not name or name in seen:
+            continue
+        summary = _clean_text(item.get("description"), 300)
+        if term and term not in name.casefold() and term not in summary.casefold():
+            continue
+        seen.add(name)
+        categories = item.get("categories", [])
+        category = (_clean_text(categories[0], 55) if isinstance(categories, list)
+                    and categories and isinstance(categories[0], str) else "")
+        rows.append({
+            "appId": name, "name": name.replace("_", " "),
+            "summary": summary, "iconUrl": _appimage_icon(item),
+            "category": category, "source": "AppImage",
+            "sourceUrl": "https://appimage.github.io/apps/"
+                         + urllib.parse.quote(name, safe=""),
+            "installUrl": _appimage_download(item),
+        })
+        if len(rows) >= MAX_SEARCH_RESULTS:
+            break
+    return rows
+
+
+def appimage_search(query):
+    query = _clean_text(query, 90)
+    if len(query) < 2:
+        raise ValueError("Search requires at least two characters.")
+    return _appimage_rows(query)
+
+
+def appimage_browse():
+    return _appimage_rows()
