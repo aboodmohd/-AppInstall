@@ -14,41 +14,55 @@ Managed applications now use monitored launchers. Startup failures show useful e
 
 ## Discover Apps (v1.7.0 development preview)
 
-The **Discover Apps** tab uses a responsive card grid: narrow windows show one
-column, while wider screens display multiple columns. **View more** reveals
-additional results in batches of 24 without resetting the managed inventory.
-Flathub discovery now processes up to 240 catalog entries per search or popular
-collection (the API itself may return fewer). Searching still uses a debounced,
-asynchronous request and real Flathub icons/metadata.
+**Discover Apps** uses a responsive application-card grid. The **View more**
+button reveals additional results in batches of 24 without resetting My
+Applications. The catalog limit is 240 per query or collection; upstream
+sources may return fewer.
 
-Source tabs distinguish four package formats:
+Four searchable formats appear in separate source tabs:
 
-- **Flatpak** — live Flathub popular/search results. Install opens AppInstall's
-  existing review/confirmation dialog for the official HTTPS `.flatpakref`.
-- **AppImage** — real community-maintained AppImageHub feed with icons,
-  categories and descriptions. A verified direct HTTPS `.AppImage` link from
-  a supported download host opens the normal review/confirmation flow. If the
-  catalog only supplies a release/download page, the action is labeled
-  **Downloads** and opens the official AppImageHub listing instead. AppImageHub
-  is a community catalog, not an AppInstall endorsement.
-- **DEB** — opens Debian's official package directory with the entered search
-  term. Use a downloaded package file or a direct URL in AppInstall's existing
-  reviewed installer after choosing a version/architecture.
-- **RPM** — opens Fedora's official package directory with the entered search
-  term. Use a downloaded package file or direct URL in the existing reviewed
-  installer once the correct package has been selected.
+- **Flatpak**: Flathub search and popular-app metadata. Install opens the
+  existing HTTPS `.flatpakref` review dialog.
+- **AppImage**: a real AppImageHub index. A supported direct HTTPS AppImage
+  download goes through the existing review dialog; where there is no
+  verifiable direct artifact, **Downloads** opens the AppImageHub page.
+- **DEB**: search Debian 13's official APT package index from an
+  AppInstall-managed rootless Debian Distrobox container.
+- **RPM**: search Fedora 44's official DNF package index from an
+  AppInstall-managed rootless Fedora Distrobox container.
 
-**Important limitation:** DEB/RPM package discovery is currently an external
-official-directory link, not an in-app result grid or automatic package-name
-install. Both formats depend on distribution release, architecture and
-dependencies and run through AppInstall's rootless container backend on
-non-native systems. The catalog never installs packages automatically,
-modifies repositories or silently creates containers.
+**First-time DEB/RPM setup**: choose DEB or RPM, then select **Enable
+repository**. A separate explicit confirmation explains that Podman and
+Distrobox will create or reuse AppInstall's named rootless container and
+download official distribution repository metadata. This may require a large
+container image and uses local disk space. Setup does **not** install an
+application. Search results come from the corresponding package manager's
+cached repository indexes, not from manually entered app lists. For these
+formats, type at least two characters to search by package name. App cards
+may represent CLI or other non-graphical packages, which will not create
+an application launcher after installation.
 
-The Flathub and AppImageHub adapters reject unexpected redirects and cap
-response size. Some searches require an internet connection and may fail when
-the upstream feeds change. The stable v1.6.0 release does not contain this
-development preview; merge/release still require owner approval.
+Selecting **Install** on a DEB/RPM card rechecks the package version and
+architecture, displays the existing container package preview, prepares an
+APT/DNF transaction for review, and requires another explicit **Install**
+confirmation before applying changes. APT/DNF resolve dependencies from
+the configured distribution repositories. Package installation remains in
+the dedicated rootless container, with AppInstall tracking its managed
+record and exporting a desktop launcher if the package supplies one.
+Search does not alter packages or run installation scripts.
+
+**Security and compatibility:** Distrobox integrates with the host home
+directory and graphical desktop and **is not a security sandbox**. Only
+AppInstall-owned containers with the expected Debian/Fedora image and
+validated repositories are used. Not every DEB/RPM package is a graphical
+application, compatible with Distrobox, or safe to run. The DEB/RPM first
+use requires Podman, Distrobox and related optional tools installed. No
+automatic host-native package manager changes are made by Discover.
+`My Applications` and the accepted View/Tools/Settings/Help layout remain
+unchanged.
+
+This v1.7.0 preview is **not** part of the published v1.6.0 stable release.
+Owner desktop verification and merge approval are still required.
 
 ## Install AppInstall
 
