@@ -382,6 +382,26 @@ class BridgeEntryPointsTests(QmlManagerBase):
         self.assertEqual(manager_qml.settings.read().get('favorites'), [])
 
 
+class BridgePreferenceTests(QmlManagerBase):
+    def test_notifications_saved_to_persistent_settings(self):
+        self.assertFalse(self.bridge.notificationsEnabled)
+        self.bridge.setNotificationsEnabled(True)
+        self.assertTrue(self.bridge.notificationsEnabled)
+        self.assertTrue(manager_qml.settings.read()['notifications'])
+        self.bridge.setNotificationsEnabled(False)
+        self.assertFalse(manager_qml.settings.read()['notifications'])
+
+    def test_uninstall_mode_is_saved_and_invalid_input_rejected(self):
+        self.assertEqual(self.bridge.uninstallMode, 'ask')
+        self.bridge.setUninstallMode('with_managed_data')
+        self.assertEqual(self.bridge.uninstallMode, 'with_managed_data')
+        self.bridge.setUninstallMode('app_only')
+        self.assertEqual(manager_qml.settings.read()['uninstall_mode'], 'app_only')
+        self.bridge.setUninstallMode('/tmp/unsafe')
+        self.assertEqual(self.bridge.uninstallMode, 'app_only')
+        self.assertIn('Invalid uninstall preference', self.bridge._status_text)
+
+
 class BridgeInstallTests(QmlManagerBase):
     """Header install actions reuse the widgets window's exact flows."""
 
