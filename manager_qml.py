@@ -373,6 +373,15 @@ class CatalogModel(QtCore.QAbstractListModel):
         self.endInsertRows()
         self.countChanged.emit()
 
+    def apply_icons(self, icons):
+        """Update visible card artwork without resetting positions or selection."""
+        for index, row in enumerate(self._rows):
+            icon = icons.get(row['appId'])
+            if icon and icon != row.get('iconUrl', ''):
+                row['iconUrl'] = icon
+                item = self.index(index, 0)
+                self.dataChanged.emit(item, item, [self.IconRole])
+
     def set_managed(self, inventory):
         managed = {app['key'].split(':', 1)[-1] for app in inventory
                    if app['format'] == 'flatpak' and app['key'].startswith('flatpak:')}
@@ -395,6 +404,7 @@ class CatalogWorker(QtCore.QThread):
     """Network requests run exclusively off the Qt/UI thread."""
 
     ready = QtCore.Signal(str, list)
+    iconsReady = QtCore.Signal(str, str, dict)
     failed = QtCore.Signal(str, str)
 
     setup_required = QtCore.Signal(str)
@@ -421,6 +431,12 @@ class CatalogWorker(QtCore.QThread):
                 results = (flathub_catalog.search(self.query)
                            if self.query else flathub_catalog.popular())
             self.ready.emit(self.query, results)
+            # Show package cards immediately. Official AppStream icons resolve
+            # later on this worker, never holding up the main QML/UI thread.
+            if self.source in ("DEB", "RPM") and results:
+                icons = repository_catalog.icons_for_results(results)
+                if icons:
+                    self.iconsReady.emit(self.query, self.source, icons)
         except repository_catalog.CatalogNotReady:
             self.setup_required.emit(self.source)
         except (flathub_catalog.CatalogError, ValueError) as error:
@@ -657,6 +673,7 @@ class Bridge(QtCore.QObject):
         worker = CatalogWorker(query, source, self, initialize=initialize)
         self._catalog_worker = worker
         worker.ready.connect(self._catalog_ready)
+        worker.iconsReady.connect(self._catalog_icons_ready)
         worker.failed.connect(self._catalog_failed)
         worker.setup_required.connect(self._catalog_needs_setup)
         worker.finished.connect(self._catalog_finished)
@@ -707,6 +724,18 @@ class Bridge(QtCore.QObject):
         self._catalog.replace(self._catalog_all[:24])
         self.catalogResultsChanged.emit()
         self._announce_catalog_results()
+
+    def _catalog_icons_ready(self, query, source, icons):
+        worker = self._catalog_worker
+        if (worker is None or self._catalog_pending is not None
+                or source != self._catalog_source or worker.source != source
+                or worker.query != query):
+            return
+        for row in self._catalog_all:
+            icon = icons.get(row['appId'])
+            if icon:
+                row['iconUrl'] = icon
+        self._catalog.apply_icons(icons)
 
     def _announce_catalog_results(self):
         total = len(self._catalog_all)
