@@ -372,7 +372,8 @@ class Engine:
         return exports
 
     def uninstall(self,key, cleanup=()):
-        cleanup = set(cleanup)
+        import diagnostics_core
+        cleanup = diagnostics_core.validate_cleanup(key, cleanup)
         info = self.registry[key]; info['status']='removing'; self.save()
         try:
             if info['kind'] == 'deb':
@@ -387,17 +388,14 @@ class Engine:
                 p = Path(path)
                 if p.is_file() and hashlib.sha256(p.read_bytes()).hexdigest() == item['sha256']:
                     p.unlink()
-            # Explicitly selected cleanup paths (launch history, etc.).
+            # Only verified per-app AppInstall launch history can be cleaned.
+            # Containers can host multiple apps, and are never deleted here.
             for path in cleanup:
+                if path not in diagnostics_core.allowed_cleanup_paths(key):
+                    raise RuntimeError('Managed cleanup path changed during uninstall.')
                 p = Path(path)
-                if p.is_dir():
+                if p.is_dir() and not p.is_symlink():
                     import shutil; shutil.rmtree(p)
-                elif p.is_file():
-                    p.unlink()
-            # Destroy the container when explicitly selected. Each app owns its
-            # container, so this is safe only when the user chose it.
-            if 'container' in cleanup:
-                command(['distrobox','rm','--yes',info['container']],env=ENV)
             del self.registry[key]; self.save()
             import launch_monitor
             launch_monitor.update_registry(key,None)

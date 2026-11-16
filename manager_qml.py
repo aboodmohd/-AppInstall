@@ -306,6 +306,7 @@ class Bridge(QtCore.QObject):
     loadingChanged = QtCore.Signal(bool)
     statusTextChanged = QtCore.Signal(str)
     themeChanged = QtCore.Signal()
+    preferencesChanged = QtCore.Signal()
     updateStatusChanged = QtCore.Signal(str)
     updateActionVisibleChanged = QtCore.Signal(bool)
 
@@ -365,6 +366,33 @@ class Bridge(QtCore.QObject):
     @QtCore.Property(str, notify=themeChanged)
     def themeChoice(self):
         return settings.read().get('theme', 'auto')
+
+    @QtCore.Property(bool, notify=preferencesChanged)
+    def notificationsEnabled(self):
+        return settings.read().get('notifications', False)
+
+    @QtCore.Property(str, notify=preferencesChanged)
+    def uninstallMode(self):
+        return settings.read().get('uninstall_mode', 'ask')
+
+    @QtCore.Slot(bool)
+    def setNotificationsEnabled(self, enabled):
+        try:
+            settings.update('notifications', bool(enabled))
+            self.preferencesChanged.emit()
+        except OSError as error:
+            self._set_status('Unable to save notifications preference: ' + str(error))
+
+    @QtCore.Slot(str)
+    def setUninstallMode(self, mode):
+        if mode not in settings.UNINSTALL_MODES:
+            self._set_status('Invalid uninstall preference.')
+            return
+        try:
+            settings.update('uninstall_mode', mode)
+            self.preferencesChanged.emit()
+        except OSError as error:
+            self._set_status('Unable to save uninstall preference: ' + str(error))
 
     @QtCore.Property(bool, constant=True)
     def reducedMotion(self):

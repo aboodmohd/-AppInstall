@@ -382,6 +382,26 @@ class BridgeEntryPointsTests(QmlManagerBase):
         self.assertEqual(manager_qml.settings.read().get('favorites'), [])
 
 
+class BridgePreferenceTests(QmlManagerBase):
+    def test_notifications_saved_to_persistent_settings(self):
+        self.assertFalse(self.bridge.notificationsEnabled)
+        self.bridge.setNotificationsEnabled(True)
+        self.assertTrue(self.bridge.notificationsEnabled)
+        self.assertTrue(manager_qml.settings.read()['notifications'])
+        self.bridge.setNotificationsEnabled(False)
+        self.assertFalse(manager_qml.settings.read()['notifications'])
+
+    def test_uninstall_mode_is_saved_and_invalid_input_rejected(self):
+        self.assertEqual(self.bridge.uninstallMode, 'ask')
+        self.bridge.setUninstallMode('with_managed_data')
+        self.assertEqual(self.bridge.uninstallMode, 'with_managed_data')
+        self.bridge.setUninstallMode('app_only')
+        self.assertEqual(manager_qml.settings.read()['uninstall_mode'], 'app_only')
+        self.bridge.setUninstallMode('/tmp/unsafe')
+        self.assertEqual(self.bridge.uninstallMode, 'app_only')
+        self.assertIn('Invalid uninstall preference', self.bridge._status_text)
+
+
 class BridgeInstallTests(QmlManagerBase):
     """Header install actions reuse the widgets window's exact flows."""
 
@@ -734,6 +754,107 @@ class QmlDropdownRegressionTests(QmlManagerBase):
         self.assertIsNotNone(self.window)
         self.assertFalse(any('Unable to assign [undefined] to bool' in m
                              for m in capture.messages))
+
+
+class QmlMenuBarTests(QmlManagerBase):
+    """Compact header keeps real menu actions and independent hide/show."""
+
+    def test_header_menu_and_settings_dialog_render(self):
+        self.engine = QtQml.QQmlApplicationEngine()
+        self.engine.rootContext().setContextProperty('bridge', self.bridge)
+        self.engine.rootContext().setContextProperty('appsModel', self.model)
+        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        with QmlLoadCapture() as capture:
+            self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
+        self.assertTrue(self.engine.rootObjects(), capture.messages)
+        window = self.engine.rootObjects()[0]
+        window.show()
+        QtTest.QTest.qWait(75)
+        try:
+            for name in ('appMenuBar', 'menuToggle', 'filtersToggle',
+                         'viewMenuButton', 'toolsMenuButton',
+                         'settingsMenuButton', 'helpMenuButton',
+                         'filtersPanel', 'installDropdown', 'menuInstallFile',
+                         'menuInstallUrl', 'menuRefresh', 'menuFocusSearch',
+                         'menuAbout', 'settingsDialog', 'notificationCheck',
+                         'uninstallAsk', 'uninstallAppOnly', 'uninstallWithData'):
+                self.assertIsNotNone(window.findChild(QtCore.QObject, name), name)
+            self.assertFalse(any('Error' in m or 'Unable to assign' in m
+                                 for m in capture.messages), capture.messages)
+        finally:
+            window.close()
+            self.engine.deleteLater()
+            self.app.processEvents()
+
+    def test_primary_menus_are_side_by_side_not_vertical(self):
+        self.engine = QtQml.QQmlApplicationEngine()
+        self.engine.rootContext().setContextProperty('bridge', self.bridge)
+        self.engine.rootContext().setContextProperty('appsModel', self.model)
+        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
+        self.assertTrue(self.engine.rootObjects())
+        window = self.engine.rootObjects()[0]
+        window.setWidth(940)
+        window.show()
+        QtTest.QTest.qWait(100)
+        try:
+            names = ('viewMenuButton', 'toolsMenuButton',
+                     'settingsMenuButton', 'helpMenuButton')
+            buttons = [window.findChild(QtCore.QObject, name)
+                       for name in names]
+            self.assertTrue(all(buttons))
+            positions = [(button.property('x'), button.property('y'))
+                         for button in buttons]
+            self.assertTrue(all(positions[i][0] < positions[i + 1][0]
+                                for i in range(3)), positions)
+            self.assertLessEqual(max(y for x, y in positions) -
+                                 min(y for x, y in positions), 1, positions)
+        finally:
+            window.close()
+            self.engine.deleteLater()
+            self.app.processEvents()
+
+    def test_header_hides_menu_and_filters_without_losing_app_list(self):
+        self.engine = QtQml.QQmlApplicationEngine()
+        self.engine.rootContext().setContextProperty('bridge', self.bridge)
+        self.engine.rootContext().setContextProperty('appsModel', self.model)
+        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
+        window = self.engine.rootObjects()[0]
+        expr = lambda v: QtQml.QQmlExpression(QtQml.qmlContext(window),
+                                               window, v).evaluate()[0]
+        try:
+            self.assertTrue(expr('appMenuBar.visible'))
+            self.assertTrue(expr('filtersPanel.visible'))
+            self.assertTrue(expr('appList.visible'))
+            expr('menuToggle.clicked()')
+            expr('filtersToggle.clicked()')
+            self.assertFalse(expr('appMenuBar.visible'))
+            self.assertFalse(expr('filtersPanel.visible'))
+            self.assertTrue(expr('appList.visible'))
+            expr('menuToggle.clicked()')
+            expr('filtersToggle.clicked()')
+            self.assertTrue(expr('appMenuBar.visible'))
+            self.assertTrue(expr('filtersPanel.visible'))
+        finally:
+            window.close()
+            self.engine.deleteLater()
+
+    def test_buttons_route_to_existing_bridge_and_real_settings(self):
+        qml = (manager_qml.QML_DIR / 'main.qml').read_text()
+        for action in ('bridge.installFromFile()', 'bridge.installFromUrl()',
+                       'bridge.refresh()', 'searchField.forceActiveFocus()',
+                       'bridge.checkUpdates(true)', 'bridge.openDiagnostics("")',
+                       'bridge.setTheme("auto")', 'bridge.setTheme("light")',
+                       'bridge.setTheme("dark")', 'bridge.setNotificationsEnabled(checked)',
+                       'bridge.setUninstallMode("ask")',
+                       'bridge.setUninstallMode("app_only")',
+                       'bridge.setUninstallMode("with_managed_data")'):
+            self.assertIn(action, qml)
+        self.assertIn('onClicked: settingsDialog.open()', qml)
+        self.assertIn('onTriggered: aboutDialog.open()', qml)
+        self.assertIn('Qt.openUrlExternally(', qml)
+        self.assertNotIn('title: qsTr("File")', qml)
 
 
 class InventoryLoadTests(QmlManagerBase):

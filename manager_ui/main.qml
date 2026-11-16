@@ -12,6 +12,8 @@ ApplicationWindow {
     visible: true
     title: qsTr("AppInstall — My Applications")
     color: Theme.colors.window
+    property bool menuExpanded: true
+    property bool filtersExpanded: true
 
     // Screenshot contract for --screenshot: the QML engine returns the
     // base QWindow wrapper for this root, which lacks grabWindow(); QML
@@ -114,153 +116,212 @@ ApplicationWindow {
         anchors.fill: parent
         spacing: 0
 
-        // ── header ───────────────────────────────────────────────────
+        // ── one-row header: menus and install actions share one line ──
         Rectangle {
             Layout.fillWidth: true
-            implicitHeight: headerRow.implicitHeight + 24
+            implicitHeight: 62
             color: Theme.colors.surface
-
-            Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
+            border.color: Theme.colors.border
+            border.width: 0
 
             RowLayout {
-                id: headerRow
                 anchors.fill: parent
-                anchors.leftMargin: 24
+                anchors.leftMargin: 16
                 anchors.rightMargin: 16
-                spacing: 12
+                spacing: 7
 
                 Label {
                     text: qsTr("My Applications")
-                    font.pixelSize: 18
+                    font.pixelSize: 17
                     font.weight: Font.DemiBold
                     color: Theme.colors.text
                     Accessible.role: Accessible.Heading
                 }
 
-                // Theme pill: shows the active mode, opens the same three
-                // choices the widgets window offers (system follow included).
                 Button {
-                    id: themeButton
-                    text: bridge.themeChoice === 'auto' ? qsTr("System")
-                          : bridge.themeChoice === 'dark' ? qsTr("Dark")
-                          : qsTr("Light")
-                    font.pixelSize: 13
-                    implicitHeight: 32
-                    implicitWidth: themeLabel.implicitWidth + 24
-                    hoverEnabled: true
-
+                    id: menuToggle
+                    objectName: "menuToggle"
+                    text: window.menuExpanded ? qsTr("Hide menu") : qsTr("Show menu")
+                    onClicked: window.menuExpanded = !window.menuExpanded
+                    Accessible.name: text
+                    font.pixelSize: 12
+                    implicitHeight: 30
+                    implicitWidth: contentItem.implicitWidth + 18
                     background: Rectangle {
-                        radius: 8
-                        color: themeButton.pressed ? Theme.colors.pressed
-                             : themeButton.hovered ? Theme.colors.hover
-                             : "transparent"
-                        border.color: themeButton.visualFocus ? Theme.colors.focusRing : Theme.colors.border
-                        border.width: themeButton.visualFocus ? 2 : 1
-
-                        Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
+                        radius: 7
+                        color: menuToggle.hovered ? Theme.colors.hover : "transparent"
+                        border.color: menuToggle.visualFocus ? Theme.colors.focusRing : Theme.colors.border
+                        border.width: 1
                     }
                     contentItem: Label {
-                        id: themeLabel
-                        text: themeButton.text
-                        font: themeButton.font
-                        color: Theme.colors.text
+                        text: menuToggle.text
+                        color: Theme.colors.textSecondary
+                        font: menuToggle.font
                         horizontalAlignment: Text.AlignHCenter
                         verticalAlignment: Text.AlignVCenter
                     }
-                    onClicked: themeMenu.popup(themeButton, 0, themeButton.height + 4)
-                    Accessible.name: qsTr("Theme: %1").arg(themeButton.text)
+                }
 
+                // Explicit RowLayout ensures the four navigation actions remain
+                // side by side on KDE and other Qt Quick desktop styles.
+                // Only the menu *contents* pop down; tabs never stack vertically.
+                RowLayout {
+                    id: appMenuBar
+                    objectName: "appMenuBar"
+                    visible: window.menuExpanded
+                    Layout.alignment: Qt.AlignVCenter
+                    Layout.preferredWidth: implicitWidth
+                    spacing: 2
+
+                    HeaderMenuButton {
+                        id: viewMenuButton
+                        objectName: "viewMenuButton"
+                        text: qsTr("View")
+                        onClicked: viewMenuPopup.popup(viewMenuButton, 0, height + 4)
+                        Menu {
+                            id: viewMenuPopup
+                            MenuItem {
+                                objectName: "menuRefresh"
+                                text: qsTr("Refresh Applications")
+                                onTriggered: bridge.refresh()
+                            }
+                            MenuItem {
+                                objectName: "menuFocusSearch"
+                                text: qsTr("Focus Search")
+                                onTriggered: {
+                                    window.filtersExpanded = true
+                                    searchField.forceActiveFocus()
+                                }
+                            }
+                            MenuItem {
+                                text: window.filtersExpanded ? qsTr("Hide Filters") : qsTr("Show Filters")
+                                onTriggered: window.filtersExpanded = !window.filtersExpanded
+                            }
+                        }
+                    }
+
+                    HeaderMenuButton {
+                        id: toolsMenuButton
+                        objectName: "toolsMenuButton"
+                        text: qsTr("Tools")
+                        onClicked: toolsMenuPopup.popup(toolsMenuButton, 0, height + 4)
+                        Menu {
+                            id: toolsMenuPopup
+                            MenuItem {
+                                text: qsTr("Check for AppInstall Updates")
+                                enabled: bridge.actionVisible && bridge.updateTag === ""
+                                onTriggered: bridge.checkUpdates(true)
+                            }
+                            MenuItem {
+                                text: qsTr("Application Diagnostics")
+                                onTriggered: bridge.openDiagnostics("")
+                            }
+                        }
+                    }
+
+                    HeaderMenuButton {
+                        id: settingsMenuButton
+                        objectName: "settingsMenuButton"
+                        text: qsTr("Settings")
+                        onClicked: settingsDialog.open()
+                        Accessible.name: qsTr("Open AppInstall Settings")
+                    }
+
+                    HeaderMenuButton {
+                        id: helpMenuButton
+                        objectName: "helpMenuButton"
+                        text: qsTr("Help")
+                        onClicked: helpMenuPopup.popup(helpMenuButton, 0, height + 4)
+                        Menu {
+                            id: helpMenuPopup
+                            MenuItem {
+                                objectName: "menuAbout"
+                                text: qsTr("About AppInstall…")
+                                onTriggered: aboutDialog.open()
+                            }
+                            MenuItem {
+                                text: qsTr("View Project on GitHub")
+                                onTriggered: Qt.openUrlExternally("https://github.com/aboodmohd/-AppInstall")
+                            }
+                        }
+                    }
+                }
+
+                Item { Layout.fillWidth: true; Layout.minimumWidth: 2 }
+
+                Button {
+                    id: filtersToggle
+                    objectName: "filtersToggle"
+                    text: window.filtersExpanded ? qsTr("Hide filters") : qsTr("Show filters")
+                    onClicked: window.filtersExpanded = !window.filtersExpanded
+                    Accessible.name: text
+                    font.pixelSize: 12
+                    implicitHeight: 30
+                    implicitWidth: contentItem.implicitWidth + 18
+                    background: Rectangle {
+                        radius: 7
+                        color: filtersToggle.hovered ? Theme.colors.hover : "transparent"
+                        border.color: filtersToggle.visualFocus ? Theme.colors.focusRing : Theme.colors.border
+                        border.width: 1
+                    }
+                    contentItem: Label {
+                        text: filtersToggle.text
+                        font: filtersToggle.font
+                        color: Theme.colors.textSecondary
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
+                }
+
+                // One install dropdown replaces the two separate file/URL buttons.
+                Button {
+                    id: installDropdown
+                    objectName: "installDropdown"
+                    text: qsTr("Install  ▾")
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                    implicitHeight: 32
+                    implicitWidth: contentItem.implicitWidth + 26
+                    onClicked: installMenu.popup(installDropdown, 0, installDropdown.height + 4)
+                    Accessible.name: qsTr("Install an application")
+                    background: Rectangle {
+                        radius: 8
+                        color: installDropdown.pressed ? Qt.darker(Theme.colors.accent, 1.12)
+                             : Theme.colors.accent
+                    }
+                    contentItem: Label {
+                        text: installDropdown.text
+                        color: Theme.colors.accentText
+                        font: installDropdown.font
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                    }
                     Menu {
-                        id: themeMenu
-
+                        id: installMenu
                         MenuItem {
-                            text: qsTr("Follow system")
-                            checkable: true
-                            checked: bridge.themeChoice === 'auto'
-                            onTriggered: bridge.setTheme('auto')
+                            objectName: "menuInstallFile"
+                            text: qsTr("Install from File…")
+                            onTriggered: bridge.installFromFile()
                         }
                         MenuItem {
-                            text: qsTr("Light")
-                            checkable: true
-                            checked: bridge.themeChoice === 'light'
-                            onTriggered: bridge.setTheme('light')
-                        }
-                        MenuItem {
-                            text: qsTr("Dark")
-                            checkable: true
-                            checked: bridge.themeChoice === 'dark'
-                            onTriggered: bridge.setTheme('dark')
+                            objectName: "menuInstallUrl"
+                            text: qsTr("Install from URL…")
+                            onTriggered: bridge.installFromUrl()
                         }
                     }
-                }
-
-                Item { Layout.fillWidth: true }
-
-                // Install entry points: the widgets window's exact flows,
-                // reached through the bridge's normal-entry-point rule.
-                Button {
-                    id: installFileButton
-                    text: qsTr("Install from File…")
-                    font.pixelSize: 13
-                    implicitHeight: 32
-                    implicitWidth: installFileLabel.implicitWidth + 24
-                    hoverEnabled: true
-
-                    background: Rectangle {
-                        radius: 8
-                        color: installFileButton.pressed ? Theme.colors.pressed
-                             : installFileButton.hovered ? Theme.colors.hover
-                             : "transparent"
-                        border.color: installFileButton.visualFocus ? Theme.colors.focusRing : Theme.colors.border
-                        border.width: installFileButton.visualFocus ? 2 : 1
-
-                        Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
-                    }
-                    contentItem: Label {
-                        id: installFileLabel
-                        text: installFileButton.text
-                        font: installFileButton.font
-                        color: Theme.colors.text
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: bridge.installFromFile()
-                    Accessible.name: qsTr("Install a package from a file")
-                }
-
-                Button {
-                    id: installUrlButton
-                    text: qsTr("Install from URL…")
-                    font.pixelSize: 13
-                    implicitHeight: 32
-                    implicitWidth: installUrlLabel.implicitWidth + 24
-                    hoverEnabled: true
-
-                    background: Rectangle {
-                        radius: 8
-                        color: installUrlButton.pressed ? Theme.colors.pressed
-                             : installUrlButton.hovered ? Theme.colors.hover
-                             : "transparent"
-                        border.color: installUrlButton.visualFocus ? Theme.colors.focusRing : Theme.colors.border
-                        border.width: installUrlButton.visualFocus ? 2 : 1
-
-                        Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
-                    }
-                    contentItem: Label {
-                        id: installUrlLabel
-                        text: installUrlButton.text
-                        font: installUrlButton.font
-                        color: Theme.colors.text
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: bridge.installFromUrl()
-                    Accessible.name: qsTr("Install a package from a URL")
                 }
             }
         }
 
         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.colors.border }
+
+        // Filters can be collapsed without hiding the update banner or apps.
+        ColumnLayout {
+            id: filtersPanel
+            objectName: "filtersPanel"
+            visible: window.filtersExpanded
+            Layout.fillWidth: true
+            spacing: 0
 
         // ── toolbar: search first, then state filters ─────────────────
         RowLayout {
@@ -572,6 +633,8 @@ ApplicationWindow {
             }
         }
 
+        } // filtersPanel
+
         // ── update banner ────────────────────────────────────────────
         Rectangle {
             id: updateBanner
@@ -775,6 +838,176 @@ ApplicationWindow {
     }
 
     } // grabRoot
+
+    // Working preferences stored atomically in ~/.local/share/appinstall/settings.json.
+    // Every change passes through the existing settings sanitizer; no dummy toggles.
+    Dialog {
+        id: settingsDialog
+        objectName: "settingsDialog"
+        title: qsTr("AppInstall Settings")
+        modal: true
+        standardButtons: Dialog.Close
+        width: Math.min(window.width - 48, 475)
+        x: Math.round((window.width - width) / 2)
+        y: Math.round((window.height - height) / 2)
+
+        background: Rectangle {
+            radius: 12
+            color: Theme.colors.surface
+            border.color: Theme.colors.border
+            border.width: 1
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 10
+
+            Label {
+                text: qsTr("Appearance")
+                font.pixelSize: 16
+                font.weight: Font.DemiBold
+                color: Theme.colors.text
+            }
+            ButtonGroup { id: appearanceChoice }
+            RadioButton {
+                text: qsTr("Follow system theme")
+                ButtonGroup.group: appearanceChoice
+                checked: bridge.themeChoice === "auto"
+                onClicked: bridge.setTheme("auto")
+                Accessible.name: text
+            }
+            RadioButton {
+                text: qsTr("Light")
+                ButtonGroup.group: appearanceChoice
+                checked: bridge.themeChoice === "light"
+                onClicked: bridge.setTheme("light")
+            }
+            RadioButton {
+                text: qsTr("Dark")
+                ButtonGroup.group: appearanceChoice
+                checked: bridge.themeChoice === "dark"
+                onClicked: bridge.setTheme("dark")
+            }
+            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.colors.border }
+
+            Label {
+                text: qsTr("Notifications")
+                font.pixelSize: 16
+                font.weight: Font.DemiBold
+                color: Theme.colors.text
+            }
+            CheckBox {
+                id: notificationCheck
+                objectName: "notificationCheck"
+                text: qsTr("Notify me about available AppInstall updates")
+                checked: bridge.notificationsEnabled
+                onClicked: bridge.setNotificationsEnabled(checked)
+            }
+            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.colors.border }
+
+            Label {
+                text: qsTr("Default uninstall choice")
+                font.pixelSize: 16
+                font.weight: Font.DemiBold
+                color: Theme.colors.text
+            }
+            ButtonGroup { id: uninstallChoice }
+            RadioButton {
+                objectName: "uninstallAsk"
+                text: qsTr("Ask every time (remove app only by default)")
+                ButtonGroup.group: uninstallChoice
+                checked: bridge.uninstallMode === "ask"
+                onClicked: bridge.setUninstallMode("ask")
+            }
+            RadioButton {
+                objectName: "uninstallAppOnly"
+                text: qsTr("Remove app only")
+                ButtonGroup.group: uninstallChoice
+                checked: bridge.uninstallMode === "app_only"
+                onClicked: bridge.setUninstallMode("app_only")
+            }
+            RadioButton {
+                objectName: "uninstallWithData"
+                text: qsTr("Remove app + verified AppInstall history")
+                ButtonGroup.group: uninstallChoice
+                checked: bridge.uninstallMode === "with_managed_data"
+                onClicked: bridge.setUninstallMode("with_managed_data")
+            }
+            Label {
+                text: qsTr("Every uninstall still asks for confirmation. Personal folders, downloads and shared containers are always kept.")
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                font.pixelSize: 12
+                color: Theme.colors.textSecondary
+            }
+            Label {
+                text: qsTr("Preferences are saved as you change them.")
+                Layout.fillWidth: true
+                font.pixelSize: 12
+                color: Theme.colors.textSecondary
+            }
+        }
+    }
+
+    // Lightweight about dialog; no hardcoded version or unverified claims.
+    Dialog {
+        id: aboutDialog
+        objectName: "aboutAppInstallDialog"
+        title: qsTr("About AppInstall")
+        modal: true
+        standardButtons: Dialog.Close
+        width: Math.min(window.width - 48, 420)
+        x: Math.round((window.width - width) / 2)
+        y: Math.round((window.height - height) / 2)
+
+        background: Rectangle {
+            radius: 12
+            color: Theme.colors.surface
+            border.color: Theme.colors.border
+            border.width: 1
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+            Label {
+                text: qsTr("AppInstall")
+                font.pixelSize: 22
+                font.weight: Font.DemiBold
+                color: Theme.colors.text
+            }
+            Label {
+                Layout.fillWidth: true
+                text: qsTr("An open-source Linux app installer and manager for AppImage, Flatpak, DEB, and RPM.")
+                wrapMode: Text.WordWrap
+                font.pixelSize: 13
+                color: Theme.colors.textSecondary
+            }
+        }
+    }
+
+    // A conventional header tab, but laid out explicitly in a single row.
+    component HeaderMenuButton: Button {
+        id: headerNav
+        implicitHeight: 32
+        implicitWidth: headerNavLabel.implicitWidth + 18
+        font.pixelSize: 13
+        hoverEnabled: true
+        activeFocusOnTab: true
+        background: Rectangle {
+            radius: 7
+            color: headerNav.down ? Theme.colors.pressed
+                 : headerNav.hovered ? Theme.colors.hover : "transparent"
+            border.color: headerNav.visualFocus ? Theme.colors.focusRing : "transparent"
+            border.width: headerNav.visualFocus ? 2 : 0
+        }
+        contentItem: Label {
+            id: headerNavLabel
+            text: headerNav.text
+            color: Theme.colors.text
+            font: headerNav.font
+            horizontalAlignment: Text.AlignHCenter
+            verticalAlignment: Text.AlignVCenter
+        }
+    }
 
     // Format segmented control: checkable chip, selected state is the web
     // design's accent outline + readable text, visible focus ring. Exclusive

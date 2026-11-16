@@ -485,46 +485,31 @@ def can_update(app):
 
 
 def uninstall_cleanup_items(app):
-    """Data that can be reliably tied to this app and offered for cleanup.
+    """Only offer extra AppInstall-owned history, never personal app folders.
 
-    Every item is an exact path. AppInstall-owned launchers and icons come
-    from the registry record; launch logs and history come from the app's
-    keyed state directory; AppImage targets and manifests come from the
-    record itself. Personal application data is never offered.
+    AppImage payloads and verified owned launchers are removed by the normal
+    uninstall backend. Distrobox containers can be shared by other apps.
     """
-    items = []
-    for entry in app.get('exports', []) + app.get('icons', []):
-        path = entry.get('path', '')
-        if path:
-            items.append(('Export', path))
-    key = app['key']
-    history_dir = Path(os.environ.get('XDG_STATE_HOME',
-                                      Path.home()/'.local/state'))/'appinstall'/'launches'/hashlib.sha256(key.encode()).hexdigest()[:20]
-    if history_dir.is_dir():
-        items.append(('Launch history', str(history_dir)))
-    if app['format'] == 'appimage':
-        for path in (app.get('target'), app.get('manifest')):
-            if path:
-                items.append(('AppImage file', path))
-    elif app['format'] in ('deb', 'rpm') and app.get('container'):
-        items.append(('Container', app['container']))
-    # De-duplicate while preserving order.
-    seen = set()
-    unique = []
-    for label, path in items:
-        if path not in seen:
-            seen.add(path)
-            unique.append((label, path))
-    return unique
+    return [('AppInstall launch history', path)
+            for path in sorted(core.allowed_cleanup_paths(app['key']))]
 
 
 def uninstall_app(app, cleanup=()):
-    """Safe uninstall via diagnostics_core. Removes only AppInstall-owned
-    artifacts, plus any cleanup paths explicitly selected by the user."""
+    """Remove selected managed history and unregister only after success."""
     if not can_uninstall(app):
         raise RuntimeError('Uninstall is not supported for '+app['format']+' applications.')
-    core.uninstall(app['key'], cleanup=set(cleanup))
-    return 'Application removed. Personal application data and logs were kept.'
+    selected = core.validate_cleanup(app['key'], set(cleanup))
+    core.uninstall(app['key'], cleanup=selected)
+    try:
+        prefs = settings.read()
+        if app['key'] in prefs.get('favorites', []):
+            settings.update('favorites', [key for key in prefs['favorites']
+                                          if key != app['key']])
+    except OSError:
+        pass
+    if selected:
+        return 'Application and selected AppInstall history removed. Personal files and shared containers were kept.'
+    return 'Application removed. Personal files and AppInstall history were kept.'
 
 
 
@@ -1060,8 +1045,11 @@ class AppDetailsDialog(QDialog):
             except Exception as error:
                 QMessageBox.warning(self, 'AppInstall', 'Reinstall failed: '+str(error))
         elif action == 'uninstall':
+            dialog = UninstallDialog(app, uninstall_cleanup_items(app), self)
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
             try:
-                message = uninstall_app(app)
+                message = uninstall_app(app, cleanup=dialog.selected_paths())
                 QMessageBox.information(self, 'AppInstall', message); self.accept()
                 parent = self.parent()
                 if parent is not None and hasattr(parent, 'refresh'):
@@ -1358,9 +1346,9 @@ class UninstallDialog(QDialog):
         head.setTextFormat(Qt.TextFormat.PlainText)
         root.addWidget(head)
 
-        sub = QLabel('Only AppInstall-managed files will be removed. Personal '
-                     'application data is always kept. Choose additional data '
-                     'to clean up below (nothing is selected by default).')
+        sub = QLabel('The app will disappear from My Applications after a successful uninstall. '
+                     'Choose whether to also remove its verified AppInstall launch history. '
+                     'Personal folders, downloads and shared Distrobox containers are always kept.')
         sub.setTextFormat(Qt.TextFormat.PlainText)
         sub.setWordWrap(True)
         sub.setStyleSheet('color: palette(text); font-size: 12px;')
@@ -1371,14 +1359,32 @@ class UninstallDialog(QDialog):
         bl = QVBoxLayout(box)
         bl.setContentsMargins(12, 10, 12, 10)
         bl.setSpacing(8)
-        bl.addWidget(QLabel('Clean up'))
+        from qt_compat import QtWidgets
+        self.app_only = QtWidgets.QRadioButton('Remove app only (keep history and personal folders)')
+        self.with_managed_data = QtWidgets.QRadioButton(
+            'Remove app + verified AppInstall-managed folders')
+        self.app_only.setChecked(True)
+        bl.addWidget(self.app_only)
+        bl.addWidget(self.with_managed_data)
         self.checks = {}
-        for label, path in items:
-            cb = QCheckBox(label+' — '+path)
-            cb.setChecked(False)
-            cb.setToolTip('Remove '+path)
-            bl.addWidget(cb)
-            self.checks[path] = cb
+        if items:
+            bl.addWidget(QLabel('Additional managed folders:'))
+            for label, path in items:
+                cb = QCheckBox(label+' — '+path)
+                cb.setChecked(False)
+                cb.setEnabled(False)
+                cb.setToolTip('Remove only this recorded AppInstall folder')
+                bl.addWidget(cb)
+                self.checks[path] = cb
+        else:
+            bl.addWidget(QLabel('No additional managed folders found for this app.'))
+        def set_cleanup_mode(enabled):
+            for cb in self.checks.values():
+                cb.setEnabled(enabled)
+                cb.setChecked(enabled)
+        self.with_managed_data.toggled.connect(set_cleanup_mode)
+        if settings.read().get('uninstall_mode') == 'with_managed_data' and items:
+            self.with_managed_data.setChecked(True)
         root.addWidget(box)
 
         buttons = QDialogButtonBox(
@@ -1390,6 +1396,8 @@ class UninstallDialog(QDialog):
         root.addWidget(buttons)
 
     def selected_paths(self):
+        if not self.with_managed_data.isChecked():
+            return set()
         return {path for path, cb in self.checks.items() if cb.isChecked()}
 
 

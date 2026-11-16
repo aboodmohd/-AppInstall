@@ -51,34 +51,52 @@ class UninstallDialogTests(unittest.TestCase):
         self.env.stop()
         self.tmp.cleanup()
 
-    def test_all_checkboxes_unchecked_by_default(self):
-        app = dict(key='appimage:example', format='appimage', name='Example',
-                   container='', desktop='/x.desktop', exports=[],
-                   icons=[], target='/tmp/Example.AppImage',
-                   manifest='/tmp/Example.AppImage.manifest')
-        items = manager.uninstall_cleanup_items(app)
-        dialog = manager.UninstallDialog(app, items)
-        for cb in dialog.checks.values():
-            self.assertFalse(cb.isChecked(), 'checkbox should be unchecked by default: '+cb.text())
+    def app_record(self):
+        return dict(key='appimage:example', format='appimage',
+                    name='Example', desktop='/x.desktop', exports=[],
+                    icons=[], target='/tmp/Example.AppImage',
+                    manifest='/tmp/Example.AppImage.manifest')
 
-    def test_dialog_shows_exact_paths(self):
-        app = dict(key='appimage:example', format='appimage', name='Example',
-                   container='', desktop='/x.desktop', exports=[],
-                   icons=[], target='/tmp/Example.AppImage',
-                   manifest='/tmp/Example.AppImage.manifest')
-        items = manager.uninstall_cleanup_items(app)
-        dialog = manager.UninstallDialog(app, items)
-        for label, path in items:
-            found = any(path in cb.text() for cb in dialog.checks.values())
-            self.assertTrue(found, 'path not shown in dialog: '+path)
+    def create_history(self):
+        key='appimage:example'
+        folder=self.root / 'state' / 'appinstall' / 'launches' / hashlib.sha256(
+            key.encode()).hexdigest()[:20]
+        folder.mkdir(parents=True)
+        (folder/'attempt.json').write_text('{}')
+        return folder
 
-    def test_no_items_produces_empty_dialog(self):
-        app = dict(key='flatpak:org.example', format='flatpak', name='Example',
-                   container='', desktop='', exports=[], icons=[],
-                   target='', manifest='')
-        items = manager.uninstall_cleanup_items(app)
-        dialog = manager.UninstallDialog(app, items)
+    def test_app_only_default_preserves_history(self):
+        app=self.app_record()
+        path=self.create_history()
+        dialog=manager.UninstallDialog(app, manager.uninstall_cleanup_items(app))
+        self.assertTrue(dialog.app_only.isChecked())
+        self.assertEqual(dialog.selected_paths(), set())
+        self.assertTrue(str(path) in next(iter(dialog.checks)))
+        self.assertFalse(next(iter(dialog.checks.values())).isEnabled())
+
+    def test_remove_with_managed_folders_requires_explicit_selection(self):
+        app=self.app_record()
+        path=self.create_history()
+        dialog=manager.UninstallDialog(app, manager.uninstall_cleanup_items(app))
+        dialog.with_managed_data.setChecked(True)
+        self.assertEqual(dialog.selected_paths(), {str(path)})
+        dialog.app_only.setChecked(True)
+        self.assertEqual(dialog.selected_paths(), set())
+
+    def test_settings_default_prefills_without_skipping_confirmation(self):
+        import settings
+        app=self.app_record()
+        path=self.create_history()
+        settings.update('uninstall_mode', 'with_managed_data')
+        dialog=manager.UninstallDialog(app, manager.uninstall_cleanup_items(app))
+        self.assertTrue(dialog.with_managed_data.isChecked())
+        self.assertEqual(dialog.selected_paths(), {str(path)})
+
+    def test_no_managed_folders(self):
+        app=self.app_record()
+        dialog=manager.UninstallDialog(app, manager.uninstall_cleanup_items(app))
         self.assertEqual(dialog.checks, {})
+        self.assertEqual(dialog.selected_paths(), set())
 
 
 class CleanupItemsTests(unittest.TestCase):
@@ -95,37 +113,34 @@ class CleanupItemsTests(unittest.TestCase):
         self.env.stop()
         self.tmp.cleanup()
 
-    def test_deb_items_include_exports_and_container(self):
+    def test_shared_container_and_personal_files_are_never_offered(self):
         app = dict(key='deb:example', format='deb', name='Example',
-                   container='debian-apps-example',
+                   container='debian-apps',
                    exports=[dict(path='/owned.desktop', sha256='hash')],
-                   icons=[], target='/tmp/example.deb', manifest=None,
-                   desktop='/usr/share/applications/example.desktop')
-        items = manager.uninstall_cleanup_items(app)
-        paths = [p for _, p in items]
-        self.assertIn('/owned.desktop', paths)
-        self.assertIn('debian-apps-example', paths)
-
-    def test_appimage_items_include_target_and_manifest(self):
-        app = dict(key='appimage:example', format='appimage', name='Example',
-                   container='', exports=[], icons=[],
-                   target='/tmp/Example.AppImage',
-                   manifest='/tmp/Example.AppImage.manifest')
-        items = manager.uninstall_cleanup_items(app)
-        paths = [p for _, p in items]
-        self.assertIn('/tmp/Example.AppImage', paths)
-        self.assertIn('/tmp/Example.AppImage.manifest', paths)
-
-    def test_shared_icons_not_duplicated(self):
-        app = dict(key='deb:example', format='deb', name='Example',
-                   container='debian-apps-example',
-                   exports=[dict(path='/shared.desktop', sha256='hash')],
-                   icons=[dict(path='/shared.desktop', sha256='hash')],
+                   icons=[dict(path='/owned.icon', sha256='hash')],
                    target='/tmp/example.deb', manifest=None,
                    desktop='/usr/share/applications/example.desktop')
-        items = manager.uninstall_cleanup_items(app)
-        paths = [p for _, p in items]
-        self.assertEqual(paths.count('/shared.desktop'), 1)
+        self.assertEqual(manager.uninstall_cleanup_items(app), [])
+
+    def test_only_exact_managed_history_is_offered(self):
+        key='appimage:example'
+        folder=self.root / 'state' / 'appinstall' / 'launches' / hashlib.sha256(
+            key.encode()).hexdigest()[:20]
+        folder.mkdir(parents=True)
+        app=dict(key=key, format='appimage', target='/tmp/SomeFile.AppImage',
+                 manifest='/tmp/file.manifest', exports=[], icons=[])
+        self.assertEqual(manager.uninstall_cleanup_items(app),
+                         [('AppInstall launch history', str(folder))])
+
+    def test_symlinked_history_is_never_offered(self):
+        key='appimage:example'
+        folder=self.root / 'state' / 'appinstall' / 'launches' / hashlib.sha256(
+            key.encode()).hexdigest()[:20]
+        folder.parent.mkdir(parents=True)
+        external=self.root / 'personal'
+        external.mkdir()
+        folder.symlink_to(external, target_is_directory=True)
+        self.assertEqual(manager.uninstall_cleanup_items({'key': key}), [])
 
 
 class UninstallSafetyTests(unittest.TestCase):
@@ -177,29 +192,49 @@ class UninstallSafetyTests(unittest.TestCase):
         # Launch history dir still exists (unchecked)
         self.assertTrue((history_dir / 'attempt.json').exists())
 
-    def test_symlink_passes_cleanup_through(self):
-        """The cleanup path is passed through to core.uninstall (verified via
-        call args), while the symlink target is never touched by our code."""
+    def test_rejects_untrusted_cleanup_before_uninstall(self):
         key = 'deb:example'
         spec = self._make_spec(key)
-        real = self._write('real.desktop', b'real content')
-        link = self.root / 'link.desktop'
-        link.symlink_to(real)
-        spec['exports'] = [dict(path=str(link), sha256=hashlib.sha256(b'real content').hexdigest())]
-        spec['icons'] = []
+        personal = self._write('personal/important.txt', b'never remove')
         import launch_monitor as monitor
         monitor.atomic_json(
-            Path(os.environ['XDG_DATA_HOME']) / 'appinstall' / 'launchers.json',
+            Path(os.environ['XDG_DATA_HOME'])/'appinstall'/'launchers.json',
             {key: spec})
+        with patch.object(manager.core, 'uninstall') as uninstall:
+            with self.assertRaises(ValueError):
+                manager.uninstall_app(
+                    manager.build_app_record(key, spec, 'x'),
+                    cleanup={str(personal)})
+        uninstall.assert_not_called()
+        self.assertTrue(personal.exists())
 
-        captured = {}
-        with patch.object(manager.core, 'uninstall', side_effect=lambda k, cleanup=(): captured.setdefault('cleanup', cleanup)):
-            manager.uninstall_app(manager.build_app_record(
-                key, spec, 'x'), cleanup={str(link)})
-        self.assertEqual(captured['cleanup'], {str(link)})
-        # Our code never touches the symlink target.
-        self.assertTrue(real.exists())
-        self.assertTrue(link.exists())
+    def test_success_unregisters_app_and_clears_favorite(self):
+        key='appimage:example'
+        _, raw=make_app(key=key)
+        import launch_monitor as monitor
+        import settings
+        monitor.update_registry(key, raw)
+        settings.update('favorites', [key])
+        with patch.object(manager.core, 'uninstall',
+                          side_effect=lambda selected_key, cleanup=():
+                              monitor.update_registry(selected_key, None)):
+            result=manager.uninstall_app(manager.build_app_record(key, raw, 'x'))
+        self.assertIn('removed', result)
+        self.assertFalse(any(item['key'] == key for item in manager.load_inventory()))
+        self.assertNotIn(key, settings.read()['favorites'])
+
+    def test_failed_uninstall_keeps_app_registry_and_favorite(self):
+        key='appimage:example'
+        _, raw=make_app(key=key)
+        import launch_monitor as monitor
+        import settings
+        monitor.update_registry(key, raw)
+        settings.update('favorites', [key])
+        with patch.object(manager.core, 'uninstall', side_effect=RuntimeError('failed')):
+            with self.assertRaises(RuntimeError):
+                manager.uninstall_app(manager.build_app_record(key, raw, 'x'))
+        self.assertIn(key, monitor.registry())
+        self.assertIn(key, settings.read()['favorites'])
 
 
 class EngineUninstallCleanupTests(unittest.TestCase):
@@ -216,36 +251,49 @@ class EngineUninstallCleanupTests(unittest.TestCase):
         self.env.stop()
         self.tmp.cleanup()
 
-    def test_engine_uninstall_removes_selected_cleanup_path(self):
-        from container_backend import Engine as Eng
+    def make_engine(self):
         import container_backend as c
-        engine = c.Engine.__new__(c.Engine)
-        engine.root = self.root / 'containers'
-        engine.file = engine.root / 'registry.json'
-        engine.registry = {
-            'deb:example': dict(
-                container='debian-apps-example', kind='deb', name='example',
-                file='/tmp/example.deb', sha256='abc',
-                image='docker.io/library/debian:13',
-                exports=[dict(path='/owned.desktop', sha256='hash-owned')],
-                icons=[],
-            )
-        }
-        cleanup_path = self.root / 'launch_history.json'
-        cleanup_path.write_text('{}')
-        engine.registry['deb:example']['exports'] = [
-            dict(path='/owned.desktop', sha256='hash-owned'),
-            dict(path=str(cleanup_path), sha256=hashlib.sha256(b'{}').hexdigest()),
-        ]
-        self.root.joinpath('owned.desktop').parent.mkdir(parents=True, exist_ok=True)
-        self.root.joinpath('owned.desktop').write_bytes(b'owned')
+        key='deb:example'
+        engine=c.Engine.__new__(c.Engine)
+        engine.root=self.root/'containers'
+        engine.file=engine.root/'registry.json'
         engine.root.mkdir(parents=True, exist_ok=True)
+        engine.registry={key: dict(
+            container='debian-apps', kind='deb', name='example',
+            file='/tmp/example.deb', sha256='abc',
+            image='docker.io/library/debian:13',
+            exports=[], icons=[])}
+        return engine
 
-        with patch.object(c, 'command'), patch.object(c.os, 'geteuid', return_value=1000):
-            engine.uninstall('deb:example', cleanup={str(cleanup_path)})
+    def test_selected_app_history_removed_but_shared_container_retained(self):
+        import container_backend as c
+        key='deb:example'
+        engine=self.make_engine()
+        history=self.root/'state'/'appinstall'/'launches'/hashlib.sha256(
+            key.encode()).hexdigest()[:20]
+        history.mkdir(parents=True)
+        (history/'attempt.json').write_text('{}')
+        with patch.object(c, 'command') as run, \
+             patch.object(c.os, 'geteuid', return_value=1000):
+            engine.uninstall(key, cleanup={str(history)})
+        self.assertFalse(history.exists())
+        self.assertNotIn(key, engine.registry)
+        self.assertFalse(any(call.args[0][:2] == ['distrobox', 'rm']
+                             for call in run.call_args_list
+                             if call.args and isinstance(call.args[0], list)))
 
-        self.assertFalse(cleanup_path.exists())
-        self.assertNotIn('deb:example', engine.registry)
+    def test_arbitrary_folder_refused_before_uninstall(self):
+        import container_backend as c
+        key='deb:example'
+        engine=self.make_engine()
+        personal=self.root/'my-important-files'
+        personal.mkdir()
+        with patch.object(c, 'command') as command:
+            with self.assertRaises(ValueError):
+                engine.uninstall(key, cleanup={str(personal)})
+        command.assert_not_called()
+        self.assertTrue(personal.exists())
+        self.assertIn(key, engine.registry)
 
 
 if __name__ == '__main__':

@@ -16,7 +16,7 @@ Item {
     // would be noise (Emil: tens/day interactions get no animation).
     readonly property bool hovered: mouse.containsMouse
 
-    implicitHeight: cardRow.implicitHeight + 24
+    implicitHeight: cardRow.implicitHeight + 20
     Accessible.role: Accessible.ListItem
     Accessible.name: (model.pinned ? "Pinned. " : "") + model.name + ", "
                      + model.formatLabel + (model.version ? " " + model.version : "")
@@ -27,7 +27,7 @@ Item {
     Rectangle {
         id: cardSurface
         anchors.fill: parent
-        radius: 10
+        radius: 12
         color: card.hovered ? Theme.colors.surfaceAlt : Theme.colors.surface
         border.color: card.activeFocus ? Theme.colors.focusRing : Theme.colors.border
         border.width: card.activeFocus ? 2 : 1
@@ -49,8 +49,8 @@ Item {
         anchors.fill: parent
         anchors.leftMargin: 14
         anchors.rightMargin: 12
-        anchors.topMargin: 12
-        anchors.bottomMargin: 12
+        anchors.topMargin: 10
+        anchors.bottomMargin: 10
         spacing: 14
 
         // Icon: real icon when recorded, letter avatar fallback for the
