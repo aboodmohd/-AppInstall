@@ -123,6 +123,7 @@ with SourceTransaction(state, destinations) as transaction:
             state / 'source_transaction.py',
             state / 'confirm.py',
             state / 'manager_qml.py',
+            state / 'flathub_catalog.py',
             record,
         ):
             changes[target] = None
