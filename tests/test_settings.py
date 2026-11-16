@@ -78,6 +78,7 @@ class SanitizeTests(SettingsBase):
             'favorites': ['kept', 'also-kept'],
             'notifications': False,
             'last_update_check': 0,
+            'uninstall_mode': 'ask',
         })
 
     def test_theme_accepts_all_supported_values(self):
@@ -87,10 +88,18 @@ class SanitizeTests(SettingsBase):
             self.assertEqual(settings.read()['theme'], theme)
 
 
+    def test_valid_uninstall_preferences(self):
+        for value in settings.UNINSTALL_MODES:
+            settings.update('uninstall_mode', value)
+            self.assertEqual(settings.read()['uninstall_mode'], value)
+        settings.update('uninstall_mode', 'unsafe')
+        self.assertEqual(settings.read()['uninstall_mode'], 'ask')
+
+
 class WriteTests(SettingsBase):
     def test_round_trip(self):
         values = {'theme': 'dark', 'favorites': ['appimage:z'],
-                  'notifications': True, 'last_update_check': 0}
+                  'notifications': True, 'last_update_check': 0, 'uninstall_mode': 'ask'}
         self.assertEqual(settings.write(values), values)
         self.assertEqual(settings.read(), values)
 
@@ -112,7 +121,7 @@ class WriteTests(SettingsBase):
         settings.write({'theme': 'light'})
         self.assertEqual(settings.read(),
                          {'theme': 'light', 'favorites': [], 'notifications': False,
-                          'last_update_check': 0})
+                          'last_update_check': 0, 'uninstall_mode': 'ask'})
 
 
 class UpdateTests(SettingsBase):
@@ -124,6 +133,7 @@ class UpdateTests(SettingsBase):
             'favorites': ['appimage:a'],
             'notifications': False,
             'last_update_check': 0,
+            'uninstall_mode': 'ask',
         })
 
     def test_update_sanitizes_value(self):
