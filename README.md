@@ -51,6 +51,16 @@ the dedicated rootless container, with AppInstall tracking its managed
 record and exporting a desktop launcher if the package supplies one.
 Search does not alter packages or run installation scripts.
 
+**DEB/RPM application artwork:** app cards initially show a letter placeholder
+while genuine package-specific icons are looked up on Debian's public
+AppStream service. A matched upstream application's Debian AppStream icon may
+also be shown in the Fedora tab; this is artwork only, never package provenance
+or an installation source. Official AppStream metadata does not provide
+individual application icons for most libraries, documentation, services or
+development packages; those cards retain placeholders. The icon lookup is
+bounded, cached per session, HTTPS-only, and non-blocking. If AppStream is
+unavailable, package search and review continue normally.
+
 **Security and compatibility:** Distrobox integrates with the host home
 directory and graphical desktop and **is not a security sandbox**. Only
 AppInstall-owned containers with the expected Debian/Fedora image and
