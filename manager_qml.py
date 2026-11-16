@@ -480,6 +480,7 @@ class Bridge(QtCore.QObject):
         self._catalog_initializing = False
         self._catalog_status = 'Search Flathub or browse popular applications.'
         self._catalog_source = 'Flatpak'
+        self._catalog_query = ''
         self._catalog_all = []
         self._catalog_worker = None
         self._catalog_pending = None
@@ -643,6 +644,7 @@ class Bridge(QtCore.QObject):
         was_setup_required = (self._catalog_source == source
                               and self._catalog_setup_required)
         self._catalog_source = source
+        self._catalog_query = query
         self._catalog_setup_required = was_setup_required if query and len(query) < 2 else False
         self.catalogResultsChanged.emit()
         if query and len(query) < 2:
@@ -703,7 +705,8 @@ class Bridge(QtCore.QObject):
         self._catalog_setup_required = False
         self.catalogResultsChanged.emit()
         query = str(query).strip()[:90]
-        self._catalog_pending = (query if len(query) >= 2 else '', source)
+        self._catalog_query = query if len(query) >= 2 else ''
+        self._catalog_pending = (self._catalog_query, source)
         self._start_catalog_worker(initialize=True)
 
     def _catalog_needs_setup(self, source):
@@ -746,7 +749,7 @@ class Bridge(QtCore.QObject):
         provider = {'Flatpak': 'Flathub', 'AppImage': 'AppImageHub',
                     'DEB': 'Debian APT', 'RPM': 'Fedora DNF'}[self._catalog_source]
         if not total and self._catalog_source in ('DEB', 'RPM') \
-                and not self._catalog_setup_required:
+                and not self._catalog_setup_required and not self._catalog_query:
             status = ('No browse results from ' + provider
                       + '. Search by package name or refresh the repository.')
         elif not total:
