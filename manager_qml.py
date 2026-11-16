@@ -33,6 +33,7 @@ except ModuleNotFoundError as error:
 
 import manager
 import settings
+import flathub_catalog
 
 QML_DIR = Path(__file__).resolve().with_name('manager_ui')
 
@@ -298,6 +299,90 @@ class AppModel(QtCore.QAbstractListModel):
         return pinned + rest
 
 
+class CatalogModel(QtCore.QAbstractListModel):
+    """Flathub search results, separate from the installed-app inventory."""
+
+    AppIdRole = QtCore.Qt.ItemDataRole.UserRole + 1
+    NameRole = QtCore.Qt.ItemDataRole.UserRole + 2
+    SummaryRole = QtCore.Qt.ItemDataRole.UserRole + 3
+    IconRole = QtCore.Qt.ItemDataRole.UserRole + 4
+    CategoryRole = QtCore.Qt.ItemDataRole.UserRole + 5
+    ManagedRole = QtCore.Qt.ItemDataRole.UserRole + 6
+    countChanged = QtCore.Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._rows = []
+        self._managed = set()
+
+    @QtCore.Property(int, notify=countChanged)
+    def count(self):
+        return len(self._rows)
+
+    def roleNames(self):
+        return {
+            self.AppIdRole: b'appId',
+            self.NameRole: b'name',
+            self.SummaryRole: b'summary',
+            self.IconRole: b'iconUrl',
+            self.CategoryRole: b'category',
+            self.ManagedRole: b'managed',
+        }
+
+    def rowCount(self, parent=QtCore.QModelIndex()):
+        return 0 if parent.isValid() else len(self._rows)
+
+    def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
+        if not index.isValid() or index.row() >= len(self._rows):
+            return None
+        row = self._rows[index.row()]
+        return {
+            self.AppIdRole: row['appId'],
+            self.NameRole: row['name'],
+            self.SummaryRole: row['summary'],
+            self.IconRole: row['iconUrl'],
+            self.CategoryRole: row['category'],
+            self.ManagedRole: row['appId'] in self._managed,
+        }.get(role)
+
+    def replace(self, rows):
+        self.beginResetModel()
+        self._rows = list(rows)
+        self.endResetModel()
+        self.countChanged.emit()
+
+    def set_managed(self, inventory):
+        managed = {app['key'].split(':', 1)[-1] for app in inventory
+                   if app['format'] == 'flatpak' and app['key'].startswith('flatpak:')}
+        if managed != self._managed:
+            self._managed = managed
+            if self._rows:
+                self.dataChanged.emit(self.index(0, 0),
+                                      self.index(len(self._rows) - 1, 0),
+                                      [self.ManagedRole])
+
+
+class CatalogWorker(QtCore.QThread):
+    """Network requests run exclusively off the Qt/UI thread."""
+
+    ready = QtCore.Signal(str, list)
+    failed = QtCore.Signal(str, str)
+
+    def __init__(self, query, parent=None):
+        super().__init__(parent)
+        self.query = query
+
+    def run(self):
+        try:
+            results = (flathub_catalog.search(self.query)
+                       if self.query else flathub_catalog.popular())
+            self.ready.emit(self.query, results)
+        except (flathub_catalog.CatalogError, ValueError) as error:
+            self.failed.emit(self.query, str(error))
+        except Exception as error:
+            self.failed.emit(self.query, 'Flathub search failed: ' + str(error))
+
+
 class Bridge(QtCore.QObject):
     """Actions and state the QML screen reads; every action calls the
     existing manager backend through its normal entry point."""
@@ -309,6 +394,8 @@ class Bridge(QtCore.QObject):
     preferencesChanged = QtCore.Signal()
     updateStatusChanged = QtCore.Signal(str)
     updateActionVisibleChanged = QtCore.Signal(bool)
+    catalogLoadingChanged = QtCore.Signal(bool)
+    catalogStatusChanged = QtCore.Signal(str)
 
     @QtCore.Property(bool, notify=updateActionVisibleChanged)
     def actionVisible(self):
@@ -321,6 +408,11 @@ class Bridge(QtCore.QObject):
         super().__init__(parent)
         self.anchor = anchor  # hidden QWidget used to parent the existing dialogs
         self._model = AppModel(self)
+        self._catalog = CatalogModel(self)
+        self._catalog_loading = False
+        self._catalog_status = 'Search Flathub or browse popular applications.'
+        self._catalog_worker = None
+        self._catalog_pending = None
         # APPINSTALL_UI_DARK=1 forces dark mode for evidence capture,
         # overriding settings and system preference.
         env_dark = os.environ.get('APPINSTALL_UI_DARK')
@@ -402,6 +494,22 @@ class Bridge(QtCore.QObject):
     def model(self):
         return self._model
 
+    @QtCore.Property(QtCore.QObject, constant=True)
+    def catalogModel(self):
+        return self._catalog
+
+    @QtCore.Property(bool, notify=catalogLoadingChanged)
+    def catalogLoading(self):
+        return self._catalog_loading
+
+    @QtCore.Property(str, notify=catalogStatusChanged)
+    def catalogStatus(self):
+        return self._catalog_status
+
+    def _set_catalog_status(self, message):
+        self._catalog_status = str(message)
+        self.catalogStatusChanged.emit(self._catalog_status)
+
     @QtCore.Property(str, notify=updateStatusChanged)
     def updateStatus(self):
         return self._update_status
@@ -428,6 +536,7 @@ class Bridge(QtCore.QObject):
 
     def _loaded(self, inventory):
         self._model.refresh_inventory(inventory)
+        self._catalog.set_managed(inventory)
         self._loading = False
         self.loadingChanged.emit(False)
         self._announce_count()
@@ -445,6 +554,85 @@ class Bridge(QtCore.QObject):
         self._loading = False
         self.loadingChanged.emit(False)
         self._set_status('Could not load inventory: ' + message)
+
+    # ── Flathub catalog (read-only until explicitly installing) ──────────
+
+    @QtCore.Slot(str)
+    def searchCatalog(self, query):
+        """Latest-wins search with debounce in QML and one worker at a time."""
+        query = str(query).strip()
+        if len(query) > 90:
+            query = query[:90]
+        if query and len(query) < 2:
+            self._catalog_pending = None
+            if self._catalog_worker is None or not self._catalog_worker.isRunning():
+                self._catalog.replace([])
+                self._set_catalog_status('Enter at least two characters.')
+            return
+        self._catalog_pending = query
+        if self._catalog_worker is not None and self._catalog_worker.isRunning():
+            return
+        self._start_catalog_worker()
+
+    def _start_catalog_worker(self):
+        query = self._catalog_pending
+        if query is None:
+            return
+        self._catalog_pending = None
+        self._catalog_loading = True
+        self.catalogLoadingChanged.emit(True)
+        self._set_catalog_status('Searching Flathub…')
+        worker = CatalogWorker(query, self)
+        self._catalog_worker = worker
+        worker.ready.connect(self._catalog_ready)
+        worker.failed.connect(self._catalog_failed)
+        worker.finished.connect(self._catalog_finished)
+        worker.start()
+
+    def _catalog_ready(self, query, entries):
+        if self._catalog_pending is not None:
+            return  # A newer search will run as soon as this worker exits.
+        self._catalog.replace(entries)
+        self._set_catalog_status(
+            str(len(entries)) + (' application found' if len(entries) == 1
+                                  else ' applications found') + ' on Flathub.'
+            if entries else 'No Flathub applications matched this search.')
+
+    def _catalog_failed(self, query, message):
+        if self._catalog_pending is None:
+            self._catalog.replace([])
+            self._set_catalog_status(message)
+
+    def _catalog_finished(self):
+        self._catalog_worker = None
+        if self._catalog_pending is not None:
+            self._start_catalog_worker()
+        else:
+            self._catalog_loading = False
+            self.catalogLoadingChanged.emit(False)
+
+    @QtCore.Slot(str)
+    def installFromFlathub(self, app_id):
+        """Open the existing URL confirmation dialog, never install silently."""
+        try:
+            url = flathub_catalog.flathub_ref_url(app_id)
+        except ValueError:
+            self._set_catalog_status('Invalid Flathub application ID.')
+            return
+        if app_id in self._catalog._managed:
+            self._set_catalog_status('This app is already managed by AppInstall.')
+            return
+        dialog = manager.UrlInstallDialog(self.anchor)
+        dialog.url_edit.setText(url)
+        dialog.installed.connect(self.refresh)
+        dialog.exec()
+
+    def shutdownCatalog(self):
+        """Drain the read-only search before QApplication tears down QThreads."""
+        if self._catalog_worker is not None and self._catalog_worker.isRunning():
+            self._catalog_pending = None
+            self._catalog_worker.requestInterruption()
+            self._catalog_worker.wait(18000)
 
     # ── theme ────────────────────────────────────────────────────────────
 
@@ -824,6 +1012,7 @@ def main():
     bridge = Bridge(anchor)
     bridge.applyTheme()
     bridge.refresh()
+    app.aboutToQuit.connect(bridge.shutdownCatalog)
 
     def _log_qml_message(mode, context, message):
         # QML errors would otherwise be silent on a failed engine.load.
@@ -833,6 +1022,7 @@ def main():
     engine = QtQml.QQmlApplicationEngine()
     engine.rootContext().setContextProperty('bridge', bridge)
     engine.rootContext().setContextProperty('appsModel', bridge.model)
+    engine.rootContext().setContextProperty('catalogModel', bridge.catalogModel)
     engine.addImportPath(str(QML_DIR.parent))
     engine.load(str(QML_DIR / 'main.qml'))
     if not engine.rootObjects():

@@ -14,6 +14,8 @@ ApplicationWindow {
     color: Theme.colors.window
     property bool menuExpanded: true
     property bool filtersExpanded: true
+    property bool discoverSelected: false
+    property bool discoverRequested: false
 
     // Screenshot contract for --screenshot: the QML engine returns the
     // base QWindow wrapper for this root, which lacks grabWindow(); QML
@@ -315,11 +317,54 @@ ApplicationWindow {
 
         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.colors.border }
 
+        // Navigation is separate from the horizontal View / Tools / Settings /
+        // Help header. The installed-app manager remains intact and unchanged.
+        RowLayout {
+            id: pageNavigation
+            objectName: "pageNavigation"
+            Layout.fillWidth: true
+            Layout.leftMargin: 16
+            Layout.rightMargin: 16
+            Layout.topMargin: 12
+            Layout.bottomMargin: 4
+            spacing: 10
+
+            HeaderMenuButton {
+                id: managedTab
+                objectName: "managedTab"
+                text: qsTr("My Applications")
+                font.weight: window.discoverSelected ? Font.Normal : Font.DemiBold
+                onClicked: window.discoverSelected = false
+                Accessible.name: text
+            }
+            HeaderMenuButton {
+                id: discoverTab
+                objectName: "discoverTab"
+                text: qsTr("Discover Apps")
+                font.weight: window.discoverSelected ? Font.DemiBold : Font.Normal
+                onClicked: {
+                    window.discoverSelected = true
+                    if (!window.discoverRequested) {
+                        window.discoverRequested = true
+                        bridge.searchCatalog("")
+                    }
+                }
+                Accessible.name: text
+            }
+            Item { Layout.fillWidth: true }
+            Label {
+                text: qsTr("Flathub")
+                color: Theme.colors.textSecondary
+                font.pixelSize: 12
+                visible: window.discoverSelected
+            }
+        }
+
         // Filters can be collapsed without hiding the update banner or apps.
         ColumnLayout {
             id: filtersPanel
             objectName: "filtersPanel"
-            visible: window.filtersExpanded
+            visible: window.filtersExpanded && !window.discoverSelected
             Layout.fillWidth: true
             spacing: 0
 
@@ -640,7 +685,7 @@ ApplicationWindow {
             id: updateBanner
             // Visible whenever there is something to act on: an available
             // tag, a running check/install, or the last status line.
-            visible: bridge.updateTag !== "" || bridge.updateStatus !== ""
+            visible: !window.discoverSelected && (bridge.updateTag !== "" || bridge.updateStatus !== "")
             Layout.fillWidth: true
             Layout.leftMargin: 16
             Layout.rightMargin: 16
@@ -724,9 +769,207 @@ ApplicationWindow {
             }
         }
 
+        // ── Discover Apps: live Flathub catalog (not local-only records) ───
+        ColumnLayout {
+            id: discoverPanel
+            objectName: "discoverPanel"
+            visible: window.discoverSelected
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.leftMargin: 16
+            Layout.rightMargin: 16
+            Layout.bottomMargin: 10
+            spacing: 10
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                TextField {
+                    id: catalogSearchField
+                    objectName: "catalogSearchField"
+                    Layout.fillWidth: true
+                    placeholderText: qsTr("Search Flathub apps, games, tools…")
+                    font.pixelSize: 14
+                    color: Theme.colors.text
+                    placeholderTextColor: Theme.colors.textSecondary
+                    selectByMouse: true
+                    implicitHeight: 38
+                    onTextChanged: catalogTimer.restart()
+                    onAccepted: {
+                        catalogTimer.stop()
+                        bridge.searchCatalog(text)
+                    }
+                    Keys.onEscapePressed: (event) => {
+                        if (text) { text = ""; event.accepted = true }
+                    }
+                    background: Rectangle {
+                        radius: 9
+                        color: Theme.colors.surface
+                        border.color: catalogSearchField.activeFocus
+                                      ? Theme.colors.focusRing : Theme.colors.border
+                    }
+                    leftPadding: 12
+                    rightPadding: 12
+                }
+                Button {
+                    id: catalogRetry
+                    objectName: "catalogRetry"
+                    text: qsTr("Refresh")
+                    enabled: !bridge.catalogLoading
+                    onClicked: bridge.searchCatalog(catalogSearchField.text)
+                    implicitHeight: 36
+                }
+                Timer {
+                    id: catalogTimer
+                    interval: 480
+                    repeat: false
+                    onTriggered: bridge.searchCatalog(catalogSearchField.text)
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Label {
+                    text: qsTr("Discover applications")
+                    font.pixelSize: 17
+                    font.weight: Font.DemiBold
+                    color: Theme.colors.text
+                }
+                Item { Layout.fillWidth: true }
+                BusyIndicator {
+                    running: bridge.catalogLoading
+                    visible: running
+                    implicitHeight: 23
+                    implicitWidth: 23
+                }
+                Label {
+                    text: bridge.catalogStatus
+                    color: Theme.colors.textSecondary
+                    font.pixelSize: 12
+                    elide: Text.ElideRight
+                    Layout.maximumWidth: 335
+                    textFormat: Text.PlainText
+                }
+            }
+
+            Item {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+
+                ListView {
+                    id: catalogList
+                    objectName: "catalogList"
+                    anchors.fill: parent
+                    model: catalogModel
+                    clip: true
+                    spacing: 8
+                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                    delegate: Rectangle {
+                        id: catalogCard
+                        width: catalogList.width
+                        implicitHeight: 88
+                        radius: 11
+                        color: Theme.colors.surface
+                        border.color: Theme.colors.border
+                        border.width: 1
+
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 12
+                            anchors.rightMargin: 12
+                            anchors.topMargin: 9
+                            anchors.bottomMargin: 9
+                            spacing: 12
+
+                            Rectangle {
+                                Layout.preferredWidth: 48
+                                Layout.preferredHeight: 48
+                                radius: 10
+                                color: Theme.colors.iconFallbackBg
+                                Image {
+                                    id: catalogIcon
+                                    anchors.fill: parent
+                                    anchors.margins: 3
+                                    source: model.iconUrl
+                                    asynchronous: true
+                                    cache: true
+                                    fillMode: Image.PreserveAspectFit
+                                    visible: status === Image.Ready
+                                }
+                                Label {
+                                    anchors.fill: parent
+                                    text: model.name.length ? model.name[0].toUpperCase() : "?"
+                                    visible: catalogIcon.status !== Image.Ready
+                                    color: Theme.colors.textSecondary
+                                    horizontalAlignment: Text.AlignHCenter
+                                    verticalAlignment: Text.AlignVCenter
+                                    font.pixelSize: 19
+                                }
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 3
+                                Label {
+                                    text: model.name
+                                    textFormat: Text.PlainText
+                                    font.pixelSize: 15
+                                    font.weight: Font.DemiBold
+                                    color: Theme.colors.text
+                                    Layout.fillWidth: true
+                                    elide: Text.ElideRight
+                                }
+                                Label {
+                                    text: model.summary || model.appId
+                                    textFormat: Text.PlainText
+                                    font.pixelSize: 12
+                                    color: Theme.colors.textSecondary
+                                    Layout.fillWidth: true
+                                    elide: Text.ElideRight
+                                    maximumLineCount: 1
+                                }
+                                Label {
+                                    text: model.category ? ("Flathub · " + model.category) : "Flathub · Flatpak"
+                                    textFormat: Text.PlainText
+                                    font.pixelSize: 11
+                                    color: Theme.colors.textSecondary
+                                    Layout.fillWidth: true
+                                    elide: Text.ElideRight
+                                }
+                            }
+
+                            Button {
+                                text: model.managed ? qsTr("Managed") : qsTr("Install")
+                                enabled: !model.managed
+                                implicitHeight: 32
+                                implicitWidth: 90
+                                Accessible.name: qsTr("Install %1 from Flathub").arg(model.name)
+                                onClicked: bridge.installFromFlathub(model.appId)
+                            }
+                        }
+                    }
+                }
+
+                Label {
+                    anchors.centerIn: parent
+                    visible: catalogModel.count === 0 && !bridge.catalogLoading
+                    text: bridge.catalogStatus
+                    color: Theme.colors.textSecondary
+                    font.pixelSize: 14
+                    wrapMode: Text.WordWrap
+                    width: Math.min(parent.width - 32, 440)
+                    horizontalAlignment: Text.AlignHCenter
+                    textFormat: Text.PlainText
+                }
+            }
+        }
+
         // ── list ─────────────────────────────────────────────────────
         Item {
             id: contentArea
+            visible: !window.discoverSelected
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.leftMargin: 16
@@ -828,7 +1071,7 @@ ApplicationWindow {
             Label {
                 id: statusLabel
                 anchors.centerIn: parent
-                text: bridge.statusText
+                text: window.discoverSelected ? bridge.catalogStatus : bridge.statusText
                 font.pixelSize: 12
                 color: Theme.colors.textSecondary
                 textFormat: Text.PlainText
