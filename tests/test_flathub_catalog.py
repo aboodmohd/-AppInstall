@@ -106,7 +106,7 @@ class CatalogApiTests(unittest.TestCase):
         self.assertEqual(rows[0]['iconUrl'], '')
 
     def test_search_results_bounded_to_240(self):
-        hits=[{'app_id': f'org.example.App{i}'} for i in range(75)]
+        hits=[{'app_id': f'org.example.App{i}'} for i in range(300)]
         self.assertEqual(len(cat._base_entries(hits)), cat.MAX_SEARCH_RESULTS)
 
     def test_refuse_network_request_to_non_flathub_host(self):
