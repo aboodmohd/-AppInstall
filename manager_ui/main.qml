@@ -1262,6 +1262,12 @@ ApplicationWindow {
                     required property string availableVersion
                     required property string reason
                     required property bool actionable
+                    // Expose *rendered* labels and action state to the QML
+                    // regression test through ListView.itemAtIndex().
+                    readonly property string renderedTitle: updateTitle.text
+                    readonly property string renderedVersion: updateVersion.text
+                    readonly property string renderedState: updateStateLabel.text
+                    readonly property bool reviewVisible: reviewUpdateAction.visible
                     objectName: "updateAppRow"
                     width: appUpdatesList.width - 8
                     height: 116
@@ -1281,7 +1287,7 @@ ApplicationWindow {
                             Layout.alignment: Qt.AlignVCenter
                             Label {
                                 anchors.centerIn: parent
-                                text: model.name.length ? model.name[0].toUpperCase() : "?"
+                                text: updateRow.name.length ? updateRow.name[0].toUpperCase() : "?"
                                 color: Theme.colors.textSecondary
                                 font.pixelSize: 17
                             }
@@ -1290,6 +1296,7 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             spacing: 4
                             Label {
+                                id: updateTitle
                                 objectName: "updateAppTitle"
                                 Layout.fillWidth: true
                                 text: updateRow.name + " · " + updateRow.format
@@ -1300,6 +1307,7 @@ ApplicationWindow {
                                 textFormat: Text.PlainText
                             }
                             Label {
+                                id: updateVersion
                                 objectName: "updateAppVersion"
                                 Layout.fillWidth: true
                                 text: updateRow.currentVersion + "  →  " + updateRow.availableVersion
@@ -1323,6 +1331,7 @@ ApplicationWindow {
                             Layout.alignment: Qt.AlignVCenter
                             spacing: 6
                             Label {
+                                id: updateStateLabel
                                 objectName: "updateAppState"
                                 text: updateRow.updateState
                                 color: updateRow.updateState === "available"
@@ -1333,6 +1342,7 @@ ApplicationWindow {
                             Button {
                                 text: qsTr("Review update")
                                 objectName: "reviewFlatpakUpdateButton"
+                                id: reviewUpdateAction
                                 visible: updateRow.actionable && updateRow.updateState === "available" && updateRow.format === "FLATPAK"
                                 enabled: !bridge.appUpdatesBusy && !bridge.appUpdateRunning
                                 onClicked: bridge.requestFlatpakUpdate(updateRow.key)
