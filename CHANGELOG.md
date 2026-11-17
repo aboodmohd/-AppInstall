@@ -1,5 +1,27 @@
 # AppInstall Changelog
 
+## 1.8.0 — Updates manager and richer Discover (candidate; unpublished)
+
+- Add read-only source-aware update detection and an Updates tab with manual,
+  available, unsupported, up-to-date and error states.
+- Review and confirm individual Flatpak updates pinned to a verified target
+  commit; reject changed source/version and disclose dependency uncertainty.
+- Review exact DEB/RPM APT/DNF5 simulations for AppInstall-owned repository
+  packages inside existing Distrobox containers; refuse foreign imports and
+  changed transactions; preserve repair/recovery diagnostics.
+- Support optional eligible AppImage zsync update staging and separately
+  confirmed atomic replacement with recovery, when upstream metadata and the
+  external helper are present.
+- Improve AppStream metadata and safe cached PNG/WebP logos with fallback
+  initials; preserve provider-qualified package identity.
+- Add actual provider-backed category filters and a live Flathub Featured shelf.
+- Add a redesigned, responsive Application Details page with a compact header,
+  verified metadata, readable license labels, optional publisher website and
+  existing reviewed install actions. Preserve My Applications and preferences.
+- Prepare v1.8 candidate native packages for Arch/CachyOS, Debian/Ubuntu/Mint,
+  Fedora 44 and a portable source archive. **Not yet published or approved.**
+
+
 ## 1.7.0 — Discover Apps and a portable source route
 
 - Discover Apps now browses and searches Flathub Flatpaks and AppImageHub

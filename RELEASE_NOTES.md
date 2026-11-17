@@ -1,3 +1,45 @@
+# AppInstall v1.8.0 — Release candidate (NOT PUBLISHED)
+
+**Development-branch draft.** v1.7.0 is the latest published stable release
+until the exact v1.8.0 packages, source archive, checksum manifest, per-host
+acceptance and owner authorization are verified.
+
+## Proposed v1.8 changes
+
+- **Application Updates:** source-aware read-only discovery and a dedicated
+  Updates tab. Reviewed, one-at-a-time Flatpak updates use verified ref, origin
+  and target commit. Owned DEB/RPM container packages use exact simulated
+  transactions before opt-in upgrade; imported/foreign packages remain manual.
+- **AppImage updates:** eligible type-2 AppImages with supported zsync metadata
+  and a separately installed updater may be downloaded, reviewed, validated,
+  atomically replaced, and recovered. Other AppImages require manual action.
+- **Discover enhancements:** local verified PNG/WebP icons, source-qualified
+  developer/version/license metadata where available, filters from real
+  categories, and an actual live Flathub popular Featured collection.
+- **Application Details:** compact, responsive display for exact source/package
+  identity, optional homepage, description, version/license/developer and the
+  normal reviewed install flow. Missing metadata is not guessed.
+
+## Candidate installation formats — pending final acceptance
+
+- Arch Linux / CachyOS: \`appinstall-1.8.0-1-any.pkg.tar.zst\`
+- Debian 13 / Ubuntu 24.04, 26.04 / Mint 22: \`appinstall_1.8.0-1_all.deb\`
+- Fedora 44: \`appinstall-1.8.0-1.noarch.rpm\`
+- Other equipped Linux desktops: \`appinstall-1.8.0-portable.tar.gz\`
+
+These are **expected candidate filenames only**, not links to verified or
+published downloads. The final release must also include matching
+\`SHA256SUMS\`, provenance/upgrade/rollback records and real desktop tests.
+Some package metadata and icons may be unavailable. zsync is not a
+developer signature; Distrobox is not a security sandbox; portable support
+is conditional, not universal. No package installation occurs without
+the application's explicit confirmation controls.
+
+Do not install PR build artifacts on a primary system merely because CI
+passed. Final owner merge, tag and publish approvals remain mandatory.
+
+---
+
 # AppInstall v1.7.0 — Discover Apps
 
 **Release preparation notes — publishing requires completed packaging checks,
