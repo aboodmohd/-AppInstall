@@ -883,8 +883,9 @@ class Bridge(QtCore.QObject):
 
     @QtCore.Property(bool, notify=appUpdateBusyChanged)
     def appImagePreparing(self):
-        return (self._appimage_prepare_worker is not None and
-                self._appimage_prepare_worker.isRunning())
+        # This is also true between constructing and starting the worker, so
+        # QML does not briefly expose Cancel check for an AppImage download.
+        return bool(self._app_update_busy and self._appimage_pending_key)
 
     def _set_app_update_status(self, message):
         self._app_update_status = str(message)[:1000]
