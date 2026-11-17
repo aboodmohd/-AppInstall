@@ -10,6 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["APPINSTALL_DISABLE_UPDATE_TIMER"] = "1"
 
 from qt_compat import QtCore, QtWidgets
+from PySide6 import QtQml
 import manager_qml
 import update_engine
 
@@ -187,6 +188,53 @@ class UpdateBridgeTests(unittest.TestCase):
                           return_value=QtCore.QProcess.ProcessState.Running):
             self.assertFalse(self.bridge.allowClose())
         self.assertIn("before closing", self.bridge.appUpdatesStatus)
+
+    def test_updates_tab_qml_is_accessible_and_hides_other_pages(self):
+        engine = QtQml.QQmlApplicationEngine()
+        engine.rootContext().setContextProperty("bridge", self.bridge)
+        engine.rootContext().setContextProperty("appsModel", self.bridge.model)
+        engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        engine.load(str(manager_qml.QML_DIR / "main.qml"))
+        roots = engine.rootObjects()
+        self.assertTrue(roots, "Updates QML failed to load")
+        window = roots[0]
+        try:
+            for name in ("updatesTab", "applicationUpdatesPage",
+                         "appUpdatesList", "appUpdateCheckButton",
+                         "appUpdateCancelCheck", "appUpdateCancelInstall"):
+                self.assertIsNotNone(window.findChild(QtCore.QObject, name), name)
+            expr = lambda text: QtQml.QQmlExpression(
+                QtQml.qmlContext(window), window, text).evaluate()[0]
+            self.assertFalse(expr("applicationUpdatesPage.visible"))
+            window.setProperty("updatesSelected", True)
+            self.qapp.processEvents()
+            self.assertTrue(expr("applicationUpdatesPage.visible"))
+            self.assertFalse(expr("contentArea.visible"))
+            self.assertFalse(expr("discoverPanel.visible"))
+            self.assertFalse(expr("filtersPanel.visible"))
+            self.assertTrue(expr("appMenuBar.visible"))
+        finally:
+            window.close()
+            engine.deleteLater()
+            self.qapp.processEvents()
+
+    def test_legacy_update_menu_only_requests_review(self):
+        # A v1.7 My Applications action must not bypass v1.8 approval.
+        with patch.object(manager_qml.manager, "can_update", return_value=True), \
+             patch.object(manager_qml.manager, "update_app") as direct, \
+             patch.object(self.bridge, "requestFlatpakUpdate") as reviewed:
+            self.bridge.updateApp("flatpak:org.example.App")
+            direct.assert_not_called()
+            reviewed.assert_not_called()
+            self.assertIn("Updates tab", self.bridge.statusText)
+
+        self.bridge.updatesModel.replace_results([app()], [candidate()])
+        with patch.object(manager_qml.manager, "can_update", return_value=True), \
+             patch.object(manager_qml.manager, "update_app") as direct, \
+             patch.object(self.bridge, "requestFlatpakUpdate") as reviewed:
+            self.bridge.updateApp("flatpak:org.example.App")
+        reviewed.assert_called_once_with("flatpak:org.example.App")
+        direct.assert_not_called()
 
     def test_self_update_state_is_independent_of_application_updates(self):
         self.bridge._update_tag = "v1.7.1"
