@@ -20,6 +20,18 @@ Double-click a supported file, review its source and destination, confirm instal
 
 Managed applications now use monitored launchers. Startup failures show useful errors and logs; open **AppInstall → Application Diagnostics** or run `appinstall --diagnostics` for launch history and safe repair actions. See [Launch Diagnostics](LAUNCH_DIAGNOSTICS.md) for tested behavior and limits.
 
+## AppInstall updates on other Linux distributions (v1.8.0 candidate)
+
+A **portable user-source installation** can now check for future published
+stable AppInstall updates and explicitly install a verified source archive
+without calling an incompatible host package manager. This is designed to
+work wherever the portable Bash/Python/XDG runtime is supported, even
+outside Arch, Debian/Ubuntu/Mint and Fedora. An installed native package
+keeps its own package-manager update path; missing Qt or backend dependencies
+are never installed automatically. See
+[Cross-distro update support](docs/CROSS_DISTRO_UPDATE_SUPPORT.md)
+for the exact scope, integrity checks and limitations.
+
 ## Discover Apps (v1.7.0 release candidate)
 
 **Discover Apps** uses a responsive application-card grid. The **View more**

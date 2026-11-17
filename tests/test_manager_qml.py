@@ -1010,6 +1010,32 @@ class BridgeUpdateTests(QmlManagerBase):
         self.assertEqual(args[1], [str(self.bridge._update_helper), '--desktop-check'])
         self.assertEqual(self.bridge._update_status, 'Checking for updates…')
 
+    def test_portable_update_check_runs_python_not_bash(self):
+        self.bridge._update_helper = self.root / 'portable_update.py'
+        self.bridge._update_helper.write_text('# test portable updater\n')
+        self.bridge.checkUpdates(True)
+        args = self.process.start.call_args.args
+        self.assertEqual(args[0], sys.executable)
+        self.assertEqual(args[1], [str(self.bridge._update_helper), '--desktop-check'])
+
+    def test_portable_update_requires_explicit_confirmation(self):
+        self.bridge._update_helper = self.root / 'portable_update.py'
+        self.bridge._update_helper.write_text('# test portable updater\n')
+        self.bridge._update_tag = 'v1.8.1'
+        with patch.object(QtWidgets.QMessageBox, 'question',
+                          return_value=QtWidgets.QMessageBox.StandardButton.No) as prompt:
+            self.bridge.installUpdate()
+        prompt.assert_called_once()
+        self.process.start.assert_not_called()
+        self.assertFalse(self.bridge._update_operation)
+        with patch.object(QtWidgets.QMessageBox, 'question',
+                          return_value=QtWidgets.QMessageBox.StandardButton.Yes):
+            self.bridge.installUpdate()
+        args = self.process.start.call_args.args
+        self.assertEqual(args[0], sys.executable)
+        self.assertEqual(args[1], [str(self.bridge._update_helper),
+                                   '--desktop-update', 'v1.8.1'])
+
     def test_available_tag_is_surfaced(self):
         self.process.readAll.return_value = QtCore.QByteArray(
             b'APPINSTALL_UPDATE=v1.4.1\n')
@@ -1184,6 +1210,17 @@ class HelperResolutionTests(unittest.TestCase):
         helper = self.resolve()
         self.assertEqual(helper, self.base / 'appinstall-installer')
         self.assertTrue(helper.is_file())
+
+    def test_user_source_install_picks_portable_helper_before_path(self):
+        data = self.base / 'data'
+        state = data / 'appinstall'
+        state.mkdir(parents=True)
+        (state / 'portable_update.py').write_text('# portable updater\n')
+        (state / 'install.sh').write_text('# old checked-out script\n')
+        with patch.dict(os.environ, {'XDG_DATA_HOME': str(data)}), \
+             patch.object(manager_qml, '__file__', str(state / 'manager_qml.py')):
+            self.assertEqual(manager_qml.find_update_helper(),
+                             state / 'portable_update.py')
 
     def test_source_checkout_falls_back_to_install_sh(self):
         (self.base / 'install.sh').write_text('#!/bin/sh\n')

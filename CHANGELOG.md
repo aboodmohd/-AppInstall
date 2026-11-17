@@ -20,6 +20,10 @@
   existing reviewed install actions. Preserve My Applications and preferences.
 - Prepare v1.8 candidate native packages for Arch/CachyOS, Debian/Ubuntu/Mint,
   Fedora 44 and a portable source archive. **Not yet published or approved.**
+- Support explicit, checksum-verified self-updates of portable user-source
+  installations across Linux distributions with a working Python/Bash/XDG
+  environment. Keep native self-updates on the host package manager path;
+  refuse native/source conflicts and do not install missing dependencies.
 
 
 ## 1.7.0 — Discover Apps and a portable source route

@@ -49,6 +49,7 @@ source=('install.sh'
         'repository_catalog.py'
         'update_engine.py'
         'repository_upgrades.py'
+        'portable_update.py'
         'README.md'
         'LICENSE'
         'LAUNCH_DIAGNOSTICS.md'
@@ -88,7 +89,7 @@ b2sums=(
         '5a0a824810d4c4d7a8f7f2603f3c4623874eef4de55ee4b360ab0321ecfae8edf42a9443c134e10272fba0b96f89f74cd45473e6ac09c6493595c9ad0cf9c0e5'
         'aa2943ff6d844443cb68654103a1aadadea9c3b000dffe66ef0601999f12e9a6e5cd3b8ab0b7aa7f5c60bebb1fe872ff51aebec12722cce31f98b04194b39cc8'
         '779595561ead38af4f2ba30ee029c2551f26496a82e44fcc1a3d780397f1831fe69a7767f32f1f0337aa3d9775fc7f48752bdb962987c909e4a2fb11e104afde'
-        '7897754fbee0950228c92959df63449d136e37c4c8b00f6591a6eb26f3babb4833c4e2f471e018a37bda34adc28398b98816e8d5dcfc0efe58faf25e21410df2'
+        'a79bf958bfc3cbf770effd39bc487ccf08cd050816e690a0baf21e24fead1a1424ef2c0c94b5e0e54676c619bee4fe139491517aa06eaa2d3362e04c7f57966e'
         '45989cba16c5c75e2350ec185e4a0e86ed4f7646e8a612f6e1d1ef15c9a46a7048e1f47508440f549a2c1f154cdee45d30664de5a92acadae724e58995f0fa32'
         'ea7ad2d2634286fb2928065cab2a0f0368f0b420e09d57162e566ace57e2cdab67aff884b7a11daa65374ecd4a3b77fd0ef7c7acad4482384a35db38023521b1'
         '29466d9cf4691e5d5c30c8144a2eb14f2f00d1edbb976ba52b72b30f7d3c9a4ad9e6b134863e842b19e6d3ff4e4ac3828579844d58655fdee14342264bc95dfb'
@@ -116,18 +117,19 @@ b2sums=(
         '0e2d5052d3db14a91f92af09defd75206a2a247697377e6ea0a002ffe559924abc953bb6335b9641c527576222a3b6cad8599cad2bade9636ab061cb3adfaf14'
         '45ced99cd139525dde0f2b8a1a83f8406ee66b2cd98ed5ba9cd7900cd006bb4e6d8fa5d9d8e4e3489320caef0d202f831f18bca43308b380001c2bfc57975d76'
         '53f5d4bd0510d6d52ecca621e30e57b382e566521b8084446faf9c0b34925353c806d32de96b1302616231d906c9bf58340e871c427c99b546747dea50e0c83f'
-        'ca620ece5f5b592e54f68ef5c5ca7a3f7f9230ebc11052b53906ba5324ec1938611122db9f878f6f1c0b5cf7becdb4e2806f2ec5e465bed96df5e4fc12e43788'
+        '0c7a02dfe78f6bcbdeda9327280651e426b1747795302f935d162512cb25ff34d2290c19d103ac0907e8c71936c59ce36a67b8777b4c97913b40460a1c00f3aa'
+        'b399724bb28613427a774ba042cb0cd78cd607b587c6537377dfa11ec31026855145757bfd2f218d926df4b0720f5370d00286ea7ef4033d97d4e1ea37d9a338'
         'fb989f8ee11448944229f9268b47ac9c645191f1cf58943837b3215dd596decf989bd023d8bf7b1444f5d3be36aa58059e86e8693d192c606d6c3fe43ec47c77'
         'aa57bc6a30118876bba2d2360383e2bb13b43738dc8d87296f7cfa53df1c19c3b2348dd1a4ffb00199a8a06a0f0dbf285edd7e33edffad02e98a9f07c29fb72d'
         'eb7caf4bc1e66f0db898e56dd98926b96b7afbf5b1a561aff75f06e93bbe0ad45f169230f0938c76d9770ce82b4895295a7c47e94b1fbd1b7a70c455dbd0ad4a'
-        'f3b472e2e66a297c7e8260dd02244f91b09edca225b90c0a765043055089cc1cbefa79b03098360a5646f569a4c6508682f69a80305c210eb36b383cc890d2c0'
-        '366e75c90398db802977c85a537a1fe079be2b04208f97d6669da1194159b89ccfeda415abd510d7bb8cd837e5b112ba7be0cc3118897e2c524a4522545c3a98'
+        '208b611c3c3f429f7b66245993ce2e532bba9aa6ea1717dbd666c578851f5b8c7489b3bcadf8a9e82d5553f9648d7ce9e5b0193c5cf23141f407de2473b53ff2'
+        'dbf9cd6a349a93d93bd99c463095d7bd2005fb7e1dc1903e0e51b2b54d01a88cbacfb55d8f62edac6a4478835ff9881d929f3044822a26a88b6e39c10ba4e924'
         '91b677abc747adf2cf950cc453e95d0329d8fe46d0e15b369833eb82f7d29d6025f52934eaba99a5be268576634891ebebae94d27833b0edf7c9ec0ad7eda8dc'
         'f7879680815d68cca33767982b8ee8ba6d1e9122d220ff15d4f6f57356272f6d70fa2ebd34111fa17f82ac36c1059a11cfca7fb1c5c96f1f7e5f515e727307a7'
         '67c9854c3ac526386d32a47382ea6092469c29ae56921fd939035e06bd3a2db4060ab6e0d7a0066b75211a97846b1e7f938031f1e17e2703b258d7f89346a24b'
         '0d31afab667717c0a490af8da91675455a5178c6607c5aa3953b9bec0c6a7adb915f028da0793a155f1f3443ad528a22c8558dd72c763c788764728e7131aab6'
         'c8e7bf349ffb0716c5e05b52f1c5b691b41fa2dced18655f181a08e40208fe556d722d2bf9dcfefcaf70bd5ae27bcfe738af6306d86db931e2ecc2658022d1d7'
-        '2a7c1bb6b767d25c437ea4716df13b277ee8ec79dc8a22f124d3a3f49f94ac2809e764c88be6c3be4a34f5fdcecb90f0c4f619efef6b7db2e28958e77623da21'
+        'a757c36fecb71e477215786080d61001aa43a2b1a80e6e90bad601352a8b8e031e78a9c109409704846af9fe8e9f3c6524bb7efacdfc45ec800ac9153465a178'
         '7685cb1496c71d074dccff047286242c2a28b9e1fe52a8ea33758414a8f2ab49c6591318f5983207f9bc3f5a3f7333e2e07c66974fa0bd4c35e3a52d1ad2eb66'
         'ad9c11820ca12ef1062f4a995edc015ce8ab902fee1f0c04a3c8666caca8770f4d8bb7352df10c4768b958d0ccdf50d8167c08e0aa8a560857c09c9e8bca10e5'
         '2f17356411c62bfe54df87a45e3c98a54a29dc5707fb587876d7f3df241c6d601dd013e090fd9960db19d113ef7b433f95843592221bde58c9027afbd99ed07f'
@@ -145,7 +147,7 @@ b2sums=(
 package() {
     install -Dm0644 "$srcdir/RELEASE_NOTES.md" "$pkgdir/usr/share/appinstall/RELEASE_NOTES.md"
     install -Dm0755 "$srcdir/install.sh" "$pkgdir/usr/bin/appinstall-installer"
-    for helper in container_backend.py container_ui.py launch_monitor.py manager.py manager_qml.py result_ui.py runtime_probe.py diagnostics_core.py diagnostics_ui.py url_install.py url_dialog.py flathub_catalog.py catalog_metadata.py catalog_artwork.py catalog_browse.py repository_catalog.py update_engine.py repository_upgrades.py; do
+    for helper in container_backend.py container_ui.py launch_monitor.py manager.py manager_qml.py result_ui.py runtime_probe.py diagnostics_core.py diagnostics_ui.py url_install.py url_dialog.py flathub_catalog.py catalog_metadata.py catalog_artwork.py catalog_browse.py repository_catalog.py update_engine.py repository_upgrades.py portable_update.py; do
         install -Dm0644 "$srcdir/$helper" "$pkgdir/usr/bin/$helper"
     done
     # QML prototype of the My Applications screen (manager_qml.py loads it

@@ -19,6 +19,13 @@ acceptance and owner authorization are verified.
 - **Application Details:** compact, responsive display for exact source/package
   identity, optional homepage, description, version/license/developer and the
   normal reviewed install flow. Missing metadata is not guessed.
+- **Cross-distro portable self-update:** user-source installs can check the
+  latest published stable GitHub release and, after explicit confirmation,
+  validate the portable archive against its SHA256SUMS and update the user
+  files with the existing recoverable transaction. No foreign native package
+  is installed. Native installs continue using their package-manager paths.
+  This feature requires Python 3 and other portable runtime prerequisites;
+  it cannot guarantee support for every Linux desktop or CPU architecture.
 
 ## Candidate installation formats — pending final acceptance
 

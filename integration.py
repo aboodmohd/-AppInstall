@@ -35,6 +35,7 @@ modules = (
     'url_install.py', 'url_dialog.py', 'flathub_catalog.py',
     'catalog_metadata.py', 'catalog_artwork.py', 'catalog_browse.py',
     'repository_catalog.py', 'update_engine.py', 'repository_upgrades.py',
+    'portable_update.py',
 )
 ICON_SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
 # Flat, makepkg-compatible source basenames; installed to hicolor destinations.
@@ -127,6 +128,7 @@ with SourceTransaction(state, destinations) as transaction:
             state / 'manager_qml.py',
             state / 'flathub_catalog.py',
             state / 'catalog_browse.py',
+            state / 'portable_update.py',
             state / 'repository_catalog.py',
             record,
         ):
