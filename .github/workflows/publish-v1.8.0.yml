@@ -1,0 +1,164 @@
+name: Publish AppInstall v1.8.0 — approved one-time release
+
+# Explicit owner publication approval granted 2026-11-17.
+# This activation branch is single-use and pinned to one independently tested
+# main commit, one exact release workflow run and one GitHub artifact digest.
+on:
+  push:
+    branches: [release/v1.8.0-publish]
+    paths:
+      - ".github/workflows/publish-v1.8.0.yml"
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: appinstall-v1.8.0-publication-once
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Verify immutable release files, then publish v1.8.0
+    if: github.event_name == 'push' && github.ref == 'refs/heads/release/v1.8.0-publish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_SHA: 20dc69dfa801f1924ef5a0f76d49c01b63cf44f4
+      EXPECTED_TREE: beb2082ad28d293f2a57fe21a71fe5731cd7d9e7
+      BUILD_RUN_ID: "44112288062"
+      BUILD_ARTIFACT_ID: "14340694347"
+      BUILD_ARTIFACT_DIGEST: sha256:bb8d9193e1dff67f1b7e50ec3715529e896c21aa45f1906170247065b6a7afe6
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Enforce one-time owner-approved release identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/release/v1.8.0-publish
+          test "$(git rev-parse 'HEAD^')" = "$TARGET_SHA"
+          test "$(git ls-remote --heads origin main | cut -f1)" = "$TARGET_SHA"
+          test "$(git rev-parse "$TARGET_SHA^{tree}")" = "$EXPECTED_TREE"
+          test "$(git show "$TARGET_SHA:PKGBUILD" | sed -n 's/^pkgver=//p')" = 1.8.0
+          test "$(git show "$TARGET_SHA:appinstall" | grep -x 'VERSION="1.8.0"' | wc -l)" -eq 1
+          mapfile -t changes < <(git diff --name-only "$TARGET_SHA" HEAD | sort)
+          test "${#changes[@]}" -eq 2
+          test "${changes[0]}" = .github/workflows/publish-v1.8.0.yml
+          test "${changes[1]}" = release-notes/v1.8.0.md
+          if gh release view v1.8.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "v1.8.0 already exists: refusal to overwrite" >&2
+            exit 1
+          fi
+          if git ls-remote --tags --exit-code origin refs/tags/v1.8.0 >/dev/null 2>&1; then
+            echo "v1.8.0 tag already exists: refusal to overwrite" >&2
+            exit 1
+          fi
+          read -r run_sha run_conclusion run_branch run_event <<<"$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID" --jq '[.head_sha,.conclusion,.head_branch,.event] | join(" ")')"
+          test "$run_sha" = "$TARGET_SHA"
+          test "$run_conclusion" = success
+          test "$run_branch" = main
+          test "$run_event" = push
+          read -r artifact_digest artifact_id artifact_head <<<"$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID/artifacts" --jq '.artifacts[] | select(.name == "appinstall-v1.8.0-release-candidate") | [.digest, (.id|tostring), .workflow_run.head_sha] | join(" ")')"
+          test "$artifact_digest" = "$BUILD_ARTIFACT_DIGEST"
+          test "$artifact_id" = "$BUILD_ARTIFACT_ID"
+          test "$artifact_head" = "$TARGET_SHA"
+
+      - name: Retrieve verified candidate zip from exact merged-main CI run
+        uses: actions/download-artifact@v4
+        with:
+          name: appinstall-v1.8.0-release-candidate
+          run-id: 44112288062
+          repository: aboodmohd/-AppInstall
+          github-token: ${{ github.token }}
+          path: release
+
+      - name: Verify exact release assets and common SHA256SUMS
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PYTHON'
+          import re
+          from pathlib import Path
+
+          expected = {
+              "appinstall-1.8.0-1-any.pkg.tar.zst",
+              "appinstall_1.8.0-1_all.deb",
+              "appinstall-1.8.0-1.noarch.rpm",
+              "appinstall-1.8.0-portable.tar.gz",
+          }
+          root = Path("release")
+          assert root.is_dir()
+          found = {p.name for p in root.iterdir()}
+          assert found == expected | {"SHA256SUMS"}, found
+          assert all(p.is_file() and not p.is_symlink() and p.stat().st_size > 0 for p in root.iterdir())
+          lines = (root / "SHA256SUMS").read_text(encoding="utf-8").splitlines()
+          assert len(lines) == 4
+          matched = [re.fullmatch(r"([0-9a-fA-F]{64})  ([A-Za-z0-9._-]+)", line) for line in lines]
+          assert all(matched), "Invalid checksum manifest"
+          assert {match.group(2) for match in matched} == expected
+          assert len({match.group(2) for match in matched}) == 4
+          print("PASS: four expected 1.8.0 release assets and one exact manifest")
+          PYTHON
+          (cd release && sha256sum --check --strict SHA256SUMS)
+
+      - name: Upload assets to draft release without publishing yet
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create v1.8.0 --repo "$GITHUB_REPOSITORY" \
+            --target "$TARGET_SHA" \
+            --title "AppInstall v1.8.0 — Updates & Discover" \
+            --notes-file release-notes/v1.8.0.md \
+            --draft --fail-on-no-commits \
+            release/appinstall-1.8.0-1-any.pkg.tar.zst \
+            release/appinstall_1.8.0-1_all.deb \
+            release/appinstall-1.8.0-1.noarch.rpm \
+            release/appinstall-1.8.0-portable.tar.gz \
+            release/SHA256SUMS
+
+      - name: Verify draft/tag before final publication
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh release view v1.8.0 --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = true
+          test "$(gh release view v1.8.0 --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length')" -eq 5
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v1.8.0" --jq .object.sha)" = "$TARGET_SHA"
+          python3 - <<'PYTHON'
+          import json
+          import os
+          import subprocess
+          expected = {
+              "appinstall-1.8.0-1-any.pkg.tar.zst",
+              "appinstall_1.8.0-1_all.deb",
+              "appinstall-1.8.0-1.noarch.rpm",
+              "appinstall-1.8.0-portable.tar.gz",
+              "SHA256SUMS",
+          }
+          data = json.loads(subprocess.check_output([
+              "gh", "release", "view", "v1.8.0", "--repo",
+              os.environ["GITHUB_REPOSITORY"], "--json", "assets"
+          ], text=True))
+          assert {asset["name"] for asset in data["assets"]} == expected
+          print("PASS: draft release contains exactly the five approved files")
+          PYTHON
+
+      - name: Publish approved stable v1.8.0 release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release edit v1.8.0 --repo "$GITHUB_REPOSITORY" --draft=false --latest
+
+      - name: Verify public release and immutable target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh release view v1.8.0 --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = false
+          test "$(gh release view v1.8.0 --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease)" = false
+          test "$(gh release view v1.8.0 --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length')" -eq 5
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v1.8.0" --jq .object.sha)" = "$TARGET_SHA"
+          gh release view v1.8.0 --repo "$GITHUB_REPOSITORY" --json url,isDraft,isPrerelease,assets --jq '{url:.url,draft:.isDraft,prerelease:.isPrerelease,assets:[.assets[].name]}'
