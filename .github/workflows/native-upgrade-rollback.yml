@@ -1,0 +1,60 @@
+name: v1.7.0 to v1.8.0 native upgrade and rollback (disposable)
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  upgrade-rollback:
+    name: Native ${{ matrix.family }} upgrade / rollback
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - family: arch
+            image: archlinux:base-devel
+          - family: debian
+            image: debian:13
+          - family: fedora
+            image: fedora:44
+    container:
+      image: ${{ matrix.image }}
+    env:
+      FAMILY: ${{ matrix.family }}
+      APPINSTALL_DISPOSABLE_NATIVE_CI: YES
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install build, GUI smoke and native transaction prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$FAMILY" in
+            arch)
+              pacman -Syu --noconfirm
+              pacman -S --needed --noconfirm \
+                curl python pyside6 qt6-declarative xdg-utils \
+                base-devel shadow util-linux desktop-file-utils
+              ;;
+            debian)
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                curl ca-certificates bash python3 dpkg-dev coreutils sed xdg-utils \
+                util-linux passwd desktop-file-utils
+              ;;
+            fedora)
+              dnf -y install \
+                rpm-build rpm tar gzip shadow-utils util-linux sudo \
+                python3 python3-pyside6 qt6-qtdeclarative \
+                curl coreutils findutils xdg-utils desktop-file-utils
+              ;;
+          esac
+      - name: Verify authentic stable upgrade and version rollback
+        shell: bash
+        run: bash tools/ci_native_upgrade_rollback.sh
