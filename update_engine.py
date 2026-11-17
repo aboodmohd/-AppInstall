@@ -285,29 +285,28 @@ class UpdateEngine:
                 app, MANUAL_REQUIRED,
                 reason="No recognized AppImage update information; manual replacement required.")
         source = "Embedded AppImage update metadata"
-        try:
-            # The third-party updater uses upstream source metadata from the
-            # image itself. Never guess an update URL from an application name.
-            label = appimage_updates.validate_info(info)
-        except appimage_updates.AppImageUpdateBlocked as exc:
-            return self._candidate(
-                app, MANUAL_REQUIRED, source=source,
-                mechanism="appimage-upd-info", reason=str(exc))
         if not shutil.which("appimageupdatetool"):
             return self._candidate(
-                app, MANUAL_REQUIRED, source=label,
+                app, MANUAL_REQUIRED, source=source,
                 mechanism="appimage-upd-info",
                 reason="Embedded updater metadata found, but appimageupdatetool is not installed.")
         try:
             owned_target, _ = appimage_updates.verify_owned(app)
         except appimage_updates.AppImageUpdateBlocked as exc:
             return self._candidate(
-                app, MANUAL_REQUIRED, source=label,
+                app, MANUAL_REQUIRED, source=source,
                 mechanism="appimage-upd-info", reason=str(exc))
         if owned_target != path:
             return self._candidate(
-                app, MANUAL_REQUIRED, source=label,
+                app, MANUAL_REQUIRED, source=source,
                 mechanism="appimage-upd-info", reason="AppImage generation changed.")
+        try:
+            # Only resolve upstream hosts after ownership was verified.
+            label = appimage_updates.validate_info(info)
+        except appimage_updates.AppImageUpdateBlocked as exc:
+            return self._candidate(
+                app, MANUAL_REQUIRED, source=source,
+                mechanism="appimage-upd-info", reason=str(exc))
         try:
             newer = appimage_updates.check_upstream(
                 owned_target, runner=self._runner, cancelled=cancelled)
