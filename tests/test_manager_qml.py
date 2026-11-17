@@ -525,6 +525,127 @@ class CatalogModelTests(QmlManagerBase):
             self.assertEqual(model.data(model.index(0, 0), model.IconRole),
                              cached["org.example.App"])
 
+    def test_details_require_current_exact_source_identity(self):
+        rows = manager_qml.catalog_metadata.normalize_rows([{
+            "source": "DEB", "appId": "gimp", "name": "GNU Image Editor",
+            "summary": "Paint and edit images", "category": "Graphics",
+            "developer": "GIMP Team", "license": "GPL-3.0",
+            "homepage": "https://www.gimp.org/", "componentId": "org.gimp.GIMP",
+            "version": "3.0", "cachedIconUrl": "file:///tmp/validated.png",
+        }])
+        self.bridge._catalog_source = "DEB"
+        self.bridge._catalog_all = rows
+        self.bridge._rebuild_catalog_view()
+        self.bridge.openCatalogDetails("gimp", "DEB")
+        details = self.bridge.catalogDetails
+        self.assertTrue(self.bridge.catalogDetailsAvailable)
+        self.assertEqual(details["providerKey"], "deb:gimp")
+        self.assertEqual(details["appId"], "gimp")
+        self.assertEqual(details["source"], "DEB")
+        self.assertEqual(details["categoryGroup"], "Graphics")
+        self.assertEqual(details["iconUrl"], "file:///tmp/validated.png")
+        self.assertEqual(details["homepage"], "https://www.gimp.org/")
+        self.bridge.openCatalogDetails("gimp", "RPM")
+        self.bridge.openCatalogDetails("nonexistent", "DEB")
+        self.assertEqual(self.bridge.catalogDetails["providerKey"], "deb:gimp")
+        self.bridge.closeCatalogDetails()
+        self.assertFalse(self.bridge.catalogDetailsAvailable)
+        self.assertEqual(self.bridge.catalogDetails, {})
+
+    def test_details_refuse_untrusted_homepages_and_uncached_artwork(self):
+        rows = manager_qml.catalog_metadata.normalize_rows([{
+            "source": "Flatpak", "appId": "org.example.Test", "name": "Test",
+            "summary": "", "iconUrl": "https://example.invalid/unsafe.svg",
+            "homepage": "javascript:alert(1)", "category": "",
+        }])
+        self.bridge._catalog_source = "Flatpak"
+        self.bridge._catalog_all = rows
+        self.bridge._rebuild_catalog_view()
+        self.bridge.openCatalogDetails("org.example.Test", "Flatpak")
+        self.assertEqual(self.bridge.catalogDetails["iconUrl"], "")
+        self.assertEqual(self.bridge.catalogDetails["homepage"], "")
+        self.assertEqual(self.bridge.catalogDetails["version"], "")
+        self.assertEqual(self.bridge.catalogDetails["categoryGroup"], "Other")
+        with patch.object(manager_qml.QtGui.QDesktopServices, "openUrl") as open_url:
+            self.bridge.openSelectedCatalogHomepage()
+        open_url.assert_not_called()
+
+    def test_proprietary_license_keeps_exact_metadata_with_clean_label(self):
+        raw = "LicenseRef-proprietary=https://example.org/notice.txt"
+        rows = manager_qml.catalog_metadata.normalize_rows([{
+            "source": "Flatpak", "appId": "org.example.App", "name": "Example",
+            "license": raw,
+        }])
+        self.bridge._catalog_source = "Flatpak"
+        self.bridge._catalog_all = rows
+        self.bridge._rebuild_catalog_view()
+        self.bridge.openCatalogDetails("org.example.App", "Flatpak")
+        self.assertEqual(self.bridge.catalogDetails["license"], raw)
+        self.assertEqual(self.bridge.catalogDetails["licenseDisplay"], "Proprietary")
+        rows[0]["license"] = "GPL-3.0-or-later"
+        self.bridge._sync_catalog_details()
+        self.assertEqual(self.bridge.catalogDetails["licenseDisplay"],
+                         "GPL-3.0-or-later")
+
+    def test_details_install_goes_through_existing_flow(self):
+        rows = manager_qml.catalog_metadata.normalize_rows([{
+            "source": "Flatpak", "appId": "org.gimp.GIMP", "name": "GIMP"
+        }])
+        self.bridge._catalog_source = "Flatpak"
+        self.bridge._catalog_all = rows
+        self.bridge._rebuild_catalog_view()
+        self.bridge.openCatalogDetails("org.gimp.GIMP", "Flatpak")
+        with patch.object(self.bridge, "installCatalogEntry") as installer:
+            self.bridge.installSelectedCatalogEntry()
+        installer.assert_called_once_with("org.gimp.GIMP", "Flatpak")
+        self.bridge.catalogModel.set_managed([
+            {"key": "flatpak:org.gimp.GIMP", "format": "flatpak"}])
+        self.bridge._sync_catalog_details()
+        self.assertTrue(self.bridge.catalogDetails["managed"])
+        self.assertEqual(self.bridge.catalogDetails["actionLabel"], "Managed")
+        with patch.object(self.bridge, "installCatalogEntry") as installer:
+            self.bridge.installSelectedCatalogEntry()
+        installer.assert_not_called()
+
+    def test_details_metadata_updates_and_search_switch_invalidates(self):
+        rows = manager_qml.catalog_metadata.normalize_rows([{
+            "source": "AppImage", "appId": "A_Test_App", "name": "App",
+            "sourceUrl": "https://appimage.github.io/apps/A_Test_App",
+            "installUrl": "",
+        }])
+        self.bridge._catalog_source = "AppImage"
+        self.bridge._catalog_all = rows
+        self.bridge._rebuild_catalog_view()
+        self.bridge.openCatalogDetails("A_Test_App", "AppImage")
+        self.assertEqual(self.bridge.catalogDetails["actionLabel"], "Downloads")
+        rows[0]["developer"] = "Community Maintainer"
+        rows[0]["cachedIconUrl"] = "file:///tmp/verified.png"
+        self.bridge._sync_catalog_details()
+        self.assertEqual(self.bridge.catalogDetails["developer"], "Community Maintainer")
+        self.assertEqual(self.bridge.catalogDetails["iconUrl"], "file:///tmp/verified.png")
+        self.bridge.searchCatalog("g", "RPM")
+        self.assertFalse(self.bridge.catalogDetailsAvailable)
+        self.assertEqual(self.bridge.catalogDetails, {})
+
+    def test_details_only_open_selected_verified_homepage(self):
+        rows = manager_qml.catalog_metadata.normalize_rows([{
+            "source": "Flatpak", "appId": "org.example.Test", "name": "Test",
+            "homepage": "https://example.org/product",
+        }])
+        self.bridge._catalog_source = "Flatpak"
+        self.bridge._catalog_all = rows
+        self.bridge._rebuild_catalog_view()
+        self.bridge.openCatalogDetails("org.example.Test", "Flatpak")
+        with patch.object(manager_qml.QtGui.QDesktopServices, "openUrl") as opener:
+            self.bridge.openSelectedCatalogHomepage()
+            opener.assert_called_once()
+            url = opener.call_args.args[0]
+            self.assertEqual(url.toString(), "https://example.org/product")
+        self.bridge.closeCatalogDetails()
+        with patch.object(manager_qml.QtGui.QDesktopServices, "openUrl") as opener:
+            self.bridge.openSelectedCatalogHomepage()
+        opener.assert_not_called()
+
     def test_model_roles_and_managed_detection(self):
         model = self.bridge.catalogModel
         model.replace(self.sample())
@@ -1343,6 +1464,102 @@ class QmlDiscoverTests(QmlManagerBase):
                     0)
                 self.assertFalse(any('ReferenceError' in m for m in capture.messages),
                                  capture.messages)
+            finally:
+                window.close()
+                self.engine.deleteLater()
+                self.app.processEvents()
+
+    def test_full_details_page_hides_browse_and_restores_on_back(self):
+        self.bridge._catalog_source = "Flatpak"
+        self.bridge._catalog_all = manager_qml.catalog_metadata.normalize_rows([{
+            "source": "Flatpak", "appId": "org.example.Test",
+            "name": "Example App", "summary": "Example description",
+            "developer": "Example Team", "version": "1.0",
+            "license": "MIT", "category": "Utility",
+        }])
+        self.bridge._rebuild_catalog_view()
+        self.engine = QtQml.QQmlApplicationEngine()
+        self.engine.rootContext().setContextProperty("bridge", self.bridge)
+        self.engine.rootContext().setContextProperty("appsModel", self.model)
+        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        with QmlLoadCapture() as capture:
+            self.engine.load(str(manager_qml.QML_DIR / "main.qml"))
+            self.assertTrue(self.engine.rootObjects(), capture.messages)
+            window = self.engine.rootObjects()[0]
+            window.setProperty("discoverSelected", True)
+            window.show()
+            QtTest.QTest.qWait(100)
+            try:
+                for name in ("catalogDetailsPage", "catalogDetailsBack",
+                             "catalogDetailsInstall", "catalogHomepageButton",
+                             "catalogDetailsName", "catalogDetailsDescription"):
+                    self.assertIsNotNone(window.findChild(QtCore.QObject, name), name)
+                evaluate = lambda v: QtQml.QQmlExpression(
+                    QtQml.qmlContext(window), window, v).evaluate()[0]
+                self.bridge.openCatalogDetails("org.example.Test", "Flatpak")
+                self.app.processEvents()
+                self.assertTrue(evaluate("catalogDetailsPage.visible"))
+                self.assertFalse(evaluate("catalogList.visible"))
+                self.assertEqual(evaluate("catalogDetailsName.text"), "Example App")
+                self.assertEqual(evaluate("catalogDetailsDescription.text"),
+                                 "Example description")
+                self.assertTrue(evaluate("catalogDetailsInstall.enabled"))
+                self.assertFalse(evaluate("catalogHomepageButton.visible"))
+                self.bridge.closeCatalogDetails()
+                self.app.processEvents()
+                self.assertFalse(evaluate("catalogDetailsPage.visible"))
+                self.assertTrue(evaluate("catalogList.visible"))
+                self.assertFalse(any("ReferenceError" in m for m in capture.messages),
+                                 capture.messages)
+            finally:
+                window.close()
+                self.engine.deleteLater()
+                self.app.processEvents()
+
+    def test_details_responsive_compact_layout_without_duplicate_appstream(self):
+        self.bridge._catalog_source = "Flatpak"
+        self.bridge._catalog_all = manager_qml.catalog_metadata.normalize_rows([{
+            "source": "Flatpak", "appId": "org.example.Test",
+            "name": "Example App", "summary": "Short description",
+            "developer": "Example Team", "license": "LicenseRef-proprietary",
+            "category": "Graphics", "componentId": "org.example.Test",
+        }])
+        self.bridge._rebuild_catalog_view()
+        self.engine = QtQml.QQmlApplicationEngine()
+        self.engine.rootContext().setContextProperty("bridge", self.bridge)
+        self.engine.rootContext().setContextProperty("appsModel", self.model)
+        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        with QmlLoadCapture() as capture:
+            self.engine.load(str(manager_qml.QML_DIR / "main.qml"))
+            self.assertTrue(self.engine.rootObjects(), capture.messages)
+            window = self.engine.rootObjects()[0]
+            window.setProperty("discoverSelected", True)
+            window.show()
+            self.bridge.openCatalogDetails("org.example.Test", "Flatpak")
+            QtTest.QTest.qWait(90)
+            self.app.processEvents()
+            evaluate = lambda value: QtQml.QQmlExpression(
+                QtQml.qmlContext(window), window, value).evaluate()[0]
+            try:
+                self.assertTrue(evaluate("catalogDetailsPage.visible"))
+                self.assertLessEqual(evaluate("detailsContent.width"), 1050)
+                self.assertLess(evaluate("catalogDetailsHero.height"), 170)
+                self.assertLess(evaluate("detailsAboutCard.height"), 200)
+                self.assertEqual(evaluate("catalogDetailsName.text"), "Example App")
+                self.assertEqual(evaluate("detailsIdentityCard.height"), 119)
+                self.assertEqual(evaluate("detailsColumns.columns"), 2)
+                window.setWidth(740)
+                QtTest.QTest.qWait(100)
+                self.app.processEvents()
+                self.assertEqual(evaluate("detailsColumns.columns"), 1)
+                self.assertGreater(evaluate("catalogDetailsHero.width"), 0)
+                window.setWidth(1250)
+                QtTest.QTest.qWait(100)
+                self.app.processEvents()
+                self.assertEqual(evaluate("detailsColumns.columns"), 2)
+                self.assertLessEqual(evaluate("detailsContent.width"), 1050)
+                self.assertFalse(any("ReferenceError" in m or "Binding loop" in m
+                                     for m in capture.messages), capture.messages)
             finally:
                 window.close()
                 self.engine.deleteLater()

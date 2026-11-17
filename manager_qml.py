@@ -754,6 +754,7 @@ class Bridge(QtCore.QObject):
     catalogLoadingChanged = QtCore.Signal(bool)
     catalogStatusChanged = QtCore.Signal(str)
     catalogResultsChanged = QtCore.Signal()
+    catalogDetailsChanged = QtCore.Signal()
     appUpdateBusyChanged = QtCore.Signal(bool)
     appUpdateStatusChanged = QtCore.Signal(str)
     appUpdateProgressChanged = QtCore.Signal(str)
@@ -782,6 +783,8 @@ class Bridge(QtCore.QObject):
         self._catalog_visible = []
         self._catalog_categories = ['All']
         self._catalog_category = 'All'
+        self._catalog_detail_key = None
+        self._catalog_details = {}
         self._catalog_worker = None
         self._catalog_pending = None
         self._updates = UpdateModel(self)
@@ -914,6 +917,15 @@ class Bridge(QtCore.QObject):
         return (self._catalog_source == 'Flatpak' and not self._catalog_query
                 and self._catalog_category == 'All'
                 and self._catalog_featured.count > 0)
+
+    @QtCore.Property(bool, notify=catalogDetailsChanged)
+    def catalogDetailsAvailable(self):
+        return self._catalog_detail_key is not None
+
+    @QtCore.Property('QVariantMap', notify=catalogDetailsChanged)
+    def catalogDetails(self):
+        """Read-only metadata, never an install target or arbitrary image URL."""
+        return dict(self._catalog_details)
 
     @QtCore.Property(bool, notify=catalogLoadingChanged)
     def catalogLoading(self):
@@ -1525,6 +1537,7 @@ class Bridge(QtCore.QObject):
         self._model.refresh_inventory(inventory)
         self._catalog.set_managed(inventory)
         self._catalog_featured.set_managed(inventory)
+        self._sync_catalog_details()
         self._loading = False
         self.loadingChanged.emit(False)
         self._announce_count()
@@ -1546,12 +1559,118 @@ class Bridge(QtCore.QObject):
         self.loadingChanged.emit(False)
         self._set_status('Could not load inventory: ' + message)
 
+    # ── Source-verified application details (no additional network requests) ──
+    def _selected_catalog_row(self):
+        if self._catalog_detail_key is None:
+            return None
+        source, app_id = self._catalog_detail_key
+        if source != self._catalog_source:
+            return None
+        return next((row for row in self._catalog_all
+                     if row.get('source', 'Flatpak') == source
+                     and row.get('appId') == app_id), None)
+
+    def _sync_catalog_details(self):
+        row = self._selected_catalog_row()
+        if row is None:
+            self.closeCatalogDetails()
+            return
+        try:
+            safe = catalog_metadata.normalize(row)
+        except (TypeError, ValueError):
+            self.closeCatalogDetails()
+            return
+        source, app_id = self._catalog_detail_key
+        managed = (app_id in self._catalog._managed
+                   if source == 'Flatpak'
+                   else (source, app_id) in self._catalog._managed_packages
+                   if source in ('DEB', 'RPM') else False)
+        cached_icon = row.get('cachedIconUrl', '')
+        if not isinstance(cached_icon, str) or not cached_icon.startswith('file:///'):
+            cached_icon = ''
+        source_labels = {'Flatpak': 'Flathub · Flatpak',
+                         'AppImage': 'AppImageHub · AppImage',
+                         'DEB': 'Debian · DEB', 'RPM': 'Fedora · RPM'}
+        details = {
+            'appId': app_id, 'source': source,
+            'providerKey': safe['providerKey'],
+            'sourceLabel': source_labels[source],
+            'name': safe['name'], 'summary': safe['summary'],
+            'developer': safe['developer'], 'version': safe['version'],
+            'license': safe['license'], 'homepage': safe['homepage'],
+            'category': (safe['category'] if safe['category']
+                         not in ('Debian 13', 'Fedora 44') else ''),
+            'categoryGroup': catalog_browse.category_for(safe),
+            'licenseDisplay': ('Proprietary' if safe['license'].lower().startswith(
+                'licenseref-proprietary') else safe['license']),
+            'componentId': safe['componentId'],
+            'iconUrl': cached_icon,
+            'managed': managed,
+            'actionLabel': ('Managed' if managed else
+                            'Downloads' if source == 'AppImage'
+                            and not row.get('installUrl') else 'Install'),
+        }
+        if details != self._catalog_details:
+            self._catalog_details = details
+            self.catalogDetailsChanged.emit()
+
+    @QtCore.Slot(str, str)
+    def openCatalogDetails(self, app_id, source):
+        """Reject stale/cross-source IDs; use only a current catalog member."""
+        if source not in ('Flatpak', 'AppImage', 'DEB', 'RPM') or source != self._catalog_source:
+            return
+        row = next((x for x in self._catalog_all
+                    if x.get('appId') == app_id
+                    and x.get('source', 'Flatpak') == source), None)
+        if row is None:
+            return
+        try:
+            expected = catalog_metadata.qualified_id(source, app_id)
+        except (TypeError, ValueError):
+            return
+        if row.get('providerKey', expected) != expected:
+            return
+        self._catalog_detail_key = (source, app_id)
+        self._sync_catalog_details()
+
+    @QtCore.Slot()
+    def closeCatalogDetails(self):
+        if self._catalog_detail_key is not None or self._catalog_details:
+            self._catalog_detail_key = None
+            self._catalog_details = {}
+            self.catalogDetailsChanged.emit()
+
+    @QtCore.Slot()
+    def installSelectedCatalogEntry(self):
+        """Reuse the existing explicit approval flow, never a metadata URL."""
+        row = self._selected_catalog_row()
+        if row is None:
+            return
+        source, app_id = self._catalog_detail_key
+        if self._catalog_details.get('managed'):
+            return
+        self.installCatalogEntry(app_id, source)
+
+    @QtCore.Slot()
+    def openSelectedCatalogHomepage(self):
+        """Open only the current record's validated HTTPS homepage on click."""
+        row = self._selected_catalog_row()
+        if row is None:
+            return
+        try:
+            homepage = catalog_metadata.normalize(row).get('homepage', '')
+        except (TypeError, ValueError):
+            return
+        if homepage and homepage == self._catalog_details.get('homepage'):
+            QtGui.QDesktopServices.openUrl(QtCore.QUrl(homepage))
+
     # ── Live Discover sources, never coupled to the installed-app inventory ──
     @QtCore.Slot(str)
     @QtCore.Slot(str, str)
     def searchCatalog(self, query, source='Flatpak'):
         """Latest-wins search using a single asynchronous worker."""
         query = str(query).strip()[:90]
+        self.closeCatalogDetails()
         source = source if source in ('Flatpak', 'AppImage', 'DEB', 'RPM') else 'Flatpak'
         if source != self._catalog_source or query != self._catalog_query:
             self._catalog_category = 'All'
@@ -1632,6 +1751,7 @@ class Bridge(QtCore.QObject):
         self._rebuild_catalog_view()
 
     def _clear_catalog_view(self):
+        self.closeCatalogDetails()
         self._catalog_all = []
         self._catalog_visible = []
         self._catalog_categories = ['All']
@@ -1707,6 +1827,7 @@ class Bridge(QtCore.QObject):
                 row.update({k: v for k, v in normalized.items() if v})
         if sanitized:
             self._rebuild_catalog_view(preserve_page=True)
+            self._sync_catalog_details()
 
     def _catalog_artwork_ready(self, query, source, cached):
         worker = self._catalog_worker
@@ -1716,6 +1837,7 @@ class Bridge(QtCore.QObject):
             return
         self._catalog.apply_artwork(cached)
         self._catalog_featured.apply_artwork(cached)
+        self._sync_catalog_details()
 
     def _announce_catalog_results(self):
         total = len(self._display_catalog_rows())

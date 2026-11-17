@@ -805,8 +805,395 @@ ApplicationWindow {
             Layout.bottomMargin: 10
             spacing: 10
 
+            // Compact, centered store-style details — no new network requests.
+            ColumnLayout {
+                id: catalogDetailsPage
+                objectName: "catalogDetailsPage"
+                visible: bridge.catalogDetailsAvailable
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: 0
+
+                ScrollView {
+                    id: catalogDetailsScroll
+                    objectName: "catalogDetailsScroll"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    ScrollBar.vertical.policy: ScrollBar.AsNeeded
+
+                    Item {
+                        width: catalogDetailsScroll.availableWidth
+                        implicitHeight: detailsContent.implicitHeight + 20
+
+                        ColumnLayout {
+                            id: detailsContent
+                            objectName: "catalogDetailsContent"
+                            width: Math.min(parent.width - 16, 1050)
+                            x: Math.max(0, (parent.width - width) / 2)
+                            spacing: 12
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 10
+                                Button {
+                                    id: catalogDetailsBack
+                                    objectName: "catalogDetailsBack"
+                                    text: qsTr("← Back to Discover")
+                                    implicitHeight: 32
+                                    onClicked: bridge.closeCatalogDetails()
+                                    Accessible.name: qsTr("Back to Discover applications")
+                                }
+                                Item { Layout.fillWidth: true }
+                                Label {
+                                    text: qsTr("APPLICATION DETAILS")
+                                    color: Theme.colors.textSecondary
+                                    font.pixelSize: 10
+                                    font.letterSpacing: 1.3
+                                }
+                            }
+
+                            Rectangle {
+                                id: catalogDetailsHero
+                                objectName: "catalogDetailsHero"
+                                Layout.fillWidth: true
+                                implicitHeight: 148
+                                radius: 14
+                                color: Theme.colors.surface
+                                border.color: Theme.colors.border
+                                border.width: 1
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: 18
+                                    spacing: 16
+
+                                    Rectangle {
+                                        Layout.preferredWidth: 80
+                                        Layout.preferredHeight: 80
+                                        radius: 17
+                                        color: Theme.colors.iconFallbackBg
+                                        Image {
+                                            id: catalogLargeIcon
+                                            anchors.fill: parent
+                                            anchors.margins: 6
+                                            source: bridge.catalogDetails.iconUrl || ""
+                                            sourceSize.width: 160
+                                            sourceSize.height: 160
+                                            asynchronous: true
+                                            cache: true
+                                            fillMode: Image.PreserveAspectFit
+                                            visible: status === Image.Ready
+                                        }
+                                        Label {
+                                            anchors.fill: parent
+                                            visible: catalogLargeIcon.status !== Image.Ready
+                                            text: bridge.catalogDetails.name
+                                                  ? bridge.catalogDetails.name[0].toUpperCase() : "?"
+                                            font.pixelSize: 28
+                                            color: Theme.colors.textSecondary
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                    }
+
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 6
+                                        Label {
+                                            id: catalogDetailsName
+                                            objectName: "catalogDetailsName"
+                                            Layout.fillWidth: true
+                                            text: bridge.catalogDetails.name || ""
+                                            textFormat: Text.PlainText
+                                            color: Theme.colors.text
+                                            font.pixelSize: 24
+                                            font.weight: Font.DemiBold
+                                            elide: Text.ElideRight
+                                        }
+                                        Label {
+                                            Layout.fillWidth: true
+                                            text: bridge.catalogDetails.developer
+                                                  ? qsTr("by %1").arg(bridge.catalogDetails.developer)
+                                                  : qsTr("Developer not provided")
+                                            textFormat: Text.PlainText
+                                            font.pixelSize: 12
+                                            color: Theme.colors.textSecondary
+                                            elide: Text.ElideRight
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 6
+                                            Rectangle {
+                                                Layout.preferredWidth: sourceChipLabel.implicitWidth + 18
+                                                Layout.preferredHeight: 25
+                                                radius: 7
+                                                color: Theme.colors.surfaceAlt
+                                                Label {
+                                                    id: sourceChipLabel
+                                                    anchors.centerIn: parent
+                                                    text: bridge.catalogDetails.sourceLabel || ""
+                                                    color: Theme.colors.textSecondary
+                                                    font.pixelSize: 11
+                                                    textFormat: Text.PlainText
+                                                }
+                                            }
+                                            Rectangle {
+                                                Layout.preferredWidth: categoryChipLabel.implicitWidth + 18
+                                                Layout.preferredHeight: 25
+                                                radius: 7
+                                                color: Theme.toneBg("success")
+                                                Label {
+                                                    id: categoryChipLabel
+                                                    anchors.centerIn: parent
+                                                    text: bridge.catalogDetails.categoryGroup || qsTr("Other")
+                                                    color: Theme.tone("success")
+                                                    font.pixelSize: 11
+                                                    textFormat: Text.PlainText
+                                                }
+                                            }
+                                            Item { Layout.fillWidth: true }
+                                        }
+                                    }
+
+                                    ColumnLayout {
+                                        Layout.alignment: Qt.AlignVCenter
+                                        Layout.preferredWidth: 138
+                                        spacing: 8
+
+                                        Button {
+                                            id: catalogDetailsInstall
+                                            objectName: "catalogDetailsInstall"
+                                            Layout.fillWidth: true
+                                            implicitHeight: 40
+                                            text: bridge.catalogDetails.actionLabel || qsTr("Install")
+                                            enabled: !bridge.catalogDetails.managed
+                                            onClicked: bridge.installSelectedCatalogEntry()
+                                            Accessible.name: text + " " + (bridge.catalogDetails.name || "")
+                                            background: Rectangle {
+                                                radius: 9
+                                                color: catalogDetailsInstall.enabled
+                                                       ? (catalogDetailsInstall.down
+                                                          ? Theme.colors.pressed
+                                                          : Theme.colors.accent)
+                                                       : Theme.colors.surfaceAlt
+                                            }
+                                            contentItem: Label {
+                                                text: catalogDetailsInstall.text
+                                                color: catalogDetailsInstall.enabled
+                                                       ? Theme.colors.accentText
+                                                       : Theme.colors.textSecondary
+                                                font.pixelSize: 13
+                                                font.weight: Font.DemiBold
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                            }
+                                        }
+                                        Button {
+                                            id: catalogHomepageButton
+                                            objectName: "catalogHomepageButton"
+                                            Layout.fillWidth: true
+                                            implicitHeight: 35
+                                            text: qsTr("Visit website")
+                                            visible: Boolean(bridge.catalogDetails.homepage)
+                                            onClicked: bridge.openSelectedCatalogHomepage()
+                                            Accessible.name: qsTr("Visit application publisher website")
+                                        }
+                                    }
+                                }
+                            }
+
+                            GridLayout {
+                                id: detailsColumns
+                                objectName: "catalogDetailsColumns"
+                                Layout.fillWidth: true
+                                columns: detailsContent.width >= 780 ? 2 : 1
+                                columnSpacing: 12
+                                rowSpacing: 12
+
+                                ColumnLayout {
+                                    id: detailsLeftColumn
+                                    Layout.fillWidth: true
+                                    Layout.preferredWidth: detailsContent.width * 0.56
+                                    spacing: 12
+
+                                    Rectangle {
+                                        id: detailsAboutCard
+                                        objectName: "catalogDetailsAboutCard"
+                                        Layout.fillWidth: true
+                                        implicitHeight: Math.max(116,
+                                            catalogDetailsDescription.implicitHeight + 72)
+                                        radius: 12
+                                        color: Theme.colors.surface
+                                        border.color: Theme.colors.border
+                                        ColumnLayout {
+                                            anchors.fill: parent
+                                            anchors.margins: 17
+                                            spacing: 11
+                                            Label {
+                                                text: qsTr("About")
+                                                font.pixelSize: 15
+                                                font.weight: Font.DemiBold
+                                                color: Theme.colors.text
+                                                Accessible.role: Accessible.Heading
+                                            }
+                                            Label {
+                                                id: catalogDetailsDescription
+                                                objectName: "catalogDetailsDescription"
+                                                Layout.fillWidth: true
+                                                text: bridge.catalogDetails.summary ||
+                                                      qsTr("No description has been provided.")
+                                                textFormat: Text.PlainText
+                                                font.pixelSize: 13
+                                                color: Theme.colors.textSecondary
+                                                wrapMode: Text.WordWrap
+                                                verticalAlignment: Text.AlignTop
+                                            }
+                                            Item { Layout.fillHeight: true }
+                                        }
+                                    }
+
+                                    Rectangle {
+                                        id: detailsIdentityCard
+                                        objectName: "catalogDetailsIdentityCard"
+                                        Layout.fillWidth: true
+                                        implicitHeight: bridge.catalogDetails.componentId
+                                            && bridge.catalogDetails.componentId !== bridge.catalogDetails.appId
+                                            ? 157 : 119
+                                        radius: 12
+                                        color: Theme.colors.surface
+                                        border.color: Theme.colors.border
+                                        ColumnLayout {
+                                            anchors.fill: parent
+                                            anchors.margins: 16
+                                            spacing: 9
+                                            Label {
+                                                text: qsTr("Package information")
+                                                font.pixelSize: 15
+                                                font.weight: Font.DemiBold
+                                                color: Theme.colors.text
+                                                Accessible.role: Accessible.Heading
+                                            }
+                                            Label {
+                                                text: qsTr("PACKAGE ID")
+                                                font.pixelSize: 10
+                                                color: Theme.colors.textSecondary
+                                                font.letterSpacing: 0.8
+                                            }
+                                            TextEdit {
+                                                objectName: "catalogDetailsPackageId"
+                                                Layout.fillWidth: true
+                                                text: bridge.catalogDetails.appId || ""
+                                                font.pixelSize: 12
+                                                textFormat: TextEdit.PlainText
+                                                color: Theme.colors.text
+                                                wrapMode: TextEdit.WrapAnywhere
+                                                readOnly: true
+                                                selectByMouse: true
+                                            }
+                                            Label {
+                                                visible: Boolean(bridge.catalogDetails.componentId)
+                                                         && bridge.catalogDetails.componentId !== bridge.catalogDetails.appId
+                                                text: qsTr("APPSTREAM ID")
+                                                font.pixelSize: 10
+                                                color: Theme.colors.textSecondary
+                                                font.letterSpacing: 0.8
+                                            }
+                                            TextEdit {
+                                                objectName: "catalogDetailsAppStreamId"
+                                                visible: Boolean(bridge.catalogDetails.componentId)
+                                                         && bridge.catalogDetails.componentId !== bridge.catalogDetails.appId
+                                                Layout.fillWidth: true
+                                                text: bridge.catalogDetails.componentId || ""
+                                                font.pixelSize: 12
+                                                textFormat: TextEdit.PlainText
+                                                color: Theme.colors.text
+                                                wrapMode: TextEdit.WrapAnywhere
+                                                readOnly: true
+                                                selectByMouse: true
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Rectangle {
+                                    id: detailsFactsCard
+                                    objectName: "catalogDetailsFactsCard"
+                                    Layout.fillWidth: true
+                                    Layout.preferredWidth: detailsContent.width * 0.40
+                                    implicitHeight: Math.max(246, detailsFactsLayout.implicitHeight + 34)
+                                    radius: 12
+                                    color: Theme.colors.surface
+                                    border.color: Theme.colors.border
+
+                                    ColumnLayout {
+                                        id: detailsFactsLayout
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.top: parent.top
+                                        anchors.margins: 17
+                                        spacing: 14
+                                        Label {
+                                            text: qsTr("At a glance")
+                                            color: Theme.colors.text
+                                            font.pixelSize: 15
+                                            font.weight: Font.DemiBold
+                                            Accessible.role: Accessible.Heading
+                                        }
+                                        Repeater {
+                                            model: [
+                                                { name: qsTr("Category"),
+                                                  value: bridge.catalogDetails.categoryGroup || qsTr("Other") },
+                                                { name: qsTr("Version"),
+                                                  value: bridge.catalogDetails.version || qsTr("Not provided") },
+                                                { name: qsTr("License"),
+                                                  value: bridge.catalogDetails.licenseDisplay ||
+                                                         bridge.catalogDetails.license || qsTr("Not provided") },
+                                                { name: qsTr("Developer"),
+                                                  value: bridge.catalogDetails.developer || qsTr("Not provided") }
+                                            ]
+                                            delegate: ColumnLayout {
+                                                required property var modelData
+                                                Layout.fillWidth: true
+                                                spacing: 4
+                                                Label {
+                                                    text: modelData.name
+                                                    color: Theme.colors.textSecondary
+                                                    font.pixelSize: 11
+                                                    textFormat: Text.PlainText
+                                                }
+                                                Label {
+                                                    Layout.fillWidth: true
+                                                    text: modelData.value
+                                                    color: Theme.colors.text
+                                                    font.pixelSize: 13
+                                                    textFormat: Text.PlainText
+                                                    wrapMode: Text.WrapAnywhere
+                                                    maximumLineCount: 3
+                                                    elide: Text.ElideRight
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: qsTr("Information comes from the selected catalog. Missing fields are never guessed. Installation still requires review and confirmation.")
+                                color: Theme.colors.textSecondary
+                                font.pixelSize: 11
+                                wrapMode: Text.WordWrap
+                                textFormat: Text.PlainText
+                            }
+                        }
+                    }
+                }
+            }
+
             RowLayout {
                 Layout.fillWidth: true
+                visible: !bridge.catalogDetailsAvailable
                 spacing: 7
 
                 Button {
@@ -862,6 +1249,7 @@ ApplicationWindow {
 
             RowLayout {
                 Layout.fillWidth: true
+                visible: !bridge.catalogDetailsAvailable
                 spacing: 10
                 TextField {
                     id: catalogSearchField
@@ -912,7 +1300,7 @@ ApplicationWindow {
                 id: featuredHeading
                 objectName: "featuredHeading"
                 Layout.fillWidth: true
-                visible: bridge.catalogHasFeatured
+                visible: !bridge.catalogDetailsAvailable && bridge.catalogHasFeatured
                 spacing: 10
                 Label {
                     text: qsTr("Featured apps")
@@ -937,7 +1325,7 @@ ApplicationWindow {
                 // Keep a dedicated gutter for the scrollbar instead of drawing it
                 // over the developer label and Install button.
                 Layout.preferredHeight: 128
-                visible: bridge.catalogHasFeatured
+                visible: !bridge.catalogDetailsAvailable && bridge.catalogHasFeatured
                 clip: true
                 contentWidth: featuredRow.implicitWidth
                 contentHeight: height
@@ -1026,6 +1414,13 @@ ApplicationWindow {
                                     }
                                     Button {
                                         implicitHeight: 27
+                                        implicitWidth: 64
+                                        text: qsTr("Details")
+                                        Accessible.name: text + " " + model.name
+                                        onClicked: bridge.openCatalogDetails(model.appId, model.source)
+                                    }
+                                    Button {
+                                        implicitHeight: 27
                                         implicitWidth: 74
                                         text: model.managed ? qsTr("Managed") : qsTr("Install")
                                         enabled: !model.managed
@@ -1043,6 +1438,7 @@ ApplicationWindow {
                 id: categoryStrip
                 objectName: "categoryStrip"
                 Layout.fillWidth: true
+                visible: !bridge.catalogDetailsAvailable
                 Layout.preferredHeight: 40
                 clip: true
                 contentWidth: categoryRow.implicitWidth
@@ -1071,6 +1467,7 @@ ApplicationWindow {
 
             RowLayout {
                 Layout.fillWidth: true
+                visible: !bridge.catalogDetailsAvailable
                 spacing: 8
                 Label {
                     text: qsTr("Discover applications")
@@ -1098,6 +1495,7 @@ ApplicationWindow {
             Item {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
+                visible: !bridge.catalogDetailsAvailable
 
                 GridView {
                     id: catalogList
@@ -1230,6 +1628,13 @@ ApplicationWindow {
                                     textFormat: Text.PlainText
                                 }
                                 Button {
+                                    text: qsTr("Details")
+                                    implicitHeight: 32
+                                    implicitWidth: 70
+                                    Accessible.name: text + " " + model.name
+                                    onClicked: bridge.openCatalogDetails(model.appId, model.source)
+                                }
+                                Button {
                                     text: model.managed ? qsTr("Managed")
                                         : model.source === "AppImage" && !model.installUrl
                                           ? qsTr("Downloads") : qsTr("Install")
@@ -1298,7 +1703,8 @@ ApplicationWindow {
 
             RowLayout {
                 Layout.fillWidth: true
-                visible: catalogList.visible && bridge.catalogHasMore
+                visible: !bridge.catalogDetailsAvailable && catalogList.visible
+                         && bridge.catalogHasMore
                 Item { Layout.fillWidth: true }
                 Button {
                     id: catalogViewMore
