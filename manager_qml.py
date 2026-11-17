@@ -1131,7 +1131,7 @@ class Bridge(QtCore.QObject):
 
     @QtCore.Slot()
     def cancelRunningFlatpakUpdate(self):
-        if not self.appUpdateRunning:
+        if not self.flatpakUpdateRunning:
             return
         reply = QtWidgets.QMessageBox.question(
             self.anchor, 'Interrupt Flatpak update',
