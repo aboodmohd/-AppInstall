@@ -945,7 +945,7 @@ ApplicationWindow {
                     visible: !bridge.catalogSetupRequired
                     property int columns: Math.max(1, Math.floor(width / 280))
                     cellWidth: Math.floor(width / columns)
-                    cellHeight: 206
+                    cellHeight: 228
                     model: bridge.catalogModel
                     clip: true
                     ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
@@ -958,6 +958,16 @@ ApplicationWindow {
                         color: Theme.colors.surface
                         border.color: Theme.colors.border
                         border.width: 1
+
+                        ToolTip.visible: cardHover.hovered
+                        ToolTip.delay: 650
+                        ToolTip.text: (model.name || model.appId)
+                                      + (model.developer ? "\nDeveloper: " + model.developer : "")
+                                      + (model.license ? "\nLicense: " + model.license : "")
+                                      + (model.version ? "\nVersion: " + model.version : "")
+                                      + "\nSource: " + model.source
+
+                        HoverHandler { id: cardHover }
 
                         ColumnLayout {
                             anchors.fill: parent
@@ -977,6 +987,8 @@ ApplicationWindow {
                                         anchors.fill: parent
                                         anchors.margins: 3
                                         source: model.iconUrl
+                                        sourceSize.width: 96
+                                        sourceSize.height: 96
                                         asynchronous: true
                                         cache: true
                                         fillMode: Image.PreserveAspectFit
@@ -984,7 +996,7 @@ ApplicationWindow {
                                     }
                                     Label {
                                         anchors.fill: parent
-                                        text: updateRow.name.length ? updateRow.name[0].toUpperCase() : "?"
+                                        text: model.name.length ? model.name[0].toUpperCase() : "?"
                                         visible: catalogIcon.status !== Image.Ready
                                         color: Theme.colors.textSecondary
                                         horizontalAlignment: Text.AlignHCenter
@@ -1019,6 +1031,16 @@ ApplicationWindow {
 
                             Label {
                                 Layout.fillWidth: true
+                                visible: model.developer !== ""
+                                text: qsTr("By %1").arg(model.developer)
+                                textFormat: Text.PlainText
+                                color: Theme.colors.textSecondary
+                                font.pixelSize: 11
+                                elide: Text.ElideRight
+                            }
+
+                            Label {
+                                Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 text: model.summary || model.appId
                                 textFormat: Text.PlainText
@@ -1034,7 +1056,8 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 Label {
                                     Layout.fillWidth: true
-                                    text: model.category || qsTr("Application")
+                                    text: (model.category || qsTr("Application"))
+                                          + (model.version ? " · " + model.version : "")
                                     color: Theme.colors.textSecondary
                                     font.pixelSize: 11
                                     elide: Text.ElideRight
