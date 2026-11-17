@@ -148,7 +148,7 @@ def native_package_present():
     """Do not create a shadow update over an existing native installation."""
     checks = (
         ("pacman", ("pacman", "-Qq", "appinstall")),
-        ("dpkg-query", ("dpkg-query", "-W", "-f=\${Status}", "appinstall")),
+        ("dpkg-query", ("dpkg-query", "-W", "-f=" + chr(36) + "{Status}", "appinstall")),
         ("rpm", ("rpm", "-q", "appinstall")),
     )
     for binary, args in checks:
