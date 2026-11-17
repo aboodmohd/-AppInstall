@@ -626,6 +626,8 @@ class Bridge(QtCore.QObject):
             QtCore.QProcess.ProcessChannelMode.MergedChannels)
         self._flatpak_process.readyReadStandardOutput.connect(self._flatpak_progress_read)
         self._flatpak_process.finished.connect(self._flatpak_finished)
+        self._flatpak_process.errorOccurred.connect(self._flatpak_process_error)
+        self._verify_after_inventory = False
         # APPINSTALL_UI_DARK=1 forces dark mode for evidence capture,
         # overriding settings and system preference.
         env_dark = os.environ.get('APPINSTALL_UI_DARK')
@@ -947,10 +949,16 @@ class Bridge(QtCore.QObject):
         else:
             self._set_app_update_status('Flatpak update command completed for ' + key +
                                         '. Verifying installed versions…')
-        # Refresh inventory and update checks only after QProcess termination.
+        # Fresh read-only scan after inventory finishes. Never trust a process
+        # exit alone as proof that the desired commit was deployed.
+        self._verify_after_inventory = True
         self.refresh()
-        # The inventory loader is asynchronous. A fresh scan via the user-visible
-        # Check now button remains available once it finishes.
+
+    def _flatpak_process_error(self, error):
+        if error == QtCore.QProcess.ProcessError.FailedToStart:
+            self._flatpak_active_key = ''
+            self._set_app_update_status('Flatpak could not start. No update was confirmed.')
+            self.appUpdateRunningChanged.emit(False)
 
     # ── inventory ────────────────────────────────────────────────────────
 
@@ -974,6 +982,9 @@ class Bridge(QtCore.QObject):
         self._loading = False
         self.loadingChanged.emit(False)
         self._announce_count()
+        if self._verify_after_inventory:
+            self._verify_after_inventory = False
+            QtCore.QTimer.singleShot(0, lambda: self.checkApplicationUpdates(True))
 
     def _count_text(self):
         count = self._model.rowCount()
@@ -1552,6 +1563,15 @@ class Bridge(QtCore.QObject):
         pipeline is cancelled first (the close is ignored once); an
         AppInstall upgrade in progress blocks closing; a running update
         check is killed, then the close proceeds."""
+        if self.appUpdateRunning:
+            self._set_app_update_status('Stop or finish the Flatpak update before closing.')
+            return False
+        for worker in (self._app_update_worker, self._flatpak_preflight_worker):
+            if worker is not None and worker.isRunning():
+                worker.requestInterruption()
+                self._set_app_update_status(
+                    'Cancelling application update check; close after it finishes.')
+                return False
         if self._catalog_initializing and self._catalog_worker is not None \
                 and self._catalog_worker.isRunning():
             self._set_catalog_status('Preparing repository metadata; close after setup completes.')
