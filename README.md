@@ -2,6 +2,14 @@
 
 ![AppInstall logo](appinstall-256.png)
 
+> **v1.8.0 development candidate (unpublished):** The Updates manager,
+> improved source-qualified artwork/categories, Featured shelf, and redesigned
+> Application Details are in stacked draft PRs #78–#85. Published stable
+> v1.7.0 is unchanged; candidate packages and branches are **not** public
+> releases. See [v1.8 release gate](docs/V1_8_RELEASE_CANDIDATE.md) before
+> attempting to publish. Install.sh normally follows the latest *published*
+> stable GitHub release, never a draft PR.
+
 A graphical double-click installer for AppImage, Flatpak, DEB, and RPM files on Linux desktops. DEB/RPM applications run in rootless Debian/Fedora Distrobox containers.
 
 **Development status:** tested on CachyOS KDE with selected applications. DEB/RPM compatibility remains application-dependent; some packages omit runtime dependencies or require additional configuration. This project does not guarantee that every Linux package will run.
