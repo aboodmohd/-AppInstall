@@ -37,6 +37,7 @@ import settings
 import flathub_catalog
 import repository_catalog
 import update_engine
+import repository_upgrades
 
 QML_DIR = Path(__file__).resolve().with_name('manager_ui')
 
@@ -507,10 +508,16 @@ class UpdateModel(QtCore.QAbstractListModel):
             self.OriginRole: candidate.source or "Local file / unknown source",
             self.ReasonRole: candidate.reason,
             self.ActionableRole: bool(
-                candidate.format == "flatpak"
-                and candidate.state == update_engine.AVAILABLE
-                and candidate.reference
-                and candidate.available_revision),
+                candidate.state == update_engine.AVAILABLE
+                and candidate.requires_review
+                and (
+                    (candidate.format == "flatpak"
+                     and candidate.reference and candidate.available_revision)
+                    or (candidate.format == "deb"
+                        and candidate.mechanism == "apt-repository")
+                    or (candidate.format == "rpm"
+                        and candidate.mechanism == "dnf-repository")
+                )),
             self.ReferenceRole: candidate.reference,
         }.get(role)
 
@@ -570,6 +577,47 @@ class UpdateScanWorker(QtCore.QThread):
                 self.failed.emit(str(error))
 
 
+class RepositoryPreviewWorker(QtCore.QThread):
+    """Prepares a read-only APT/DNF transaction plan off the GUI thread."""
+
+    ready = QtCore.Signal(object)
+    failed = QtCore.Signal(str)
+
+    def __init__(self, app, parent=None):
+        super().__init__(parent)
+        self.app = dict(app)
+
+    def run(self):
+        try:
+            plan = repository_upgrades.RepositoryUpgradeService().preview_update(self.app)
+            if not self.isInterruptionRequested():
+                self.ready.emit(plan)
+        except Exception as error:
+            if not self.isInterruptionRequested():
+                self.failed.emit(str(error))
+
+
+class RepositoryApplyWorker(QtCore.QThread):
+    """Holds the owned-container registry lock for an approved transaction."""
+
+    ready = QtCore.Signal(object)
+    failed = QtCore.Signal(str)
+    progress = QtCore.Signal(str)
+
+    def __init__(self, plan, app, parent=None):
+        super().__init__(parent)
+        self.plan = plan
+        self.app = dict(app)
+
+    def run(self):
+        try:
+            result = repository_upgrades.RepositoryUpgradeService().apply_update(
+                self.plan, self.app, progress=self.progress.emit)
+            self.ready.emit(result)
+        except Exception as error:
+            self.failed.emit(str(error))
+
+
 class Bridge(QtCore.QObject):
     """Actions and state the QML screen reads; every action calls the
     existing manager backend through its normal entry point."""
@@ -617,6 +665,11 @@ class Bridge(QtCore.QObject):
         self._app_update_snapshot = []
         self._app_update_busy = False
         self._flatpak_preflight_worker = None
+        self._repository_preview_worker = None
+        self._repository_apply_worker = None
+        self._repository_pending_key = None
+        self._repository_pending_candidate = None
+        self._repository_pending_app = None
         self._flatpak_pending_key = None
         self._flatpak_pending_candidate = None
         self._flatpak_active_key = ''
@@ -761,7 +814,18 @@ class Bridge(QtCore.QObject):
 
     @QtCore.Property(bool, notify=appUpdateRunningChanged)
     def appUpdateRunning(self):
+        return (self.flatpakUpdateRunning or
+                (self._repository_apply_worker is not None and
+                 self._repository_apply_worker.isRunning()))
+
+    @QtCore.Property(bool, notify=appUpdateRunningChanged)
+    def flatpakUpdateRunning(self):
         return self._flatpak_process.state() != QtCore.QProcess.ProcessState.NotRunning
+
+    @QtCore.Property(bool, notify=appUpdateRunningChanged)
+    def repositoryUpdateRunning(self):
+        return (self._repository_apply_worker is not None and
+                self._repository_apply_worker.isRunning())
 
     def _set_app_update_status(self, message):
         self._app_update_status = str(message)[:1000]
@@ -776,6 +840,7 @@ class Bridge(QtCore.QObject):
     def checkApplicationUpdates(self, force=True):
         """Provider reads only. Never creates containers or installs anything."""
         if (self._app_update_busy or self._flatpak_preflight_worker is not None
+                or self._repository_preview_worker is not None
                 or self.appUpdateRunning):
             return
         self._app_update_snapshot = list(self._model._inventory)
@@ -822,6 +887,7 @@ class Bridge(QtCore.QObject):
     def requestFlatpakUpdate(self, key):
         """Revalidate a scanned, explicit user-scope Flatpak before approval."""
         if (self._app_update_busy or self._flatpak_preflight_worker is not None
+                or self._repository_preview_worker is not None
                 or self.appUpdateRunning):
             return
         candidate = self._updates.candidate(key)
@@ -849,6 +915,154 @@ class Bridge(QtCore.QObject):
         worker.failed.connect(self._flatpak_preflight_failed)
         worker.finished.connect(self._flatpak_preflight_finished)
         worker.start()
+
+    @QtCore.Slot(str)
+    def requestManagedUpdate(self, key):
+        """Only the provider-specific reviewed update flow can perform writes."""
+        candidate = self._updates.candidate(key)
+        if not candidate or candidate.state != update_engine.AVAILABLE:
+            self._set_app_update_status(
+                'No available update for this application. Check again.')
+            return
+        if candidate.format == 'flatpak':
+            self.requestFlatpakUpdate(key)
+        elif candidate.format in ('deb', 'rpm'):
+            self.requestRepositoryUpdate(key)
+        else:
+            self._set_app_update_status('This application requires manual replacement.')
+
+    @QtCore.Slot(str)
+    def requestRepositoryUpdate(self, key):
+        """A fresh read-only transaction preview precedes any permission prompt."""
+        if (self._app_update_busy or self._repository_preview_worker is not None
+                or self._flatpak_preflight_worker is not None or self.appUpdateRunning):
+            return
+        candidate = self._updates.candidate(key)
+        if (candidate is None or candidate.state != update_engine.AVAILABLE
+                or candidate.format not in ('deb', 'rpm')
+                or not candidate.requires_review
+                or candidate.mechanism != {
+                    'deb': 'apt-repository', 'rpm': 'dnf-repository'
+                }[candidate.format]):
+            self._set_app_update_status(
+                'No verified repository upgrade selected. Check updates again.')
+            return
+        try:
+            app = self._model.app_record(key)
+        except KeyError:
+            self._set_app_update_status('Application no longer managed. Refresh first.')
+            return
+        if (app.get('source') != 'container-registry'
+                or app.get('status') != 'installed'
+                or app.get('format') != candidate.format):
+            self._set_app_update_status('Repository origin changed. Refresh first.')
+            return
+        self._repository_pending_key = key
+        self._repository_pending_candidate = candidate
+        self._repository_pending_app = app
+        self._set_app_update_busy(True)
+        self._set_app_update_status(
+            'Checking current repository version and simulating a dependency transaction…')
+        worker = RepositoryPreviewWorker(app, self)
+        self._repository_preview_worker = worker
+        worker.ready.connect(self._repository_preview_ready)
+        worker.failed.connect(self._repository_preview_failed)
+        worker.finished.connect(self._repository_preview_finished)
+        worker.start()
+
+    def _repository_preview_ready(self, plan):
+        prior = self._repository_pending_candidate
+        app = self._repository_pending_app
+        if (not isinstance(plan, repository_upgrades.UpgradePlan)
+                or prior is None or app is None
+                or plan.key != self._repository_pending_key
+                or prior.state != update_engine.AVAILABLE
+                or plan.kind != prior.format
+                or plan.installed_version != prior.installed_version
+                or plan.target_version != prior.available_version):
+            self._set_app_update_status(
+                'Repository version or source changed since the last scan. Check again.')
+            return
+        dialog = QtWidgets.QDialog(self.anchor)
+        dialog.setObjectName('repositoryUpgradeReviewDialog')
+        dialog.setWindowTitle('Review ' + plan.kind.upper() + ' update')
+        dialog.setModal(True)
+        dialog.resize(690, 510)
+        layout = QtWidgets.QVBoxLayout(dialog)
+        summary = QtWidgets.QLabel(
+            'Package: ' + plan.name + '\n'
+            'Container: ' + plan.container + '\n'
+            'Installed: ' + plan.installed_version + '\n'
+            'Target: ' + plan.target_version + '\n\n'
+            'The transaction below may upgrade additional dependencies. '
+            'AppInstall blocks recognized removals/replacements and checks '
+            'the exact plan again before execution. '
+            'Package scripts may still affect this container. '
+            'Distrobox is not a security sandbox.')
+        summary.setWordWrap(True)
+        layout.addWidget(summary)
+        preview = QtWidgets.QPlainTextEdit(dialog)
+        preview.setObjectName('repositoryUpgradePreview')
+        preview.setReadOnly(True)
+        preview.setPlainText(plan.preview)
+        layout.addWidget(preview, 1)
+        buttons = QtWidgets.QDialogButtonBox(dialog)
+        approve = buttons.addButton(
+            'Update this package', QtWidgets.QDialogButtonBox.ButtonRole.AcceptRole)
+        buttons.addButton(QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        if dialog.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            self._set_app_update_status('Repository update declined. No packages changed.')
+            return
+        # Explicit, scoped approval only. Registry lock is held in the worker.
+        self._app_update_progress = (
+            'Approved ' + plan.kind.upper() + ' upgrade ' + plan.name +
+            ' ' + plan.installed_version + ' → ' + plan.target_version + '\n')
+        self.appUpdateProgressChanged.emit(self._app_update_progress)
+        self._set_app_update_status('Applying reviewed ' + plan.kind.upper() +
+                                    ' update in ' + plan.container + '…')
+        worker = RepositoryApplyWorker(plan, app, self)
+        self._repository_apply_worker = worker
+        worker.ready.connect(self._repository_apply_ready)
+        worker.failed.connect(self._repository_apply_failed)
+        worker.progress.connect(self._repository_apply_progress)
+        worker.finished.connect(self._repository_apply_finished)
+        worker.start()
+        self.appUpdateRunningChanged.emit(True)
+
+    def _repository_preview_failed(self, message):
+        self._set_app_update_status(
+            'Repository update preview blocked: ' + str(message)[:440])
+
+    def _repository_preview_finished(self):
+        self._repository_preview_worker = None
+        self._repository_pending_key = None
+        self._repository_pending_candidate = None
+        self._repository_pending_app = None
+        self._set_app_update_busy(False)
+
+    def _repository_apply_progress(self, line):
+        self._app_update_progress = (
+            self._app_update_progress + str(line)[:700] + '\n')[-5000:]
+        self.appUpdateProgressChanged.emit(self._app_update_progress)
+
+    def _repository_apply_ready(self, result):
+        self._set_app_update_status(
+            'Verified ' + result.key + ' upgraded to ' + result.version +
+            '. Refreshing managed applications…')
+
+    def _repository_apply_failed(self, message):
+        self._set_app_update_status(
+            'Repository upgrade failed or was blocked: ' + str(message)[:600] +
+            '. If it started, check the app’s repair status before retrying.')
+
+    def _repository_apply_finished(self):
+        self._repository_apply_worker = None
+        self.appUpdateRunningChanged.emit(False)
+        self._verify_after_inventory = True
+        self.refresh()
 
     def _flatpak_preflight_ready(self, results):
         old = self._flatpak_pending_candidate
@@ -917,7 +1131,7 @@ class Bridge(QtCore.QObject):
 
     @QtCore.Slot()
     def cancelRunningFlatpakUpdate(self):
-        if not self.appUpdateRunning:
+        if not self.flatpakUpdateRunning:
             return
         reply = QtWidgets.QMessageBox.question(
             self.anchor, 'Interrupt Flatpak update',
@@ -1570,9 +1784,12 @@ class Bridge(QtCore.QObject):
         AppInstall upgrade in progress blocks closing; a running update
         check is killed, then the close proceeds."""
         if self.appUpdateRunning:
-            self._set_app_update_status('Stop or finish the Flatpak update before closing.')
+            self._set_app_update_status(
+                'Finish the running package update before closing. '
+                'Do not interrupt a Distrobox package transaction.')
             return False
-        for worker in (self._app_update_worker, self._flatpak_preflight_worker):
+        for worker in (self._app_update_worker, self._flatpak_preflight_worker,
+                       self._repository_preview_worker):
             if worker is not None and worker.isRunning():
                 worker.requestInterruption()
                 self._set_app_update_status(

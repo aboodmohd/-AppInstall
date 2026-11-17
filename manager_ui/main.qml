@@ -1182,7 +1182,7 @@ ApplicationWindow {
                 Button {
                     id: appUpdateCancelInstall
                     objectName: "appUpdateCancelInstall"
-                    visible: bridge.appUpdateRunning
+                    visible: bridge.flatpakUpdateRunning
                     text: qsTr("Stop update")
                     onClicked: bridge.cancelRunningFlatpakUpdate()
                 }
@@ -1343,9 +1343,9 @@ ApplicationWindow {
                                 text: qsTr("Review update")
                                 objectName: "reviewFlatpakUpdateButton"
                                 id: reviewUpdateAction
-                                visible: updateRow.actionable && updateRow.updateState === "available" && updateRow.format === "FLATPAK"
+                                visible: updateRow.actionable && updateRow.updateState === "available"
                                 enabled: !bridge.appUpdatesBusy && !bridge.appUpdateRunning
-                                onClicked: bridge.requestFlatpakUpdate(updateRow.key)
+                                onClicked: bridge.requestManagedUpdate(updateRow.key)
                                 Accessible.name: qsTr("Review update for ") + updateRow.name
                             }
                         }
