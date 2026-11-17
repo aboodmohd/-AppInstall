@@ -130,11 +130,14 @@ class UpdateEngine:
 
     @staticmethod
     def _candidate(app, state, **extra):
-        return UpdateCandidate(
-            key=_clean(app.get("key")), format=_clean(app.get("format")),
-            state=state, installed_version=_clean(app.get("version"))
-            if app.get("version") not in (None, "unknown") else "",
-            **extra)
+        default_version = (app.get("version")
+                           if app.get("version") not in (None, "unknown") else "")
+        fields = {
+            "key": _clean(app.get("key")), "format": _clean(app.get("format")),
+            "state": state, "installed_version": _clean(default_version),
+        }
+        fields.update(extra)
+        return UpdateCandidate(**fields)
 
     def _flatpak(self, app, cancelled):
         key = app.get("key", "")
