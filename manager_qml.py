@@ -36,6 +36,7 @@ import manager
 import settings
 import flathub_catalog
 import repository_catalog
+import update_engine
 
 QML_DIR = Path(__file__).resolve().with_name('manager_ui')
 
@@ -448,6 +449,127 @@ class CatalogWorker(QtCore.QThread):
             self.failed.emit(self.query, 'Flathub search failed: ' + str(error))
 
 
+class UpdateModel(QtCore.QAbstractListModel):
+    """Result rows for the separate installed-app Updates page."""
+
+    KeyRole = QtCore.Qt.ItemDataRole.UserRole + 1
+    NameRole = QtCore.Qt.ItemDataRole.UserRole + 2
+    FormatRole = QtCore.Qt.ItemDataRole.UserRole + 3
+    StateRole = QtCore.Qt.ItemDataRole.UserRole + 4
+    CurrentRole = QtCore.Qt.ItemDataRole.UserRole + 5
+    AvailableRole = QtCore.Qt.ItemDataRole.UserRole + 6
+    OriginRole = QtCore.Qt.ItemDataRole.UserRole + 7
+    ReasonRole = QtCore.Qt.ItemDataRole.UserRole + 8
+    ActionableRole = QtCore.Qt.ItemDataRole.UserRole + 9
+    ReferenceRole = QtCore.Qt.ItemDataRole.UserRole + 10
+    countChanged = QtCore.Signal()
+    availableCountChanged = QtCore.Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._all = []
+        self._rows = []
+        self._filter = "all"
+
+    @QtCore.Property(int, notify=countChanged)
+    def count(self):
+        return len(self._rows)
+
+    @QtCore.Property(int, notify=availableCountChanged)
+    def availableCount(self):
+        return sum(row["candidate"].state == update_engine.AVAILABLE for row in self._all)
+
+    def roleNames(self):
+        return {
+            self.KeyRole: b"key", self.NameRole: b"name",
+            self.FormatRole: b"format", self.StateRole: b"updateState",
+            self.CurrentRole: b"currentVersion", self.AvailableRole: b"availableVersion",
+            self.OriginRole: b"origin", self.ReasonRole: b"reason",
+            self.ActionableRole: b"actionable", self.ReferenceRole: b"reference",
+        }
+
+    def rowCount(self, parent=QtCore.QModelIndex()):
+        return 0 if parent.isValid() else len(self._rows)
+
+    def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
+        if not index.isValid() or not 0 <= index.row() < len(self._rows):
+            return None
+        row = self._rows[index.row()]
+        candidate = row["candidate"]
+        app = row["app"]
+        return {
+            self.KeyRole: candidate.key,
+            self.NameRole: str(app.get("name") or candidate.key),
+            self.FormatRole: candidate.format.upper() if candidate.format != "appimage" else "AppImage",
+            self.StateRole: candidate.state,
+            self.CurrentRole: candidate.installed_version or "Unknown",
+            self.AvailableRole: candidate.available_version or "—",
+            self.OriginRole: candidate.source or "Local file / unknown source",
+            self.ReasonRole: candidate.reason,
+            self.ActionableRole: bool(
+                candidate.format == "flatpak"
+                and candidate.state == update_engine.AVAILABLE
+                and candidate.reference
+                and candidate.available_revision),
+            self.ReferenceRole: candidate.reference,
+        }.get(role)
+
+    def replace_results(self, apps, candidates):
+        by_key = {app.get("key"): app for app in apps}
+        self._all = [
+            {"app": by_key[c.key], "candidate": c}
+            for c in candidates if c.key in by_key
+        ]
+        self._refilter()
+
+    @QtCore.Slot(str)
+    def setFilter(self, state):
+        if state not in ("all", "available", "up-to-date",
+                         "manual-required", "unsupported", "error"):
+            return
+        self._filter = state
+        self._refilter()
+
+    def _refilter(self):
+        self.beginResetModel()
+        self._rows = [
+            row for row in self._all
+            if self._filter == "all" or row["candidate"].state == self._filter
+        ]
+        self.endResetModel()
+        self.countChanged.emit()
+        self.availableCountChanged.emit()
+
+    def candidate(self, key):
+        for row in self._all:
+            if row["candidate"].key == key:
+                return row["candidate"]
+        return None
+
+
+class UpdateScanWorker(QtCore.QThread):
+    """Runs read-only provider checks off the GUI thread, never installs."""
+
+    ready = QtCore.Signal(list)
+    failed = QtCore.Signal(str)
+
+    def __init__(self, inventory, *, force=False, parent=None):
+        super().__init__(parent)
+        self._inventory = list(inventory)
+        self._force = force
+
+    def run(self):
+        try:
+            results = manager.inspect_application_updates(
+                self._inventory, force=self._force,
+                cancelled=self.isInterruptionRequested)
+            if not self.isInterruptionRequested():
+                self.ready.emit(results)
+        except Exception as error:
+            if not self.isInterruptionRequested():
+                self.failed.emit(str(error))
+
+
 class Bridge(QtCore.QObject):
     """Actions and state the QML screen reads; every action calls the
     existing manager backend through its normal entry point."""
@@ -462,6 +584,10 @@ class Bridge(QtCore.QObject):
     catalogLoadingChanged = QtCore.Signal(bool)
     catalogStatusChanged = QtCore.Signal(str)
     catalogResultsChanged = QtCore.Signal()
+    appUpdateBusyChanged = QtCore.Signal(bool)
+    appUpdateStatusChanged = QtCore.Signal(str)
+    appUpdateProgressChanged = QtCore.Signal(str)
+    appUpdateRunningChanged = QtCore.Signal(bool)
 
     @QtCore.Property(bool, notify=updateActionVisibleChanged)
     def actionVisible(self):
@@ -484,6 +610,24 @@ class Bridge(QtCore.QObject):
         self._catalog_all = []
         self._catalog_worker = None
         self._catalog_pending = None
+        self._updates = UpdateModel(self)
+        self._app_update_status = 'Select Check now to inspect managed applications.'
+        self._app_update_progress = ''
+        self._app_update_worker = None
+        self._app_update_snapshot = []
+        self._app_update_busy = False
+        self._flatpak_preflight_worker = None
+        self._flatpak_pending_key = None
+        self._flatpak_pending_candidate = None
+        self._flatpak_active_key = ''
+        self._flatpak_cancelled = False
+        self._flatpak_process = QtCore.QProcess(self)
+        self._flatpak_process.setProcessChannelMode(
+            QtCore.QProcess.ProcessChannelMode.MergedChannels)
+        self._flatpak_process.readyReadStandardOutput.connect(self._flatpak_progress_read)
+        self._flatpak_process.finished.connect(self._flatpak_finished)
+        self._flatpak_process.errorOccurred.connect(self._flatpak_process_error)
+        self._verify_after_inventory = False
         # APPINSTALL_UI_DARK=1 forces dark mode for evidence capture,
         # overriding settings and system preference.
         env_dark = os.environ.get('APPINSTALL_UI_DARK')
@@ -597,6 +741,225 @@ class Bridge(QtCore.QObject):
     def updateTag(self):
         return self._update_tag
 
+    # ── Managed application updates (distinct from AppInstall self-upgrade) ──
+
+    @QtCore.Property(QtCore.QObject, constant=True)
+    def updatesModel(self):
+        return self._updates
+
+    @QtCore.Property(bool, notify=appUpdateBusyChanged)
+    def appUpdatesBusy(self):
+        return self._app_update_busy
+
+    @QtCore.Property(str, notify=appUpdateStatusChanged)
+    def appUpdatesStatus(self):
+        return self._app_update_status
+
+    @QtCore.Property(str, notify=appUpdateProgressChanged)
+    def appUpdateProgress(self):
+        return self._app_update_progress
+
+    @QtCore.Property(bool, notify=appUpdateRunningChanged)
+    def appUpdateRunning(self):
+        return self._flatpak_process.state() != QtCore.QProcess.ProcessState.NotRunning
+
+    def _set_app_update_status(self, message):
+        self._app_update_status = str(message)[:1000]
+        self.appUpdateStatusChanged.emit(self._app_update_status)
+
+    def _set_app_update_busy(self, value):
+        self._app_update_busy = bool(value)
+        self.appUpdateBusyChanged.emit(self._app_update_busy)
+
+    @QtCore.Slot()
+    @QtCore.Slot(bool)
+    def checkApplicationUpdates(self, force=True):
+        """Provider reads only. Never creates containers or installs anything."""
+        if (self._app_update_busy or self._flatpak_preflight_worker is not None
+                or self.appUpdateRunning):
+            return
+        self._app_update_snapshot = list(self._model._inventory)
+        self._app_update_progress = ''
+        self.appUpdateProgressChanged.emit('')
+        if not self._app_update_snapshot:
+            self._updates.replace_results([], [])
+            self._set_app_update_status('No AppInstall-managed applications found.')
+            return
+        self._set_app_update_busy(True)
+        self._set_app_update_status('Checking application updates (read-only)…')
+        worker = UpdateScanWorker(self._app_update_snapshot, force=bool(force), parent=self)
+        self._app_update_worker = worker
+        worker.ready.connect(self._app_updates_ready)
+        worker.failed.connect(self._app_updates_failed)
+        worker.finished.connect(self._app_updates_worker_finished)
+        worker.start()
+
+    @QtCore.Slot()
+    def cancelApplicationUpdateCheck(self):
+        worker = self._app_update_worker
+        if worker is not None and worker.isRunning():
+            worker.requestInterruption()
+            self._set_app_update_status('Cancelling update check…')
+
+    def _app_updates_ready(self, candidates):
+        self._updates.replace_results(self._app_update_snapshot, candidates)
+        available = self._updates.availableCount
+        self._set_app_update_status(
+            f'{available} app update(s) found across {len(candidates)} managed applications. '
+            'Updates do not run automatically.')
+
+    def _app_updates_failed(self, error):
+        self._set_app_update_status('Update check failed: ' + str(error))
+
+    def _app_updates_worker_finished(self):
+        worker = self._app_update_worker
+        if worker is not None and worker.isInterruptionRequested():
+            self._set_app_update_status('Update check cancelled; no packages changed.')
+        self._app_update_worker = None
+        self._set_app_update_busy(False)
+
+    @QtCore.Slot(str)
+    def requestFlatpakUpdate(self, key):
+        """Revalidate a scanned, explicit user-scope Flatpak before approval."""
+        if (self._app_update_busy or self._flatpak_preflight_worker is not None
+                or self.appUpdateRunning):
+            return
+        candidate = self._updates.candidate(key)
+        if not candidate or candidate.state != update_engine.AVAILABLE \
+                or candidate.format != 'flatpak':
+            self._set_app_update_status('No verified Flatpak update is selected.')
+            return
+        if not (update_engine.REF_RE.fullmatch(candidate.reference)
+                and update_engine.COMMIT_RE.fullmatch(candidate.available_revision)
+                and update_engine.COMMIT_RE.fullmatch(candidate.installed_revision)):
+            self._set_app_update_status('Update reference or revision is invalid. Check again.')
+            return
+        try:
+            app = self._model.app_record(key)
+        except KeyError:
+            self._set_app_update_status('Application is no longer managed. Refresh the list.')
+            return
+        self._flatpak_pending_key = key
+        self._flatpak_pending_candidate = candidate
+        self._set_app_update_busy(True)
+        self._set_app_update_status('Revalidating the selected Flatpak before confirmation…')
+        worker = UpdateScanWorker([app], force=True, parent=self)
+        self._flatpak_preflight_worker = worker
+        worker.ready.connect(self._flatpak_preflight_ready)
+        worker.failed.connect(self._flatpak_preflight_failed)
+        worker.finished.connect(self._flatpak_preflight_finished)
+        worker.start()
+
+    def _flatpak_preflight_ready(self, results):
+        old = self._flatpak_pending_candidate
+        key = self._flatpak_pending_key
+        fresh = results[0] if len(results) == 1 else None
+        if (fresh is None or old is None or key is None
+                or fresh.key != key or fresh.state != update_engine.AVAILABLE
+                or fresh.reference != old.reference or fresh.source != old.source
+                or fresh.installed_revision != old.installed_revision
+                or not update_engine.COMMIT_RE.fullmatch(fresh.available_revision)
+                or not update_engine.REF_RE.fullmatch(fresh.reference)):
+            self._set_app_update_status(
+                'Available Flatpak update changed or was not verified. Check again.')
+            return
+        if fresh.available_revision != old.available_revision:
+            self._set_app_update_status(
+                'Flatpak upstream revision changed. Check again before updating.')
+            return
+        prompt = (
+            'Update this AppInstall-managed Flatpak?\n\n'
+            'Application: ' + key + '\n'
+            'Source: ' + fresh.source + '\n'
+            'Exact ref: ' + fresh.reference + '\n'
+            'Installed commit: ' + fresh.installed_revision[:12] + '\n'
+            'Target commit: ' + fresh.available_revision[:12] + '\n\n'
+            'Only this exact user-scope app ref will be requested. '
+            'The --no-deps and --no-related options limit ancillary work, '
+            'but this preview cannot enumerate all Flatpak transaction effects. '
+            'No system-wide or all-app update will be requested.\n\n'
+            'Continue?')
+        answer = QtWidgets.QMessageBox.question(
+            self.anchor, 'Review Flatpak update', prompt,
+            QtWidgets.QMessageBox.StandardButton.Yes |
+            QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No)
+        if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+            self._set_app_update_status('Flatpak update declined. No packages changed.')
+            return
+        self._flatpak_active_key = key
+        self._flatpak_cancelled = False
+        self._app_update_progress = 'Starting selected Flatpak update…'
+        self.appUpdateProgressChanged.emit(self._app_update_progress)
+        self._set_app_update_status('Updating ' + key + '…')
+        self._flatpak_process.start('flatpak', [
+            'update', '--user', '--noninteractive', '--assumeyes',
+            '--no-deps', '--no-related',
+            '--commit=' + fresh.available_revision, fresh.reference])
+        self._flatpak_process.closeWriteChannel()
+        self.appUpdateRunningChanged.emit(True)
+
+    def _flatpak_preflight_failed(self, error):
+        self._set_app_update_status('Flatpak preflight failed: ' + str(error))
+
+    def _flatpak_preflight_finished(self):
+        self._flatpak_preflight_worker = None
+        self._flatpak_pending_key = None
+        self._flatpak_pending_candidate = None
+        self._set_app_update_busy(False)
+
+    def _flatpak_progress_read(self):
+        chunk = bytes(self._flatpak_process.readAllStandardOutput()).decode(errors='replace')
+        if chunk:
+            cleaned = re.sub(r'[\x00-\x08\x0b-\x1f\x7f]', '', chunk)
+            self._app_update_progress = (self._app_update_progress + cleaned)[-3200:]
+            self.appUpdateProgressChanged.emit(self._app_update_progress)
+
+    @QtCore.Slot()
+    def cancelRunningFlatpakUpdate(self):
+        if not self.appUpdateRunning:
+            return
+        reply = QtWidgets.QMessageBox.question(
+            self.anchor, 'Interrupt Flatpak update',
+            'Stop the running Flatpak command? Its state may be incomplete. '
+            'AppInstall will check again after interruption. '
+            'No additional packages will be installed automatically.',
+            QtWidgets.QMessageBox.StandardButton.Yes |
+            QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No)
+        if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+            self._flatpak_cancelled = True
+            self._flatpak_process.kill()
+            self._set_app_update_status('Interrupting Flatpak update; checking state after exit…')
+
+    def _flatpak_finished(self, code, status):
+        self._flatpak_progress_read()
+        was_cancelled = self._flatpak_cancelled
+        key = self._flatpak_active_key
+        self._flatpak_active_key = ''
+        self._flatpak_cancelled = False
+        self.appUpdateRunningChanged.emit(False)
+        if was_cancelled:
+            self._set_app_update_status(
+                'Flatpak operation interrupted. Its final package state is unknown; '
+                'a fresh check will follow.')
+        elif code != 0 or status != QtCore.QProcess.ExitStatus.NormalExit:
+            self._set_app_update_status('Flatpak update failed for ' + key +
+                                        '. Read the operation output below.')
+        else:
+            self._set_app_update_status('Flatpak update command completed for ' + key +
+                                        '. Verifying installed versions…')
+        # Fresh read-only scan after inventory finishes. Never trust a process
+        # exit alone as proof that the desired commit was deployed.
+        self._verify_after_inventory = True
+        self.refresh()
+
+    def _flatpak_process_error(self, error):
+        if error == QtCore.QProcess.ProcessError.FailedToStart:
+            self._flatpak_active_key = ''
+            self._set_app_update_status('Flatpak could not start. No update was confirmed.')
+            self.appUpdateRunningChanged.emit(False)
+
     # ── inventory ────────────────────────────────────────────────────────
 
     def _set_status(self, text):
@@ -619,6 +982,9 @@ class Bridge(QtCore.QObject):
         self._loading = False
         self.loadingChanged.emit(False)
         self._announce_count()
+        if self._verify_after_inventory:
+            self._verify_after_inventory = False
+            QtCore.QTimer.singleShot(0, lambda: self.checkApplicationUpdates(True))
 
     def _count_text(self):
         count = self._model.rowCount()
@@ -929,12 +1295,18 @@ class Bridge(QtCore.QObject):
 
     @QtCore.Slot(str)
     def updateApp(self, key):
+        """My Applications' legacy action routes through the new review gate."""
         app = self._model.app_record(key)
         if not manager.can_update(app):
             self._set_status(
                 'Automatic updates are not supported for this application.')
             return
-        self._guard(manager.update_app, key, 'Update failed', refresh=True)
+        selected = self._updates.candidate(key)
+        if selected is None or selected.state != update_engine.AVAILABLE:
+            self._set_status(
+                'Open the Updates tab and select Check now to review updates for this app.')
+            return
+        self.requestFlatpakUpdate(key)
 
     @QtCore.Slot(str)
     def uninstallApp(self, key):
@@ -1197,6 +1569,15 @@ class Bridge(QtCore.QObject):
         pipeline is cancelled first (the close is ignored once); an
         AppInstall upgrade in progress blocks closing; a running update
         check is killed, then the close proceeds."""
+        if self.appUpdateRunning:
+            self._set_app_update_status('Stop or finish the Flatpak update before closing.')
+            return False
+        for worker in (self._app_update_worker, self._flatpak_preflight_worker):
+            if worker is not None and worker.isRunning():
+                worker.requestInterruption()
+                self._set_app_update_status(
+                    'Cancelling application update check; close after it finishes.')
+                return False
         if self._catalog_initializing and self._catalog_worker is not None \
                 and self._catalog_worker.isRunning():
             self._set_catalog_status('Preparing repository metadata; close after setup completes.')
