@@ -58,6 +58,13 @@ def find_update_helper():
     adjacent = here / 'appinstall-installer'
     if adjacent.is_file():
         return adjacent
+    # A source installation deploys all modules to the XDG user data tree,
+    # not the checkout. Native installations must retain their own updater.
+    portable = here / 'portable_update.py'
+    user_data = Path(os.environ.get(
+        'XDG_DATA_HOME', Path.home() / '.local/share')) / 'appinstall'
+    if here.resolve() == user_data.resolve() and portable.is_file():
+        return portable
     local = here / 'install.sh'
     if local.is_file():
         return local
@@ -2206,18 +2213,37 @@ class Bridge(QtCore.QObject):
         self.updateStatusChanged.emit(self._update_status)
         self._update_action_visible = False
         self.updateActionVisibleChanged.emit(False)
+        executable = (sys.executable if self._update_helper.suffix == '.py'
+                      else '/usr/bin/bash')
         self._update_process.start(
-            '/usr/bin/bash', [str(self._update_helper), '--desktop-check'])
+            executable, [str(self._update_helper), '--desktop-check'])
         self._update_process.closeWriteChannel()
 
     @QtCore.Slot()
     def installUpdate(self):
         if self._update_operation or not self._update_tag:
             return
+        # Portable source installs use the same user-owned recoverable
+        # registration transaction on every supported host. Ask separately:
+        # unlike native packages, this replaces the installed user-source files.
+        if self._update_helper.name == 'portable_update.py':
+            answer = QtWidgets.QMessageBox.question(
+                self.anchor, 'Update portable AppInstall',
+                'Download and verify AppInstall ' + self._update_tag + ' from '
+                'the official stable release, then replace this user-source '
+                'installation? Your managed apps and settings are preserved. '
+                'The archive checksum checks integrity, not developer identity.',
+                QtWidgets.QMessageBox.StandardButton.Yes |
+                QtWidgets.QMessageBox.StandardButton.No,
+                QtWidgets.QMessageBox.StandardButton.No)
+            if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+                return
         self._update_operation = 'install'
         self._update_status = 'Installing AppInstall ' + self._update_tag + '…'
         self.updateStatusChanged.emit(self._update_status)
-        self._update_process.start('/usr/bin/bash', [
+        executable = (sys.executable if self._update_helper.suffix == '.py'
+                      else '/usr/bin/bash')
+        self._update_process.start(executable, [
             str(self._update_helper), '--desktop-update', self._update_tag,
         ])
         self._update_process.closeWriteChannel()
