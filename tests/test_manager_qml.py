@@ -406,12 +406,54 @@ class BridgePreferenceTests(QmlManagerBase):
 class CatalogModelTests(QmlManagerBase):
     """Discover results and installed app records stay separate."""
 
+    def setUp(self):
+        super().setUp()
+        # Metadata and artwork are optional worker-phase providers. Tests of
+        # catalog pagination/search must not access the live network or a
+        # rootless Distrobox container in the CI runner.
+        for obj, member in (
+            (manager_qml.catalog_artwork, "cache_results"),
+            (manager_qml.catalog_metadata, "repo_enrichment"),
+        ):
+            mock = patch.object(obj, member, return_value={})
+            mock.start()
+            self.addCleanup(mock.stop)
+
     def sample(self):
         return [{
             'appId': 'org.gimp.GIMP', 'name': 'GIMP',
             'summary': 'Image editor',
             'iconUrl': '', 'category': 'Graphics',
         }]
+
+    def test_source_qualified_details_are_model_roles_not_install_ids(self):
+        model = self.bridge.catalogModel
+        model.replace([{
+            **self.sample()[0], 'providerKey': 'flatpak:org.gimp.GIMP',
+            'developer': 'GIMP Team', 'version': '3.0',
+            'license': 'GPL-3.0-or-later',
+            'homepage': 'https://www.gimp.org/',
+            'componentId': 'org.gimp.GIMP',
+            'cachedIconUrl': 'file:///tmp/validated-gimp.png',
+        }])
+        i = model.index(0, 0)
+        self.assertEqual(model.data(i, model.ProviderKeyRole),
+                         'flatpak:org.gimp.GIMP')
+        self.assertEqual(model.data(i, model.DeveloperRole), 'GIMP Team')
+        self.assertEqual(model.data(i, model.VersionRole), '3.0')
+        self.assertEqual(model.data(i, model.LicenseRole), 'GPL-3.0-or-later')
+        self.assertEqual(model.data(i, model.HomepageRole), 'https://www.gimp.org/')
+        self.assertEqual(model.data(i, model.ComponentRole), 'org.gimp.GIMP')
+        self.assertEqual(model.data(i, model.IconRole),
+                         'file:///tmp/validated-gimp.png')
+        # Source and install identity remain unchanged after enrichment.
+        model.apply_metadata({'org.gimp.GIMP': {
+            'name': 'The GIMP', 'developer': 'Another publisher',
+            'appId': 'evil.package', 'source': 'RPM',
+        }})
+        self.assertEqual(model.data(i, model.AppIdRole), 'org.gimp.GIMP')
+        self.assertEqual(model.data(i, model.SourceRole), 'Flatpak')
+        self.assertEqual(model.data(i, model.NameRole), 'The GIMP')
 
     def test_model_roles_and_managed_detection(self):
         model = self.bridge.catalogModel
@@ -607,9 +649,15 @@ class CatalogModelTests(QmlManagerBase):
         lookup.assert_called_once()
         self.assertEqual(self.bridge.catalogModel.count, 1)
         index = self.bridge.catalogModel.index(0, 0)
+        # Provider URL stays as *metadata*, but the QML Image never receives
+        # it until the image was downloaded/validated into the local cache.
         self.assertEqual(self.bridge.catalogModel.data(
-            index, self.bridge.catalogModel.IconRole), icon_url)
+            index, self.bridge.catalogModel.IconRole), "")
         self.assertEqual(self.bridge._catalog_all[0]['iconUrl'], icon_url)
+        self.bridge.catalogModel.apply_artwork({'gimp': 'file:///tmp/verified-icon.png'})
+        self.assertEqual(self.bridge.catalogModel.data(
+            index, self.bridge.catalogModel.IconRole),
+            'file:///tmp/verified-icon.png')
         self.assertFalse(self.bridge.catalogHasMore)
 
     def test_stale_icon_updates_cannot_replace_another_source(self):
@@ -1156,6 +1204,40 @@ class QmlMenuBarTests(QmlManagerBase):
 
 class QmlDiscoverTests(QmlManagerBase):
     """New tab must not disturb My Applications, header or startup."""
+
+    def test_missing_store_icon_draws_letter_without_reference_error(self):
+        self.bridge.catalogModel.replace([{
+            'source': 'Flatpak', 'appId': 'org.example.Gimp',
+            'providerKey': 'flatpak:org.example.Gimp',
+            'name': 'GIMP', 'summary': 'Test image editor',
+            'category': 'Graphics', 'iconUrl': '', 'developer': '',
+            'version': '', 'license': '', 'homepage': '', 'componentId': '',
+        }])
+        self.engine = QtQml.QQmlApplicationEngine()
+        self.engine.rootContext().setContextProperty('bridge', self.bridge)
+        self.engine.rootContext().setContextProperty('appsModel', self.model)
+        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        with QmlLoadCapture() as capture:
+            self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
+            self.assertTrue(self.engine.rootObjects(), capture.messages)
+            window = self.engine.rootObjects()[0]
+            window.setProperty('discoverSelected', True)
+            window.show()
+            QtTest.QTest.qWait(140)
+            self.app.processEvents()
+            expr = lambda code: QtQml.QQmlExpression(
+                QtQml.qmlContext(window), window, code).evaluate()[0]
+            try:
+                self.assertEqual(expr('catalogList.count'), 1)
+                self.assertTrue(expr('catalogList.itemAtIndex(0) !== null'))
+                self.assertTrue(expr('catalogList.itemAtIndex(0).usingFallback'))
+                self.assertEqual(expr('catalogList.itemAtIndex(0).renderedInitial'), 'G')
+                self.assertFalse(any('ReferenceError' in m for m in capture.messages),
+                                 capture.messages)
+            finally:
+                window.close()
+                self.engine.deleteLater()
+                self.app.processEvents()
 
     def test_discover_switches_pages_and_keeps_header(self):
         self.engine = QtQml.QQmlApplicationEngine()

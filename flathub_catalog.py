@@ -132,6 +132,8 @@ def _base_entries(body):
             "summary": _clean_text(row.get("summary"), 300),
             "iconUrl": _icon_url(row.get("icon") or row.get("icon_url")),
             "category": "",
+            "developer": "", "license": "", "homepage": "", "version": "",
+            "componentId": app_id,
         })
         if len(entries) >= MAX_SEARCH_RESULTS:
             break
@@ -158,12 +160,24 @@ def _enrich(row):
     categories = detail.get("categories")
     cat = next((_clean_text(x, 55) for x in categories if isinstance(x, str)),
                "") if isinstance(categories, list) else ""
+    developer = detail.get("developer_name") or detail.get("developer")
+    if isinstance(developer, dict):
+        developer = developer.get("name")
+    urls = detail.get("urls")
+    homepage = (urls.get("homepage") if isinstance(urls, dict)
+                else detail.get("homepage"))
     return {
         **row,
         "name": _clean_text(detail.get("name"), 140) or row["name"],
         "summary": _clean_text(detail.get("summary"), 300) or row["summary"],
         "iconUrl": icon or row["iconUrl"],
         "category": cat,
+        "developer": _clean_text(developer, 140),
+        "license": _clean_text(
+            detail.get("project_license") or detail.get("license"), 120),
+        "homepage": _clean_text(homepage, 850),
+        "version": _clean_text(detail.get("version"), 100),
+        "componentId": app_id,
     }
 
 
@@ -287,10 +301,19 @@ def _appimage_rows(query=""):
         categories = item.get("categories", [])
         category = (_clean_text(categories[0], 55) if isinstance(categories, list)
                     and categories and isinstance(categories[0], str) else "")
+        author = item.get("authors")
+        if isinstance(author, list):
+            author = next((x for x in author if isinstance(x, str)), "")
+        elif not isinstance(author, str):
+            author = ""
         rows.append({
             "appId": name, "name": name.replace("_", " "),
             "summary": summary, "iconUrl": _appimage_icon(item),
             "category": category, "source": "AppImage",
+            "developer": _clean_text(author, 140),
+            "license": _clean_text(item.get("license"), 120),
+            "version": _clean_text(item.get("version"), 100),
+            "componentId": "",
             "sourceUrl": "https://appimage.github.io/apps/"
                          + urllib.parse.quote(name, safe=""),
             "installUrl": _appimage_download(item),

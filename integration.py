@@ -33,6 +33,7 @@ modules = (
     'launch_monitor.py', 'manager.py', 'manager_qml.py', 'result_ui.py',
     'runtime_probe.py', 'diagnostics_core.py', 'diagnostics_ui.py',
     'url_install.py', 'url_dialog.py', 'flathub_catalog.py',
+    'catalog_metadata.py', 'catalog_artwork.py',
     'repository_catalog.py', 'update_engine.py', 'repository_upgrades.py',
 )
 ICON_SIZES = (16, 24, 32, 48, 64, 128, 256, 512)

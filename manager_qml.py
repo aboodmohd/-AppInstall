@@ -36,6 +36,8 @@ import manager
 import settings
 import flathub_catalog
 import repository_catalog
+import catalog_metadata
+import catalog_artwork
 import update_engine
 import repository_upgrades
 import appimage_updates
@@ -315,6 +317,12 @@ class CatalogModel(QtCore.QAbstractListModel):
     ManagedRole = QtCore.Qt.ItemDataRole.UserRole + 6
     SourceRole = QtCore.Qt.ItemDataRole.UserRole + 7
     InstallUrlRole = QtCore.Qt.ItemDataRole.UserRole + 8
+    DeveloperRole = QtCore.Qt.ItemDataRole.UserRole + 9
+    VersionRole = QtCore.Qt.ItemDataRole.UserRole + 10
+    LicenseRole = QtCore.Qt.ItemDataRole.UserRole + 11
+    HomepageRole = QtCore.Qt.ItemDataRole.UserRole + 12
+    ComponentRole = QtCore.Qt.ItemDataRole.UserRole + 13
+    ProviderKeyRole = QtCore.Qt.ItemDataRole.UserRole + 14
     countChanged = QtCore.Signal()
 
     def __init__(self, parent=None):
@@ -337,6 +345,12 @@ class CatalogModel(QtCore.QAbstractListModel):
             self.ManagedRole: b'managed',
             self.SourceRole: b'source',
             self.InstallUrlRole: b'installUrl',
+            self.DeveloperRole: b'developer',
+            self.VersionRole: b'version',
+            self.LicenseRole: b'license',
+            self.HomepageRole: b'homepage',
+            self.ComponentRole: b'componentId',
+            self.ProviderKeyRole: b'providerKey',
         }
 
     def rowCount(self, parent=QtCore.QModelIndex()):
@@ -350,7 +364,9 @@ class CatalogModel(QtCore.QAbstractListModel):
             self.AppIdRole: row['appId'],
             self.NameRole: row['name'],
             self.SummaryRole: row['summary'],
-            self.IconRole: row['iconUrl'],
+            # Never feed unbounded remote metadata links directly to Qt Quick.
+            # The worker replaces them with verified user-local bitmap files.
+            self.IconRole: row.get('cachedIconUrl', ''),
             self.CategoryRole: row['category'],
             self.ManagedRole: (
                 row['appId'] in self._managed
@@ -359,6 +375,12 @@ class CatalogModel(QtCore.QAbstractListModel):
             ),
             self.SourceRole: row.get('source', 'Flatpak'),
             self.InstallUrlRole: row.get('installUrl', ''),
+            self.DeveloperRole: row.get('developer', ''),
+            self.VersionRole: row.get('version', ''),
+            self.LicenseRole: row.get('license', ''),
+            self.HomepageRole: row.get('homepage', ''),
+            self.ComponentRole: row.get('componentId', ''),
+            self.ProviderKeyRole: row.get('providerKey', ''),
         }.get(role)
 
     def replace(self, rows):
@@ -377,11 +399,37 @@ class CatalogModel(QtCore.QAbstractListModel):
         self.countChanged.emit()
 
     def apply_icons(self, icons):
-        """Update visible card artwork without resetting positions or selection."""
+        """Preserve source URLs for caching; never display raw network links."""
         for index, row in enumerate(self._rows):
             icon = icons.get(row['appId'])
             if icon and icon != row.get('iconUrl', ''):
                 row['iconUrl'] = icon
+
+    def apply_metadata(self, metadata):
+        """Update visible metadata only. Package install identity is immutable."""
+        fields = ('name', 'summary', 'developer', 'version', 'license',
+                  'homepage', 'category', 'componentId', 'iconUrl')
+        for index, row in enumerate(self._rows):
+            values = metadata.get(row['appId'], {})
+            if not isinstance(values, dict):
+                continue
+            changed = False
+            for field in fields:
+                value = values.get(field)
+                if isinstance(value, str) and value and value != row.get(field):
+                    row[field] = value
+                    changed = True
+            if changed:
+                item = self.index(index, 0)
+                self.dataChanged.emit(item, item)
+
+    def apply_artwork(self, cached):
+        """Accept only local cached icons, never arbitrary remote image URLs."""
+        for index, row in enumerate(self._rows):
+            uri = cached.get(row['appId'], '')
+            if (isinstance(uri, str) and uri.startswith('file:///')
+                    and uri != row.get('cachedIconUrl', '')):
+                row['cachedIconUrl'] = uri
                 item = self.index(index, 0)
                 self.dataChanged.emit(item, item, [self.IconRole])
 
@@ -408,6 +456,8 @@ class CatalogWorker(QtCore.QThread):
 
     ready = QtCore.Signal(str, list)
     iconsReady = QtCore.Signal(str, str, dict)
+    metadataReady = QtCore.Signal(str, str, dict)
+    artworkReady = QtCore.Signal(str, str, dict)
     failed = QtCore.Signal(str, str)
 
     setup_required = QtCore.Signal(str)
@@ -434,15 +484,40 @@ class CatalogWorker(QtCore.QThread):
             else:
                 results = (flathub_catalog.search(self.query)
                            if self.query else flathub_catalog.popular())
+            # Normalize source-qualified identity and safe known fields.
+            # Cards show immediately; optional metadata and icon downloads
+            # follow off the GUI thread without changing install provenance.
+            results = catalog_metadata.normalize_rows(results)
             self.ready.emit(self.query, results)
-            # Blank-query native browse returns packages from the official
-            # repository, just as a typed search does.
-            # Show package cards immediately. Official AppStream icons resolve
-            # later on this worker, never holding up the main QML/UI thread.
-            if self.source in ("DEB", "RPM") and results:
-                icons = repository_catalog.icons_for_results(results)
-                if icons:
-                    self.iconsReady.emit(self.query, self.source, icons)
+            if self.isInterruptionRequested() or not results:
+                return
+            hydrated = [dict(row) for row in results]
+            if self.source in ("DEB", "RPM"):
+                metadata = catalog_metadata.repo_enrichment(
+                    repository_catalog.kind_for(self.source), results)
+                if self.isInterruptionRequested():
+                    return
+                if metadata:
+                    self.metadataReady.emit(self.query, self.source, metadata)
+                    for row in hydrated:
+                        patch = metadata.get(row['appId'])
+                        if patch:
+                            row.update({k: v for k, v in patch.items() if v})
+                # Debian's package-specific generator HTML is an optional
+                # fallback. Never reuse its artwork for Fedora packages.
+                if self.source == "DEB":
+                    icons = repository_catalog.icons_for_results(
+                        [row for row in hydrated if not row.get("iconUrl")])
+                    if icons:
+                        self.iconsReady.emit(self.query, self.source, icons)
+                        for row in hydrated:
+                            if row['appId'] in icons and not row.get('iconUrl'):
+                                row['iconUrl'] = icons[row['appId']]
+            if self.isInterruptionRequested():
+                return
+            cached = catalog_artwork.cache_results(hydrated)
+            if cached and not self.isInterruptionRequested():
+                self.artworkReady.emit(self.query, self.source, cached)
         except repository_catalog.CatalogNotReady:
             self.setup_required.emit(self.source)
         except (flathub_catalog.CatalogError, ValueError) as error:
@@ -1486,6 +1561,8 @@ class Bridge(QtCore.QObject):
         self._catalog_worker = worker
         worker.ready.connect(self._catalog_ready)
         worker.iconsReady.connect(self._catalog_icons_ready)
+        worker.metadataReady.connect(self._catalog_metadata_ready)
+        worker.artworkReady.connect(self._catalog_artwork_ready)
         worker.failed.connect(self._catalog_failed)
         worker.setup_required.connect(self._catalog_needs_setup)
         worker.finished.connect(self._catalog_finished)
@@ -1549,6 +1626,40 @@ class Bridge(QtCore.QObject):
             if icon:
                 row['iconUrl'] = icon
         self._catalog.apply_icons(icons)
+
+    def _catalog_metadata_ready(self, query, source, metadata):
+        worker = self._catalog_worker
+        if (worker is None or self._catalog_pending is not None
+                or source != self._catalog_source or worker.source != source
+                or worker.query != query):
+            return
+        # Reject any unrelated keys or source changes. Only harmless
+        # presentation fields can change after package discovery.
+        allowed = ('name', 'summary', 'developer', 'version', 'license',
+                   'homepage', 'category', 'componentId', 'iconUrl')
+        sanitized = {}
+        for row in self._catalog_all:
+            values = metadata.get(row['appId'])
+            if not isinstance(values, dict):
+                continue
+            normalized = {k: catalog_metadata.text(v, 1100) for k, v in
+                          values.items() if k in allowed and isinstance(v, str)}
+            if normalized:
+                sanitized[row['appId']] = normalized
+                row.update({k: v for k, v in normalized.items() if v})
+        self._catalog.apply_metadata(sanitized)
+
+    def _catalog_artwork_ready(self, query, source, cached):
+        worker = self._catalog_worker
+        if (worker is None or self._catalog_pending is not None
+                or source != self._catalog_source or worker.source != source
+                or worker.query != query):
+            return
+        for row in self._catalog_all:
+            local_uri = cached.get(row['appId'], '')
+            if local_uri and isinstance(local_uri, str) and local_uri.startswith('file:///'):
+                row['cachedIconUrl'] = local_uri
+        self._catalog.apply_artwork(cached)
 
     def _announce_catalog_results(self):
         total = len(self._catalog_all)
