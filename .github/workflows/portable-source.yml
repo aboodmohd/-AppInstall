@@ -94,6 +94,7 @@ jobs:
               test "$("$HOME/.local/bin/appinstall" --version)" = "appinstall '"$version"'"
               test -f "$HOME/.local/share/appinstall/manager_ui/main.qml"
               test -f "$HOME/.local/share/appinstall/repository_catalog.py"
+              test -f "$HOME/.local/share/appinstall/portable_update.py"
               "$HOME/.local/bin/appinstall-uninstall"
               test ! -e "$HOME/.local/bin/appinstall"
             '
