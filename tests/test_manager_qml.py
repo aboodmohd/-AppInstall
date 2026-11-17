@@ -1544,7 +1544,7 @@ class QmlDiscoverTests(QmlManagerBase):
                 self.assertTrue(evaluate("catalogDetailsPage.visible"))
                 self.assertLessEqual(evaluate("detailsContent.width"), 1050)
                 self.assertLess(evaluate("catalogDetailsHero.height"), 170)
-                self.assertLess(evaluate("catalogDetailsAboutCard.height"), 200)
+                self.assertLess(evaluate("detailsAboutCard.height"), 200)
                 self.assertEqual(evaluate("catalogDetailsName.text"), "Example App")
                 self.assertEqual(evaluate("detailsIdentityCard.height"), 119)
                 self.assertEqual(evaluate("detailsColumns.columns"), 2)
