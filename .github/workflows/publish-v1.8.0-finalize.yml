@@ -1,0 +1,144 @@
+name: Finalize approved AppInstall v1.8.0 release
+
+# Recovery of the ALREADY UPLOADED, verified v1.8.0 draft.
+# The prior one-time run stopped only because GitHub drafts have no public tag.
+on:
+  push:
+    branches: [release/v1.8.0-publish]
+    paths:
+      - ".github/workflows/publish-v1.8.0-finalize.yml"
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: appinstall-v1.8.0-publication-once
+  cancel-in-progress: false
+
+jobs:
+  finalize:
+    name: Verify draft assets match build, then publish existing v1.8.0 draft
+    if: github.event_name == 'push' && github.ref == 'refs/heads/release/v1.8.0-publish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_SHA: 20dc69dfa801f1924ef5a0f76d49c01b63cf44f4
+      EXPECTED_TREE: beb2082ad28d293f2a57fe21a71fe5731cd7d9e7
+      BUILD_RUN_ID: "44112288062"
+      DRAFT_RELEASE_ID: "448827958"
+      BUILD_ARTIFACT_ID: "14340694347"
+      BUILD_ARTIFACT_DIGEST: sha256:bb8d9193e1dff67f1b7e50ec3715529e896c21aa45f1906170247065b6a7afe6
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Enforce approved commit, exact draft identity, no existing tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/release/v1.8.0-publish
+          test "$(git rev-parse HEAD~2)" = "$TARGET_SHA"
+          test "$(git ls-remote --heads origin main | cut -f1)" = "$TARGET_SHA"
+          test "$(git rev-parse "$TARGET_SHA^{tree}")" = "$EXPECTED_TREE"
+          test "$(git show "$TARGET_SHA:PKGBUILD" | sed -n 's/^pkgver=//p')" = 1.8.0
+          test "$(git show "$TARGET_SHA:appinstall" | grep -xc 'VERSION="1.8.0"')" -eq 1
+          mapfile -t actual < <(git diff --name-only "$TARGET_SHA" HEAD | sort)
+          expected=(".github/workflows/publish-v1.8.0.yml" ".github/workflows/publish-v1.8.0-finalize.yml" "release-notes/v1.8.0.md")
+          test "$(printf '%s\n' "${actual[@]}")" = "$(printf '%s\n' "${expected[@]}" | sort)"
+          if git ls-remote --tags --exit-code origin refs/tags/v1.8.0 >/dev/null 2>&1; then
+            echo "Release tag already exists. Refuse a second publication attempt." >&2
+            exit 1
+          fi
+          read -r tag draft prerelease target <<<"$(gh api "repos/$GITHUB_REPOSITORY/releases/$DRAFT_RELEASE_ID" --jq '[.tag_name, (.draft|tostring), (.prerelease|tostring), .target_commitish] | join(" ")')"
+          test "$tag" = v1.8.0
+          test "$draft" = true
+          test "$prerelease" = false
+          test "$target" = "$TARGET_SHA"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" = v1.7.0
+          read -r run_sha conclusion source_branch source_event <<<"$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID" --jq '[.head_sha,.conclusion,.head_branch,.event] | join(" ")')"
+          test "$run_sha" = "$TARGET_SHA"
+          test "$conclusion" = success
+          test "$source_branch" = main
+          test "$source_event" = push
+          read -r artifact_digest artifact_id artifact_head <<<"$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID/artifacts" --jq '.artifacts[] | select(.name == "appinstall-v1.8.0-release-candidate") | [.digest, (.id|tostring), .workflow_run.head_sha] | join(" ")')"
+          test "$artifact_digest" = "$BUILD_ARTIFACT_DIGEST"
+          test "$artifact_id" = "$BUILD_ARTIFACT_ID"
+          test "$artifact_head" = "$TARGET_SHA"
+
+      - name: Re-download exact successful merged-main release bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: appinstall-v1.8.0-release-candidate
+          run-id: 44112288062
+          repository: aboodmohd/-AppInstall
+          github-token: ${{ github.token }}
+          path: release
+
+      - name: Compare draft uploaded bytes to verified build files and manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd release && sha256sum --check --strict SHA256SUMS)
+          python3 - <<'PYTHON'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+
+          expected = {
+              "appinstall-1.8.0-1-any.pkg.tar.zst":
+                  "626f05ec966b3d6f58f9690c2bfb12f5e864e00e92c21a80d917cf72c1564c3e",
+              "appinstall_1.8.0-1_all.deb":
+                  "e99ff6a147d4e1617a07a9afa92ed76435d9b8ce611ada8b9c275358f3b4d961",
+              "appinstall-1.8.0-1.noarch.rpm":
+                  "f0373a42b14bf48af80cd19ee6eb73463690261e74fffa76542df80762842e32",
+              "appinstall-1.8.0-portable.tar.gz":
+                  "6544a5021f3609be7d0aece241f096759517c2f058af3f3202568dbf2d9fb1b8",
+              "SHA256SUMS":
+                  "a68e841bb189c508bdd3b3f76265277b0b588076fac3b9b235fd4b64b8bd29b9",
+          }
+          root = Path("release")
+          assert {p.name for p in root.iterdir()} == set(expected)
+          manifest = (root / "SHA256SUMS").read_text().splitlines()
+          assert len(manifest) == 4
+          names = [re.fullmatch(r"([0-9a-f]{64})  ([A-Za-z0-9._-]+)", m) for m in manifest]
+          assert all(names)
+          assert {m.group(2) for m in names} == set(expected) - {"SHA256SUMS"}
+          draft = json.loads(subprocess.check_output([
+              "gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/releases/{os.environ['DRAFT_RELEASE_ID']}"
+          ], text=True))
+          assert draft["tag_name"] == "v1.8.0" and draft["draft"] is True
+          assert draft["target_commitish"] == os.environ["TARGET_SHA"]
+          uploaded = {a["name"]: a for a in draft["assets"]}
+          assert set(uploaded) == set(expected)
+          for filename, digest in expected.items():
+              path = root / filename
+              assert path.is_file() and not path.is_symlink() and path.stat().st_size > 0
+              assert hashlib.sha256(path.read_bytes()).hexdigest() == digest, filename
+              assert uploaded[filename]["digest"] == "sha256:" + digest, filename
+              assert uploaded[filename]["size"] == path.stat().st_size, filename
+              assert uploaded[filename]["state"] == "uploaded", filename
+          print("PASS: complete byte-for-byte digest and size match across all 5 draft assets")
+          PYTHON
+
+      - name: Publish the verified existing draft (no replacement upload)
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release edit v1.8.0 --repo "$GITHUB_REPOSITORY" --draft=false --latest
+
+      - name: Verify public stable v1.8.0, correct tag and unchanged assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh release view v1.8.0 --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)" = false
+          test "$(gh release view v1.8.0 --repo "$GITHUB_REPOSITORY" --json isPrerelease --jq .isPrerelease)" = false
+          test "$(gh release view v1.8.0 --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets | length')" -eq 5
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v1.8.0" --jq .object.sha)" = "$TARGET_SHA"
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" = v1.8.0
+          gh release view v1.8.0 --repo "$GITHUB_REPOSITORY" --json url,isDraft,isPrerelease,assets --jq '{url:.url,draft:.isDraft,prerelease:.isPrerelease,assets:[.assets[].name]}'
