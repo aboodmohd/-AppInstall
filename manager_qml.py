@@ -38,6 +38,7 @@ import flathub_catalog
 import repository_catalog
 import update_engine
 import repository_upgrades
+import appimage_updates
 
 QML_DIR = Path(__file__).resolve().with_name('manager_ui')
 
@@ -517,6 +518,11 @@ class UpdateModel(QtCore.QAbstractListModel):
                         and candidate.mechanism == "apt-repository")
                     or (candidate.format == "rpm"
                         and candidate.mechanism == "dnf-repository")
+                    or (candidate.format == "appimage"
+                        and candidate.mechanism == "appimage-zsync"
+                        and candidate.reference
+                        and update_engine.COMMIT_RE.fullmatch(
+                            candidate.installed_revision))
                 )),
             self.ReferenceRole: candidate.reference,
         }.get(role)
@@ -618,6 +624,47 @@ class RepositoryApplyWorker(QtCore.QThread):
             self.failed.emit(str(error))
 
 
+class AppImagePrepareWorker(QtCore.QThread):
+    """Download and inspect a changed AppImage without modifying its launcher."""
+
+    ready = QtCore.Signal(object)
+    failed = QtCore.Signal(str)
+    progress = QtCore.Signal(str)
+
+    def __init__(self, app, candidate, parent=None):
+        super().__init__(parent)
+        self.app = dict(app)
+        self.candidate = candidate
+
+    def run(self):
+        try:
+            result = appimage_updates.AppImageUpgradeService().prepare(
+                self.app, self.candidate, progress=self.progress.emit)
+            self.ready.emit(result)
+        except Exception as error:
+            self.failed.emit(str(error))
+
+
+class AppImageApplyWorker(QtCore.QThread):
+    """Atomic staged swap; the previous AppImage remains as a recovery copy."""
+
+    ready = QtCore.Signal(object)
+    failed = QtCore.Signal(str)
+
+    def __init__(self, plan, app, parent=None):
+        super().__init__(parent)
+        self.plan = plan
+        self.app = dict(app)
+
+    def run(self):
+        try:
+            result = appimage_updates.AppImageUpgradeService().apply(
+                self.plan, self.app)
+            self.ready.emit(result)
+        except Exception as error:
+            self.failed.emit(str(error))
+
+
 class Bridge(QtCore.QObject):
     """Actions and state the QML screen reads; every action calls the
     existing manager backend through its normal entry point."""
@@ -670,6 +717,11 @@ class Bridge(QtCore.QObject):
         self._repository_pending_key = None
         self._repository_pending_candidate = None
         self._repository_pending_app = None
+        self._appimage_prepare_worker = None
+        self._appimage_apply_worker = None
+        self._appimage_pending_key = None
+        self._appimage_pending_app = None
+        self._appimage_pending_candidate = None
         self._flatpak_pending_key = None
         self._flatpak_pending_candidate = None
         self._flatpak_active_key = ''
@@ -816,7 +868,9 @@ class Bridge(QtCore.QObject):
     def appUpdateRunning(self):
         return (self.flatpakUpdateRunning or
                 (self._repository_apply_worker is not None and
-                 self._repository_apply_worker.isRunning()))
+                 self._repository_apply_worker.isRunning())
+                or (self._appimage_apply_worker is not None and
+                    self._appimage_apply_worker.isRunning()))
 
     @QtCore.Property(bool, notify=appUpdateRunningChanged)
     def flatpakUpdateRunning(self):
@@ -826,6 +880,12 @@ class Bridge(QtCore.QObject):
     def repositoryUpdateRunning(self):
         return (self._repository_apply_worker is not None and
                 self._repository_apply_worker.isRunning())
+
+    @QtCore.Property(bool, notify=appUpdateBusyChanged)
+    def appImagePreparing(self):
+        # This is also true between constructing and starting the worker, so
+        # QML does not briefly expose Cancel check for an AppImage download.
+        return bool(self._app_update_busy and self._appimage_pending_key)
 
     def _set_app_update_status(self, message):
         self._app_update_status = str(message)[:1000]
@@ -841,6 +901,7 @@ class Bridge(QtCore.QObject):
         """Provider reads only. Never creates containers or installs anything."""
         if (self._app_update_busy or self._flatpak_preflight_worker is not None
                 or self._repository_preview_worker is not None
+                or self._appimage_prepare_worker is not None
                 or self.appUpdateRunning):
             return
         self._app_update_snapshot = list(self._model._inventory)
@@ -888,6 +949,7 @@ class Bridge(QtCore.QObject):
         """Revalidate a scanned, explicit user-scope Flatpak before approval."""
         if (self._app_update_busy or self._flatpak_preflight_worker is not None
                 or self._repository_preview_worker is not None
+                or self._appimage_prepare_worker is not None
                 or self.appUpdateRunning):
             return
         candidate = self._updates.candidate(key)
@@ -928,14 +990,179 @@ class Bridge(QtCore.QObject):
             self.requestFlatpakUpdate(key)
         elif candidate.format in ('deb', 'rpm'):
             self.requestRepositoryUpdate(key)
+        elif candidate.format == 'appimage':
+            self.requestAppImageUpdate(key)
         else:
             self._set_app_update_status('This application requires manual replacement.')
+
+    @QtCore.Slot(str)
+    def requestAppImageUpdate(self, key):
+        """Explicitly consent to upstream download before the final install review."""
+        if (self._app_update_busy or self._appimage_prepare_worker is not None
+                or self._repository_preview_worker is not None
+                or self._flatpak_preflight_worker is not None or self.appUpdateRunning):
+            return
+        candidate = self._updates.candidate(key)
+        if (candidate is None or candidate.state != update_engine.AVAILABLE
+                or candidate.format != 'appimage'
+                or candidate.mechanism != 'appimage-zsync'
+                or not candidate.requires_review
+                or not update_engine.COMMIT_RE.fullmatch(
+                    candidate.installed_revision) or not candidate.reference):
+            self._set_app_update_status(
+                'No verified AppImage update selected; check updates again.')
+            return
+        try:
+            app = self._model.app_record(key)
+        except KeyError:
+            self._set_app_update_status('AppImage no longer managed. Refresh first.')
+            return
+        if (app.get('source') != 'launch-monitor'
+                or app.get('format') != 'appimage'
+                or app.get('status') != 'installed'):
+            self._set_app_update_status(
+                'AppImage ownership or health changed. Refresh first.')
+            return
+        choice = QtWidgets.QMessageBox.question(
+            self.anchor, 'Download AppImage update for review',
+            'AppInstall can download an upstream zsync update to a private '
+            'temporary directory without replacing your application.\n\n'
+            'Source: ' + candidate.source + '\n'
+            'Application: ' + app.get('name', key) + '\n\n'
+            'The update uses embedded upstream metadata and an optional '
+            'appimageupdatetool installation. zsync checksums are not '
+            'cryptographic publisher signatures. The updater can contact '
+            'upstream servers, so only update software you trust.\n\n'
+            'Download the candidate for inspection? A second confirmation '
+            'will be required before any installed AppImage is changed.',
+            QtWidgets.QMessageBox.StandardButton.Yes |
+            QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No)
+        if choice != QtWidgets.QMessageBox.StandardButton.Yes:
+            self._set_app_update_status(
+                'AppImage download declined; no files changed.')
+            return
+        self._appimage_pending_key = key
+        self._appimage_pending_app = app
+        self._appimage_pending_candidate = candidate
+        self._app_update_progress = 'Preparing AppImage update without changing the installed file…\n'
+        self.appUpdateProgressChanged.emit(self._app_update_progress)
+        self._set_app_update_busy(True)
+        self._set_app_update_status('Downloading and validating AppImage update…')
+        worker = AppImagePrepareWorker(app, candidate, self)
+        self._appimage_prepare_worker = worker
+        worker.ready.connect(self._appimage_prepare_ready)
+        worker.failed.connect(self._appimage_prepare_failed)
+        worker.progress.connect(self._appimage_prepare_progress)
+        worker.finished.connect(self._appimage_prepare_finished)
+        worker.start()
+
+    def _appimage_prepare_progress(self, value):
+        self._app_update_progress = (
+            self._app_update_progress + str(value)[:450] + '\n')[-5000:]
+        self.appUpdateProgressChanged.emit(self._app_update_progress)
+
+    def _appimage_prepare_ready(self, plan):
+        prior = self._appimage_pending_candidate
+        app = self._appimage_pending_app
+        if (not isinstance(plan, appimage_updates.AppImagePlan)
+                or prior is None or app is None
+                or plan.key != self._appimage_pending_key
+                or prior.state != update_engine.AVAILABLE
+                or prior.format != 'appimage'
+                or plan.original_sha256 != prior.installed_revision
+                or plan.update_information != prior.reference):
+            appimage_updates.cleanup_plan(plan)
+            self._set_app_update_status(
+                'The downloaded AppImage no longer matches the reviewed source. '
+                'No installed file changed.')
+            return
+        dlg = QtWidgets.QDialog(self.anchor)
+        dlg.setObjectName('appImageUpdateReviewDialog')
+        dlg.setWindowTitle('Review staged AppImage update')
+        dlg.setModal(True)
+        dlg.resize(660, 490)
+        layout = QtWidgets.QVBoxLayout(dlg)
+        summary = QtWidgets.QLabel(
+            'Application: ' + app.get('name', plan.key) + '\n'
+            'Embedded source: ' + plan.source + '\n'
+            'Installed size: ' + f'{plan.original_size / (1024 * 1024):.1f} MiB' + '\n'
+            'Downloaded size: ' + f'{plan.candidate_size / (1024 * 1024):.1f} MiB' + '\n'
+            'Installed SHA-256: ' + plan.original_sha256[:20] + '…\n'
+            'Downloaded SHA-256: ' + plan.candidate_sha256[:20] + '…\n\n'
+            'This is an upstream zsync checksum, not a signed publisher identity. '
+            'AppInstall verified the AppImage structure and source channel '
+            'without running it. The app launcher and settings will be kept; '
+            'the previous executable will remain as a recovery copy. '
+            'The downloaded program will execute only when you open it.')
+        summary.setWordWrap(True)
+        layout.addWidget(summary)
+        info = QtWidgets.QPlainTextEdit(dlg)
+        info.setObjectName('appImageUpdateMetadataPreview')
+        info.setReadOnly(True)
+        info.setPlainText(
+            'Embedded update information:\n' + plan.update_information +
+            '\n\nStaged executable: ' + plan.staged_file +
+            '\n\nFull SHA-256:\n' + plan.candidate_sha256)
+        layout.addWidget(info, 1)
+        controls = QtWidgets.QDialogButtonBox(dlg)
+        controls.addButton(
+            'Replace this AppImage', QtWidgets.QDialogButtonBox.ButtonRole.AcceptRole)
+        controls.addButton(QtWidgets.QDialogButtonBox.StandardButton.Cancel)
+        controls.accepted.connect(dlg.accept)
+        controls.rejected.connect(dlg.reject)
+        layout.addWidget(controls)
+        if dlg.exec() != QtWidgets.QDialog.DialogCode.Accepted:
+            appimage_updates.cleanup_plan(plan)
+            self._set_app_update_status(
+                'AppImage replacement declined; previous version remains unchanged.')
+            return
+        self._set_app_update_status('Atomically replacing reviewed AppImage…')
+        worker = AppImageApplyWorker(plan, app, self)
+        self._appimage_apply_worker = worker
+        worker.ready.connect(self._appimage_apply_ready)
+        worker.failed.connect(self._appimage_apply_failed)
+        worker.finished.connect(self._appimage_apply_finished)
+        worker.start()
+        self.appUpdateRunningChanged.emit(True)
+
+    def _appimage_prepare_failed(self, reason):
+        self._set_app_update_status('AppImage download or verification failed: ' +
+                                    str(reason)[:650] + '. Previous version unchanged.')
+
+    def _appimage_prepare_finished(self):
+        self._appimage_prepare_worker = None
+        self._appimage_pending_key = None
+        self._appimage_pending_app = None
+        self._appimage_pending_candidate = None
+        self._set_app_update_busy(False)
+
+    def _appimage_apply_ready(self, result):
+        self._appimage_prepare_progress(result.message)
+        self._set_app_update_status(
+            'AppImage replaced successfully; previous version saved at ' +
+            result.backup + '. Checking installed application…')
+
+    def _appimage_apply_failed(self, reason):
+        self._set_app_update_status(
+            'AppImage replacement blocked: ' + str(reason)[:650] +
+            '. The previous executable should be reviewed before retrying.')
+
+    def _appimage_apply_finished(self):
+        worker = self._appimage_apply_worker
+        if worker is not None:
+            appimage_updates.cleanup_plan(worker.plan)
+        self._appimage_apply_worker = None
+        self.appUpdateRunningChanged.emit(False)
+        self._verify_after_inventory = True
+        self.refresh()
 
     @QtCore.Slot(str)
     def requestRepositoryUpdate(self, key):
         """A fresh read-only transaction preview precedes any permission prompt."""
         if (self._app_update_busy or self._repository_preview_worker is not None
-                or self._flatpak_preflight_worker is not None or self.appUpdateRunning):
+                or self._flatpak_preflight_worker is not None
+                or self._appimage_prepare_worker is not None or self.appUpdateRunning):
             return
         candidate = self._updates.candidate(key)
         if (candidate is None or candidate.state != update_engine.AVAILABLE
@@ -1785,8 +2012,14 @@ class Bridge(QtCore.QObject):
         check is killed, then the close proceeds."""
         if self.appUpdateRunning:
             self._set_app_update_status(
-                'Finish the running package update before closing. '
-                'Do not interrupt a Distrobox package transaction.')
+                'Finish the running application update before closing. '
+                'Do not interrupt a package transaction or an atomic AppImage replacement.')
+            return False
+        if (self._appimage_prepare_worker is not None
+                and self._appimage_prepare_worker.isRunning()):
+            self._set_app_update_status(
+                'AppImage download is still staging. Close after preparation '
+                'and its review dialog have finished.')
             return False
         for worker in (self._app_update_worker, self._flatpak_preflight_worker,
                        self._repository_preview_worker):

@@ -316,8 +316,10 @@ class AppImageUpdateTests(unittest.TestCase):
 
     def test_without_embedded_update_info_requires_manual_review(self):
         a = app("appimage", "example", target=str(self.target))
-        run = FakeRunner({("readelf", "--string-dump=.upd_info",
-                           str(self.target)): ("", 1)})
+        run = FakeRunner({
+            ("readelf", "--string-dump=.upd_info", str(self.target)): ("", 1),
+            ("readelf", "--string-dump=.upd-info", str(self.target)): ("", 1),
+        })
         with patch.object(updates.shutil, "which", return_value="/usr/bin/readelf"):
             result = updates.UpdateEngine(runner=run).check_one(a)
         self.assertEqual(result.state, updates.MANUAL_REQUIRED)

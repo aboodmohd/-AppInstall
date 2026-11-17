@@ -262,35 +262,71 @@ class UpdateEngine:
             requires_review=state == AVAILABLE)
 
     def _appimage(self, app, cancelled):
-        # No external version check is performed in PR #1. The next AppImage
-        # PR will validate updater metadata, URL and full artifact identity
-        # before offering an executable update action.
+        """Passive embedded-info discovery, then a *read-only* upstream check.
+
+        Only managed, type-2 AppImages with a supported zsync transport and
+        the optional appimageupdatetool may become actionable. Imported or
+        unsupported images remain manually replaceable, never auto-updated.
+        """
+        import appimage_updates
         raw = app.get("raw") if isinstance(app.get("raw"), dict) else {}
         target = app.get("target") or raw.get("target")
         if not isinstance(target, str) or not target:
-            return self._candidate(app, MANUAL_REQUIRED,
-                                   reason="AppImage file is missing; replace it from a reviewed file or URL.")
+            return self._candidate(
+                app, MANUAL_REQUIRED,
+                reason="AppImage file is missing; replace it from a reviewed file or URL.")
         path = Path(target)
         if not path.is_absolute() or path.is_symlink() or not path.is_file():
-            return self._candidate(app, MANUAL_REQUIRED,
-                                   reason="AppImage update source cannot be verified.")
-        if not shutil.which("readelf"):
-            return self._candidate(app, MANUAL_REQUIRED,
-                                   reason="No passive update-information reader; replace from a reviewed file.")
-        try:
-            output = self._query(["readelf", "--string-dump=.upd_info", str(path)],
-                                 cancelled, timeout=15)
-        except RuntimeError:
-            return self._candidate(app, MANUAL_REQUIRED,
-                                   reason="No readable embedded updater information; manual replacement required.")
-        lines = re.findall(r"\]\s*((?:zsync|gh-releases-zsync)\|[^\r\n]{1,600})", output)
-        if lines:
             return self._candidate(
-                app, MANUAL_REQUIRED, source="Embedded AppImage update metadata",
+                app, MANUAL_REQUIRED, reason="AppImage update target cannot be verified.")
+        info = appimage_updates.read_info(path, self._runner)
+        if not info:
+            return self._candidate(
+                app, MANUAL_REQUIRED,
+                reason="No recognized AppImage update information; manual replacement required.")
+        source = "Embedded AppImage update metadata"
+        if not shutil.which("appimageupdatetool"):
+            return self._candidate(
+                app, MANUAL_REQUIRED, source=source,
                 mechanism="appimage-upd-info",
-                reason="Update information detected; resolving and verifying updates is planned for PR #4.")
-        return self._candidate(app, MANUAL_REQUIRED,
-                               reason="No recognized AppImage update information; manual replacement required.")
+                reason="Embedded updater metadata found, but appimageupdatetool is not installed.")
+        try:
+            owned_target, _ = appimage_updates.verify_owned(app)
+        except appimage_updates.AppImageUpdateBlocked as exc:
+            return self._candidate(
+                app, MANUAL_REQUIRED, source=source,
+                mechanism="appimage-upd-info", reason=str(exc))
+        if owned_target != path:
+            return self._candidate(
+                app, MANUAL_REQUIRED, source=source,
+                mechanism="appimage-upd-info", reason="AppImage generation changed.")
+        try:
+            # Only resolve upstream hosts after ownership was verified.
+            label = appimage_updates.validate_info(info)
+        except appimage_updates.AppImageUpdateBlocked as exc:
+            return self._candidate(
+                app, MANUAL_REQUIRED, source=source,
+                mechanism="appimage-upd-info", reason=str(exc))
+        try:
+            newer = appimage_updates.check_upstream(
+                owned_target, runner=self._runner, cancelled=cancelled)
+        except appimage_updates.AppImageUpdateBlocked as exc:
+            if cancelled is not None and cancelled():
+                raise UpdateCancelled("AppImage update check cancelled.") from exc
+            return self._candidate(
+                app, ERROR, source=label, mechanism="appimage-zsync",
+                reason=str(exc))
+        digest = appimage_updates.sha256_file(path)
+        state = AVAILABLE if newer else UP_TO_DATE
+        return self._candidate(
+            app, state, source=label, mechanism="appimage-zsync",
+            installed_version=_clean(app.get("version"))
+            if app.get("version") not in (None, "unknown") else "",
+            available_version="New upstream build" if newer else "",
+            reason=("Upstream AppImage has changed; download and review the full "
+                    "artifact before any replacement."
+                    if newer else "Upstream AppImage has no newer build."),
+            requires_review=newer, reference=info, installed_revision=digest)
 
     def check_one(self, app, *, cancelled=None, force=False):
         if not isinstance(app, dict):
@@ -303,6 +339,15 @@ class UpdateEngine:
         fingerprint = (key, fmt, app.get("version"), app.get("status"),
                        *(str(raw.get(k, "")) for k in
                          ("install_method", "kind", "name", "image", "container", "appid", "target")))
+        # Avoid reusing an AppImage "available" result after the executable
+        # changes on disk. This is read-only and handles disappeared files.
+        if fmt == "appimage":
+            path = app.get("target") or raw.get("target")
+            try:
+                stat = Path(path).stat() if isinstance(path, str) else None
+                fingerprint += (stat.st_size, stat.st_mtime_ns, stat.st_ino) if stat else ("missing",)
+            except OSError:
+                fingerprint += ("missing",)
         now = self._clock()
         if not force:
             with self._lock:

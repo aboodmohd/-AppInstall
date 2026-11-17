@@ -1167,7 +1167,8 @@ ApplicationWindow {
                 Button {
                     id: appUpdateCheckButton
                     objectName: "appUpdateCheckButton"
-                    text: bridge.appUpdatesBusy ? qsTr("Checking…") : qsTr("Check now")
+                    text: bridge.appImagePreparing ? qsTr("Downloading…")
+                          : bridge.appUpdatesBusy ? qsTr("Checking…") : qsTr("Check now")
                     enabled: !bridge.appUpdatesBusy && !bridge.appUpdateRunning
                     onClicked: bridge.checkApplicationUpdates(true)
                     Accessible.name: qsTr("Check for application updates")
@@ -1175,7 +1176,7 @@ ApplicationWindow {
                 Button {
                     id: appUpdateCancelCheck
                     objectName: "appUpdateCancelCheck"
-                    visible: bridge.appUpdatesBusy && !bridge.appUpdateRunning
+                    visible: bridge.appUpdatesBusy && !bridge.appUpdateRunning && !bridge.appImagePreparing
                     text: qsTr("Cancel check")
                     onClicked: bridge.cancelApplicationUpdateCheck()
                 }
@@ -1340,7 +1341,9 @@ ApplicationWindow {
                                 Layout.alignment: Qt.AlignRight
                             }
                             Button {
-                                text: qsTr("Review update")
+                                text: updateRow.format === "AppImage"
+                                      ? qsTr("Download & review")
+                                      : qsTr("Review update")
                                 objectName: "reviewFlatpakUpdateButton"
                                 id: reviewUpdateAction
                                 visible: updateRow.actionable && updateRow.updateState === "available"
