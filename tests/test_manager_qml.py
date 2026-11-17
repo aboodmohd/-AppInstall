@@ -570,6 +570,23 @@ class CatalogModelTests(QmlManagerBase):
             self.bridge.openSelectedCatalogHomepage()
         open_url.assert_not_called()
 
+    def test_proprietary_license_keeps_exact_metadata_with_clean_label(self):
+        raw = "LicenseRef-proprietary=https://example.org/notice.txt"
+        rows = manager_qml.catalog_metadata.normalize_rows([{
+            "source": "Flatpak", "appId": "org.example.App", "name": "Example",
+            "license": raw,
+        }])
+        self.bridge._catalog_source = "Flatpak"
+        self.bridge._catalog_all = rows
+        self.bridge._rebuild_catalog_view()
+        self.bridge.openCatalogDetails("org.example.App", "Flatpak")
+        self.assertEqual(self.bridge.catalogDetails["license"], raw)
+        self.assertEqual(self.bridge.catalogDetails["licenseDisplay"], "Proprietary")
+        rows[0]["license"] = "GPL-3.0-or-later"
+        self.bridge._sync_catalog_details()
+        self.assertEqual(self.bridge.catalogDetails["licenseDisplay"],
+                         "GPL-3.0-or-later")
+
     def test_details_install_goes_through_existing_flow(self):
         rows = manager_qml.catalog_metadata.normalize_rows([{
             "source": "Flatpak", "appId": "org.gimp.GIMP", "name": "GIMP"
@@ -1494,6 +1511,55 @@ class QmlDiscoverTests(QmlManagerBase):
                 self.assertTrue(evaluate("catalogList.visible"))
                 self.assertFalse(any("ReferenceError" in m for m in capture.messages),
                                  capture.messages)
+            finally:
+                window.close()
+                self.engine.deleteLater()
+                self.app.processEvents()
+
+    def test_details_responsive_compact_layout_without_duplicate_appstream(self):
+        self.bridge._catalog_source = "Flatpak"
+        self.bridge._catalog_all = manager_qml.catalog_metadata.normalize_rows([{
+            "source": "Flatpak", "appId": "org.example.Test",
+            "name": "Example App", "summary": "Short description",
+            "developer": "Example Team", "license": "LicenseRef-proprietary",
+            "category": "Graphics", "componentId": "org.example.Test",
+        }])
+        self.bridge._rebuild_catalog_view()
+        self.engine = QtQml.QQmlApplicationEngine()
+        self.engine.rootContext().setContextProperty("bridge", self.bridge)
+        self.engine.rootContext().setContextProperty("appsModel", self.model)
+        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        with QmlLoadCapture() as capture:
+            self.engine.load(str(manager_qml.QML_DIR / "main.qml"))
+            self.assertTrue(self.engine.rootObjects(), capture.messages)
+            window = self.engine.rootObjects()[0]
+            window.setProperty("discoverSelected", True)
+            window.show()
+            self.bridge.openCatalogDetails("org.example.Test", "Flatpak")
+            QtTest.QTest.qWait(90)
+            self.app.processEvents()
+            evaluate = lambda value: QtQml.QQmlExpression(
+                QtQml.qmlContext(window), window, value).evaluate()[0]
+            try:
+                self.assertTrue(evaluate("catalogDetailsPage.visible"))
+                self.assertLessEqual(evaluate("detailsContent.width"), 1050)
+                self.assertLess(evaluate("catalogDetailsHero.height"), 170)
+                self.assertLess(evaluate("catalogDetailsAboutCard.height"), 200)
+                self.assertEqual(evaluate("catalogDetailsName.text"), "Example App")
+                self.assertEqual(evaluate("detailsIdentityCard.height"), 119)
+                self.assertEqual(evaluate("detailsColumns.columns"), 2)
+                window.setWidth(740)
+                QtTest.QTest.qWait(100)
+                self.app.processEvents()
+                self.assertEqual(evaluate("detailsColumns.columns"), 1)
+                self.assertGreater(evaluate("catalogDetailsHero.width"), 0)
+                window.setWidth(1250)
+                QtTest.QTest.qWait(100)
+                self.app.processEvents()
+                self.assertEqual(evaluate("detailsColumns.columns"), 2)
+                self.assertLessEqual(evaluate("detailsContent.width"), 1050)
+                self.assertFalse(any("ReferenceError" in m or "Binding loop" in m
+                                     for m in capture.messages), capture.messages)
             finally:
                 window.close()
                 self.engine.deleteLater()
