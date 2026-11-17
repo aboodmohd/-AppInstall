@@ -219,33 +219,39 @@ class UpdateBridgeTests(unittest.TestCase):
             self.qapp.processEvents()
 
     def test_rendered_update_cards_show_real_text_and_guard_review(self):
-        """Regression: Qt6 required index suppressed old contextual model roles.
+        """Regression: Qt 6 required index hid the contextual model roles.
 
-        The screenshot showed six empty rows with Review update buttons while
-        the model reported zero updates. Inspect actual QML delegates, not just
-        Python role values or static QML loading.
+        Exercise the actual ListView-delegated labels and button, not just
+        Python UpdateModel.data() or a static QML syntax check.
         """
         engine = QtQml.QQmlApplicationEngine()
         engine.rootContext().setContextProperty("bridge", self.bridge)
         engine.rootContext().setContextProperty("appsModel", self.bridge.model)
         engine.addImportPath(str(manager_qml.QML_DIR.parent))
         engine.load(str(manager_qml.QML_DIR / "main.qml"))
-        self.assertTrue(engine.rootObjects(), "Updates page QML failed to load")
+        self.assertTrue(engine.rootObjects(), "Updates QML failed to load")
         window = engine.rootObjects()[0]
-        window.show()
         window.setProperty("updatesSelected", True)
 
-        def row_objects():
-            QtTest.QTest.qWait(80)
-            self.qapp.processEvents()
-            return window.findChildren(QtCore.QObject, "updateAppRow")
+        def expr(text):
+            return QtQml.QQmlExpression(
+                QtQml.qmlContext(window), window, text).evaluate()[0]
 
-        def visible_review_buttons():
-            return [
-                obj for obj in window.findChildren(
-                    QtCore.QObject, "reviewFlatpakUpdateButton")
-                if obj.property("visible")
-            ]
+        def rendered(key):
+            QtTest.QTest.qWait(120)
+            self.qapp.processEvents()
+            # ListView delegates are internally parented through a Qt Quick
+            # content item. QObject.findChildren(window, ...) is unreliable.
+            # itemAtIndex asks the actual visible QML ListView for its delegate.
+            if not expr("appUpdatesList.itemAtIndex(0) !== null"):
+                expr("appUpdatesList.forceLayout()")
+                QtTest.QTest.qWait(80)
+            self.assertEqual(expr("appUpdatesList.count"), 1)
+            self.assertGreater(expr("appUpdatesList.height"), 0)
+            self.assertTrue(
+                expr("appUpdatesList.itemAtIndex(0) !== null"),
+                "QML ListView did not instantiate a visible app row")
+            return expr("appUpdatesList.itemAtIndex(0)." + key)
 
         try:
             manual = update_engine.UpdateCandidate(
@@ -253,27 +259,20 @@ class UpdateBridgeTests(unittest.TestCase):
                 state="manual-required", installed_version="1.0",
                 reason="Manually replace the application.")
             self.bridge.updatesModel.replace_results([app()], [manual])
+            window.show()
             self.assertEqual(self.bridge.updatesModel.availableCount, 0)
-            self.assertTrue(row_objects(), "Update model failed to create a delegate")
-            title = window.findChild(QtCore.QObject, "updateAppTitle")
-            version = window.findChild(QtCore.QObject, "updateAppVersion")
-            state = window.findChild(QtCore.QObject, "updateAppState")
-            self.assertEqual(title.property("text"), "Example App · FLATPAK")
-            self.assertEqual(version.property("text"), "1.0  →  —")
-            self.assertEqual(state.property("text"), "manual-required")
-            self.assertFalse(visible_review_buttons(),
+            self.assertEqual(rendered("renderedTitle"), "Example App · FLATPAK")
+            self.assertEqual(rendered("renderedVersion"), "1.0  →  —")
+            self.assertEqual(rendered("renderedState"), "manual-required")
+            self.assertFalse(rendered("reviewVisible"),
                              "Review action exposed despite zero available updates")
 
             self.bridge.updatesModel.replace_results([app()], [candidate()])
             self.assertEqual(self.bridge.updatesModel.availableCount, 1)
-            self.assertTrue(row_objects(), "Available update lost its delegate")
-            self.assertEqual(
-                window.findChild(QtCore.QObject, "updateAppTitle").property("text"),
-                "Example App · FLATPAK")
-            self.assertEqual(
-                window.findChild(QtCore.QObject, "updateAppState").property("text"),
-                "available")
-            self.assertEqual(len(visible_review_buttons()), 1)
+            self.assertEqual(rendered("renderedTitle"), "Example App · FLATPAK")
+            self.assertEqual(rendered("renderedState"), "available")
+            self.assertTrue(rendered("reviewVisible"),
+                            "Review action hidden for verified Flatpak update")
         finally:
             window.close()
             engine.deleteLater()
