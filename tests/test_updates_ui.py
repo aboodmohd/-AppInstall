@@ -10,7 +10,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ["APPINSTALL_DISABLE_UPDATE_TIMER"] = "1"
 
 from qt_compat import QtCore, QtWidgets
-from PySide6 import QtQml
+from PySide6 import QtQml, QtTest
 import manager_qml
 import update_engine
 
@@ -217,6 +217,82 @@ class UpdateBridgeTests(unittest.TestCase):
             window.close()
             engine.deleteLater()
             self.qapp.processEvents()
+
+    def test_rendered_update_cards_show_real_text_and_guard_review(self):
+        """Regression: Qt6 required index suppressed old contextual model roles.
+
+        The screenshot showed six empty rows with Review update buttons while
+        the model reported zero updates. Inspect actual QML delegates, not just
+        Python role values or static QML loading.
+        """
+        engine = QtQml.QQmlApplicationEngine()
+        engine.rootContext().setContextProperty("bridge", self.bridge)
+        engine.rootContext().setContextProperty("appsModel", self.bridge.model)
+        engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        engine.load(str(manager_qml.QML_DIR / "main.qml"))
+        self.assertTrue(engine.rootObjects(), "Updates page QML failed to load")
+        window = engine.rootObjects()[0]
+        window.show()
+        window.setProperty("updatesSelected", True)
+
+        def row_objects():
+            QtTest.QTest.qWait(80)
+            self.qapp.processEvents()
+            return window.findChildren(QtCore.QObject, "updateAppRow")
+
+        def visible_review_buttons():
+            return [
+                obj for obj in window.findChildren(
+                    QtCore.QObject, "reviewFlatpakUpdateButton")
+                if obj.property("visible")
+            ]
+
+        try:
+            manual = update_engine.UpdateCandidate(
+                key="flatpak:org.example.App", format="flatpak",
+                state="manual-required", installed_version="1.0",
+                reason="Manually replace the application.")
+            self.bridge.updatesModel.replace_results([app()], [manual])
+            self.assertEqual(self.bridge.updatesModel.availableCount, 0)
+            self.assertTrue(row_objects(), "Update model failed to create a delegate")
+            title = window.findChild(QtCore.QObject, "updateAppTitle")
+            version = window.findChild(QtCore.QObject, "updateAppVersion")
+            state = window.findChild(QtCore.QObject, "updateAppState")
+            self.assertEqual(title.property("text"), "Example App · FLATPAK")
+            self.assertEqual(version.property("text"), "1.0  →  —")
+            self.assertEqual(state.property("text"), "manual-required")
+            self.assertFalse(visible_review_buttons(),
+                             "Review action exposed despite zero available updates")
+
+            self.bridge.updatesModel.replace_results([app()], [candidate()])
+            self.assertEqual(self.bridge.updatesModel.availableCount, 1)
+            self.assertTrue(row_objects(), "Available update lost its delegate")
+            self.assertEqual(
+                window.findChild(QtCore.QObject, "updateAppTitle").property("text"),
+                "Example App · FLATPAK")
+            self.assertEqual(
+                window.findChild(QtCore.QObject, "updateAppState").property("text"),
+                "available")
+            self.assertEqual(len(visible_review_buttons()), 1)
+        finally:
+            window.close()
+            engine.deleteLater()
+            self.qapp.processEvents()
+
+    def test_no_action_on_unavailable_nonflatpak_row(self):
+        """A DEB/RPM entry must never gain a Flatpak Review button."""
+        for fmt, key in (("deb", "deb:gimp"), ("rpm", "rpm:gimp"),
+                         ("appimage", "appimage:example")):
+            with self.subTest(fmt=fmt):
+                obj = update_engine.UpdateCandidate(
+                    key=key, format=fmt, state="available",
+                    installed_version="1.0", available_version="2.0",
+                    requires_review=True)
+                row = app(key, fmt)
+                self.bridge.updatesModel.replace_results([row], [obj])
+                index = self.bridge.updatesModel.index(0, 0)
+                self.assertFalse(self.bridge.updatesModel.data(
+                    index, self.bridge.updatesModel.ActionableRole))
 
     def test_legacy_update_menu_only_requests_review(self):
         # A v1.7 My Applications action must not bypass v1.8 approval.
