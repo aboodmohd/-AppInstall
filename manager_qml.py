@@ -584,6 +584,10 @@ class Bridge(QtCore.QObject):
     catalogLoadingChanged = QtCore.Signal(bool)
     catalogStatusChanged = QtCore.Signal(str)
     catalogResultsChanged = QtCore.Signal()
+    appUpdateBusyChanged = QtCore.Signal(bool)
+    appUpdateStatusChanged = QtCore.Signal(str)
+    appUpdateProgressChanged = QtCore.Signal(str)
+    appUpdateRunningChanged = QtCore.Signal(bool)
 
     @QtCore.Property(bool, notify=updateActionVisibleChanged)
     def actionVisible(self):
@@ -606,6 +610,22 @@ class Bridge(QtCore.QObject):
         self._catalog_all = []
         self._catalog_worker = None
         self._catalog_pending = None
+        self._updates = UpdateModel(self)
+        self._app_update_status = 'Select Check now to inspect managed applications.'
+        self._app_update_progress = ''
+        self._app_update_worker = None
+        self._app_update_snapshot = []
+        self._app_update_busy = False
+        self._flatpak_preflight_worker = None
+        self._flatpak_pending_key = None
+        self._flatpak_pending_candidate = None
+        self._flatpak_active_key = ''
+        self._flatpak_cancelled = False
+        self._flatpak_process = QtCore.QProcess(self)
+        self._flatpak_process.setProcessChannelMode(
+            QtCore.QProcess.ProcessChannelMode.MergedChannels)
+        self._flatpak_process.readyReadStandardOutput.connect(self._flatpak_progress_read)
+        self._flatpak_process.finished.connect(self._flatpak_finished)
         # APPINSTALL_UI_DARK=1 forces dark mode for evidence capture,
         # overriding settings and system preference.
         env_dark = os.environ.get('APPINSTALL_UI_DARK')
@@ -718,6 +738,219 @@ class Bridge(QtCore.QObject):
     @QtCore.Property(str, notify=updateTagChanged)
     def updateTag(self):
         return self._update_tag
+
+    # ── Managed application updates (distinct from AppInstall self-upgrade) ──
+
+    @QtCore.Property(QtCore.QObject, constant=True)
+    def updatesModel(self):
+        return self._updates
+
+    @QtCore.Property(bool, notify=appUpdateBusyChanged)
+    def appUpdatesBusy(self):
+        return self._app_update_busy
+
+    @QtCore.Property(str, notify=appUpdateStatusChanged)
+    def appUpdatesStatus(self):
+        return self._app_update_status
+
+    @QtCore.Property(str, notify=appUpdateProgressChanged)
+    def appUpdateProgress(self):
+        return self._app_update_progress
+
+    @QtCore.Property(bool, notify=appUpdateRunningChanged)
+    def appUpdateRunning(self):
+        return self._flatpak_process.state() != QtCore.QProcess.ProcessState.NotRunning
+
+    def _set_app_update_status(self, message):
+        self._app_update_status = str(message)[:1000]
+        self.appUpdateStatusChanged.emit(self._app_update_status)
+
+    def _set_app_update_busy(self, value):
+        self._app_update_busy = bool(value)
+        self.appUpdateBusyChanged.emit(self._app_update_busy)
+
+    @QtCore.Slot()
+    @QtCore.Slot(bool)
+    def checkApplicationUpdates(self, force=True):
+        """Provider reads only. Never creates containers or installs anything."""
+        if (self._app_update_busy or self._flatpak_preflight_worker is not None
+                or self.appUpdateRunning):
+            return
+        self._app_update_snapshot = list(self._model._inventory)
+        self._app_update_progress = ''
+        self.appUpdateProgressChanged.emit('')
+        if not self._app_update_snapshot:
+            self._updates.replace_results([], [])
+            self._set_app_update_status('No AppInstall-managed applications found.')
+            return
+        self._set_app_update_busy(True)
+        self._set_app_update_status('Checking application updates (read-only)…')
+        worker = UpdateScanWorker(self._app_update_snapshot, force=bool(force), parent=self)
+        self._app_update_worker = worker
+        worker.ready.connect(self._app_updates_ready)
+        worker.failed.connect(self._app_updates_failed)
+        worker.finished.connect(self._app_updates_worker_finished)
+        worker.start()
+
+    @QtCore.Slot()
+    def cancelApplicationUpdateCheck(self):
+        worker = self._app_update_worker
+        if worker is not None and worker.isRunning():
+            worker.requestInterruption()
+            self._set_app_update_status('Cancelling update check…')
+
+    def _app_updates_ready(self, candidates):
+        self._updates.replace_results(self._app_update_snapshot, candidates)
+        available = self._updates.availableCount
+        self._set_app_update_status(
+            f'{available} app update(s) found across {len(candidates)} managed applications. '
+            'Updates do not run automatically.')
+
+    def _app_updates_failed(self, error):
+        self._set_app_update_status('Update check failed: ' + str(error))
+
+    def _app_updates_worker_finished(self):
+        worker = self._app_update_worker
+        if worker is not None and worker.isInterruptionRequested():
+            self._set_app_update_status('Update check cancelled; no packages changed.')
+        self._app_update_worker = None
+        self._set_app_update_busy(False)
+
+    @QtCore.Slot(str)
+    def requestFlatpakUpdate(self, key):
+        """Revalidate a scanned, explicit user-scope Flatpak before approval."""
+        if (self._app_update_busy or self._flatpak_preflight_worker is not None
+                or self.appUpdateRunning):
+            return
+        candidate = self._updates.candidate(key)
+        if not candidate or candidate.state != update_engine.AVAILABLE \
+                or candidate.format != 'flatpak':
+            self._set_app_update_status('No verified Flatpak update is selected.')
+            return
+        if not (update_engine.REF_RE.fullmatch(candidate.reference)
+                and update_engine.COMMIT_RE.fullmatch(candidate.available_revision)
+                and update_engine.COMMIT_RE.fullmatch(candidate.installed_revision)):
+            self._set_app_update_status('Update reference or revision is invalid. Check again.')
+            return
+        try:
+            app = self._model.app_record(key)
+        except KeyError:
+            self._set_app_update_status('Application is no longer managed. Refresh the list.')
+            return
+        self._flatpak_pending_key = key
+        self._flatpak_pending_candidate = candidate
+        self._set_app_update_busy(True)
+        self._set_app_update_status('Revalidating the selected Flatpak before confirmation…')
+        worker = UpdateScanWorker([app], force=True, parent=self)
+        self._flatpak_preflight_worker = worker
+        worker.ready.connect(self._flatpak_preflight_ready)
+        worker.failed.connect(self._flatpak_preflight_failed)
+        worker.finished.connect(self._flatpak_preflight_finished)
+        worker.start()
+
+    def _flatpak_preflight_ready(self, results):
+        old = self._flatpak_pending_candidate
+        key = self._flatpak_pending_key
+        fresh = results[0] if len(results) == 1 else None
+        if (fresh is None or old is None or key is None
+                or fresh.key != key or fresh.state != update_engine.AVAILABLE
+                or fresh.reference != old.reference or fresh.source != old.source
+                or fresh.installed_revision != old.installed_revision
+                or not update_engine.COMMIT_RE.fullmatch(fresh.available_revision)
+                or not update_engine.REF_RE.fullmatch(fresh.reference)):
+            self._set_app_update_status(
+                'Available Flatpak update changed or was not verified. Check again.')
+            return
+        if fresh.available_revision != old.available_revision:
+            self._set_app_update_status(
+                'Flatpak upstream revision changed. Check again before updating.')
+            return
+        prompt = (
+            'Update this AppInstall-managed Flatpak?\n\n'
+            'Application: ' + key + '\n'
+            'Source: ' + fresh.source + '\n'
+            'Exact ref: ' + fresh.reference + '\n'
+            'Installed commit: ' + fresh.installed_revision[:12] + '\n'
+            'Target commit: ' + fresh.available_revision[:12] + '\n\n'
+            'Only this exact user-scope app ref will be requested. '
+            'The --no-deps and --no-related options limit ancillary work, '
+            'but this preview cannot enumerate all Flatpak transaction effects. '
+            'No system-wide or all-app update will be requested.\n\n'
+            'Continue?')
+        answer = QtWidgets.QMessageBox.question(
+            self.anchor, 'Review Flatpak update', prompt,
+            QtWidgets.QMessageBox.StandardButton.Yes |
+            QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No)
+        if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+            self._set_app_update_status('Flatpak update declined. No packages changed.')
+            return
+        self._flatpak_active_key = key
+        self._flatpak_cancelled = False
+        self._app_update_progress = 'Starting selected Flatpak update…'
+        self.appUpdateProgressChanged.emit(self._app_update_progress)
+        self._set_app_update_status('Updating ' + key + '…')
+        self._flatpak_process.start('flatpak', [
+            'update', '--user', '--noninteractive', '--assumeyes',
+            '--no-deps', '--no-related',
+            '--commit=' + fresh.available_revision, fresh.reference])
+        self._flatpak_process.closeWriteChannel()
+        self.appUpdateRunningChanged.emit(True)
+
+    def _flatpak_preflight_failed(self, error):
+        self._set_app_update_status('Flatpak preflight failed: ' + str(error))
+
+    def _flatpak_preflight_finished(self):
+        self._flatpak_preflight_worker = None
+        self._flatpak_pending_key = None
+        self._flatpak_pending_candidate = None
+        self._set_app_update_busy(False)
+
+    def _flatpak_progress_read(self):
+        chunk = bytes(self._flatpak_process.readAllStandardOutput()).decode(errors='replace')
+        if chunk:
+            cleaned = re.sub(r'[\x00-\x08\x0b-\x1f\x7f]', '', chunk)
+            self._app_update_progress = (self._app_update_progress + cleaned)[-3200:]
+            self.appUpdateProgressChanged.emit(self._app_update_progress)
+
+    @QtCore.Slot()
+    def cancelRunningFlatpakUpdate(self):
+        if not self.appUpdateRunning:
+            return
+        reply = QtWidgets.QMessageBox.question(
+            self.anchor, 'Interrupt Flatpak update',
+            'Stop the running Flatpak command? Its state may be incomplete. '
+            'AppInstall will check again after interruption. '
+            'No additional packages will be installed automatically.',
+            QtWidgets.QMessageBox.StandardButton.Yes |
+            QtWidgets.QMessageBox.StandardButton.No,
+            QtWidgets.QMessageBox.StandardButton.No)
+        if reply == QtWidgets.QMessageBox.StandardButton.Yes:
+            self._flatpak_cancelled = True
+            self._flatpak_process.kill()
+            self._set_app_update_status('Interrupting Flatpak update; checking state after exit…')
+
+    def _flatpak_finished(self, code, status):
+        self._flatpak_progress_read()
+        was_cancelled = self._flatpak_cancelled
+        key = self._flatpak_active_key
+        self._flatpak_active_key = ''
+        self._flatpak_cancelled = False
+        self.appUpdateRunningChanged.emit(False)
+        if was_cancelled:
+            self._set_app_update_status(
+                'Flatpak operation interrupted. Its final package state is unknown; '
+                'a fresh check will follow.')
+        elif code != 0 or status != QtCore.QProcess.ExitStatus.NormalExit:
+            self._set_app_update_status('Flatpak update failed for ' + key +
+                                        '. Read the operation output below.')
+        else:
+            self._set_app_update_status('Flatpak update command completed for ' + key +
+                                        '. Verifying installed versions…')
+        # Refresh inventory and update checks only after QProcess termination.
+        self.refresh()
+        # The inventory loader is asynchronous. A fresh scan via the user-visible
+        # Check now button remains available once it finishes.
 
     # ── inventory ────────────────────────────────────────────────────────
 
