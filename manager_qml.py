@@ -927,9 +927,16 @@ class Bridge(QtCore.QObject):
     def catalogSetupRequired(self):
         return self._catalog_setup_required
 
+    def _display_catalog_rows(self):
+        # Older callers/tests can prepopulate the visible model directly
+        # instead of invoking the Phase 6 view builder.
+        if not self._catalog_visible and self._catalog_category == 'All':
+            return self._catalog_all
+        return self._catalog_visible
+
     @QtCore.Property(bool, notify=catalogResultsChanged)
     def catalogHasMore(self):
-        return self._catalog.count < len(self._catalog_visible)
+        return self._catalog.count < len(self._display_catalog_rows())
 
     def _set_catalog_status(self, message):
         self._catalog_status = str(message)
@@ -1711,7 +1718,7 @@ class Bridge(QtCore.QObject):
         self._catalog_featured.apply_artwork(cached)
 
     def _announce_catalog_results(self):
-        total = len(self._catalog_visible)
+        total = len(self._display_catalog_rows())
         shown = self._catalog.count
         provider = {'Flatpak': 'Flathub', 'AppImage': 'AppImageHub',
                     'DEB': 'Debian APT', 'RPM': 'Fedora DNF'}[self._catalog_source]
@@ -1741,7 +1748,7 @@ class Bridge(QtCore.QObject):
         if self._catalog_loading or not self.catalogHasMore:
             return
         n = self._catalog.count
-        self._catalog.append(self._catalog_visible[n:n + 24])
+        self._catalog.append(self._display_catalog_rows()[n:n + 24])
         self.catalogResultsChanged.emit()
         self._announce_catalog_results()
 
