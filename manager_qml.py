@@ -36,6 +36,7 @@ import manager
 import settings
 import flathub_catalog
 import repository_catalog
+import update_engine
 
 QML_DIR = Path(__file__).resolve().with_name('manager_ui')
 
@@ -446,6 +447,127 @@ class CatalogWorker(QtCore.QThread):
             self.failed.emit(self.query, str(error))
         except Exception as error:
             self.failed.emit(self.query, 'Flathub search failed: ' + str(error))
+
+
+class UpdateModel(QtCore.QAbstractListModel):
+    """Result rows for the separate installed-app Updates page."""
+
+    KeyRole = QtCore.Qt.ItemDataRole.UserRole + 1
+    NameRole = QtCore.Qt.ItemDataRole.UserRole + 2
+    FormatRole = QtCore.Qt.ItemDataRole.UserRole + 3
+    StateRole = QtCore.Qt.ItemDataRole.UserRole + 4
+    CurrentRole = QtCore.Qt.ItemDataRole.UserRole + 5
+    AvailableRole = QtCore.Qt.ItemDataRole.UserRole + 6
+    OriginRole = QtCore.Qt.ItemDataRole.UserRole + 7
+    ReasonRole = QtCore.Qt.ItemDataRole.UserRole + 8
+    ActionableRole = QtCore.Qt.ItemDataRole.UserRole + 9
+    ReferenceRole = QtCore.Qt.ItemDataRole.UserRole + 10
+    countChanged = QtCore.Signal()
+    availableCountChanged = QtCore.Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._all = []
+        self._rows = []
+        self._filter = "all"
+
+    @QtCore.Property(int, notify=countChanged)
+    def count(self):
+        return len(self._rows)
+
+    @QtCore.Property(int, notify=availableCountChanged)
+    def availableCount(self):
+        return sum(row["candidate"].state == update_engine.AVAILABLE for row in self._all)
+
+    def roleNames(self):
+        return {
+            self.KeyRole: b"key", self.NameRole: b"name",
+            self.FormatRole: b"format", self.StateRole: b"updateState",
+            self.CurrentRole: b"currentVersion", self.AvailableRole: b"availableVersion",
+            self.OriginRole: b"origin", self.ReasonRole: b"reason",
+            self.ActionableRole: b"actionable", self.ReferenceRole: b"reference",
+        }
+
+    def rowCount(self, parent=QtCore.QModelIndex()):
+        return 0 if parent.isValid() else len(self._rows)
+
+    def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
+        if not index.isValid() or not 0 <= index.row() < len(self._rows):
+            return None
+        row = self._rows[index.row()]
+        candidate = row["candidate"]
+        app = row["app"]
+        return {
+            self.KeyRole: candidate.key,
+            self.NameRole: str(app.get("name") or candidate.key),
+            self.FormatRole: candidate.format.upper() if candidate.format != "appimage" else "AppImage",
+            self.StateRole: candidate.state,
+            self.CurrentRole: candidate.installed_version or "Unknown",
+            self.AvailableRole: candidate.available_version or "—",
+            self.OriginRole: candidate.source or "Local file / unknown source",
+            self.ReasonRole: candidate.reason,
+            self.ActionableRole: bool(
+                candidate.format == "flatpak"
+                and candidate.state == update_engine.AVAILABLE
+                and candidate.reference
+                and candidate.available_revision),
+            self.ReferenceRole: candidate.reference,
+        }.get(role)
+
+    def replace_results(self, apps, candidates):
+        by_key = {app.get("key"): app for app in apps}
+        self._all = [
+            {"app": by_key[c.key], "candidate": c}
+            for c in candidates if c.key in by_key
+        ]
+        self._refilter()
+
+    @QtCore.Slot(str)
+    def setFilter(self, state):
+        if state not in ("all", "available", "up-to-date",
+                         "manual-required", "unsupported", "error"):
+            return
+        self._filter = state
+        self._refilter()
+
+    def _refilter(self):
+        self.beginResetModel()
+        self._rows = [
+            row for row in self._all
+            if self._filter == "all" or row["candidate"].state == self._filter
+        ]
+        self.endResetModel()
+        self.countChanged.emit()
+        self.availableCountChanged.emit()
+
+    def candidate(self, key):
+        for row in self._all:
+            if row["candidate"].key == key:
+                return row["candidate"]
+        return None
+
+
+class UpdateScanWorker(QtCore.QThread):
+    """Runs read-only provider checks off the GUI thread, never installs."""
+
+    ready = QtCore.Signal(list)
+    failed = QtCore.Signal(str)
+
+    def __init__(self, inventory, *, force=False, parent=None):
+        super().__init__(parent)
+        self._inventory = list(inventory)
+        self._force = force
+
+    def run(self):
+        try:
+            results = manager.inspect_application_updates(
+                self._inventory, force=self._force,
+                cancelled=self.isInterruptionRequested)
+            if not self.isInterruptionRequested():
+                self.ready.emit(results)
+        except Exception as error:
+            if not self.isInterruptionRequested():
+                self.failed.emit(str(error))
 
 
 class Bridge(QtCore.QObject):
