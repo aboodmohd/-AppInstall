@@ -74,12 +74,13 @@ jobs:
           sha256sum "$archive" >dist/PORTABLE-SHA256SUMS
           sha256sum -c dist/PORTABLE-SHA256SUMS
 
-      - name: Test non-root source install and uninstall with no native package
+      - name: Test non-root source install, real update, rollback and uninstall
         shell: bash
         run: |
           set -euo pipefail
           version="$(cat /tmp/appinstall-expected-version)"
           useradd -m -s /bin/bash appinstall-test
+          cp tools/ci_portable_upgrade.py /tmp/appinstall-portable-check/ci_portable_upgrade.py
           chown -R appinstall-test:appinstall-test /tmp/appinstall-portable-check
           runuser -u appinstall-test -- env \
             HOME=/home/appinstall-test \
@@ -95,6 +96,7 @@ jobs:
               test -f "$HOME/.local/share/appinstall/manager_ui/main.qml"
               test -f "$HOME/.local/share/appinstall/repository_catalog.py"
               test -f "$HOME/.local/share/appinstall/portable_update.py"
+              python3 ../ci_portable_upgrade.py "$PWD"
               "$HOME/.local/bin/appinstall-uninstall"
               test ! -e "$HOME/.local/bin/appinstall"
             '
