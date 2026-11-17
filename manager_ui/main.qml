@@ -984,7 +984,7 @@ ApplicationWindow {
                                     }
                                     Label {
                                         anchors.fill: parent
-                                        text: model.name.length ? model.name[0].toUpperCase() : "?"
+                                        text: updateRow.name.length ? updateRow.name[0].toUpperCase() : "?"
                                         visible: catalogIcon.status !== Image.Ready
                                         color: Theme.colors.textSecondary
                                         horizontalAlignment: Text.AlignHCenter
@@ -1249,7 +1249,20 @@ ApplicationWindow {
 
                 delegate: Rectangle {
                     id: updateRow
+                    // Qt 6: declaring a required "index" property disables
+                    // the old context-property injection of model roles.
+                    // Declare every used role explicitly so text and action
+                    // eligibility are bound to the real QAbstractListModel.
                     required property int index
+                    required property string key
+                    required property string name
+                    required property string format
+                    required property string updateState
+                    required property string currentVersion
+                    required property string availableVersion
+                    required property string reason
+                    required property bool actionable
+                    objectName: "updateAppRow"
                     width: appUpdatesList.width - 8
                     height: 116
                     radius: 10
@@ -1277,8 +1290,9 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             spacing: 4
                             Label {
+                                objectName: "updateAppTitle"
                                 Layout.fillWidth: true
-                                text: model.name + " · " + model.format
+                                text: updateRow.name + " · " + updateRow.format
                                 font.pixelSize: 14
                                 font.weight: Font.DemiBold
                                 elide: Text.ElideRight
@@ -1286,8 +1300,9 @@ ApplicationWindow {
                                 textFormat: Text.PlainText
                             }
                             Label {
+                                objectName: "updateAppVersion"
                                 Layout.fillWidth: true
-                                text: model.currentVersion + "  →  " + model.availableVersion
+                                text: updateRow.currentVersion + "  →  " + updateRow.availableVersion
                                 font.pixelSize: 12
                                 color: Theme.colors.textSecondary
                                 textFormat: Text.PlainText
@@ -1295,7 +1310,7 @@ ApplicationWindow {
                             }
                             Label {
                                 Layout.fillWidth: true
-                                text: model.reason
+                                text: updateRow.reason
                                 font.pixelSize: 11
                                 color: Theme.colors.textSecondary
                                 textFormat: Text.PlainText
@@ -1308,8 +1323,9 @@ ApplicationWindow {
                             Layout.alignment: Qt.AlignVCenter
                             spacing: 6
                             Label {
-                                text: model.updateState
-                                color: model.updateState === "available"
+                                objectName: "updateAppState"
+                                text: updateRow.updateState
+                                color: updateRow.updateState === "available"
                                        ? Theme.colors.success : Theme.colors.textSecondary
                                 font.pixelSize: 11
                                 Layout.alignment: Qt.AlignRight
@@ -1317,10 +1333,10 @@ ApplicationWindow {
                             Button {
                                 text: qsTr("Review update")
                                 objectName: "reviewFlatpakUpdateButton"
-                                visible: model.actionable
+                                visible: updateRow.actionable && updateRow.updateState === "available" && updateRow.format === "FLATPAK"
                                 enabled: !bridge.appUpdatesBusy && !bridge.appUpdateRunning
-                                onClicked: bridge.requestFlatpakUpdate(model.key)
-                                Accessible.name: qsTr("Review update for ") + model.name
+                                onClicked: bridge.requestFlatpakUpdate(updateRow.key)
+                                Accessible.name: qsTr("Review update for ") + updateRow.name
                             }
                         }
                     }
