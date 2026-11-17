@@ -16,6 +16,9 @@ ApplicationWindow {
     property bool filtersExpanded: true
     property bool discoverSelected: false
     property bool discoverRequested: false
+    property bool updatesSelected: false
+    property bool updatesRequested: false
+    property string updateFilter: "all"
     property string catalogSource: "Flatpak"
 
     // Screenshot contract for --screenshot: the QML engine returns the
@@ -334,8 +337,12 @@ ApplicationWindow {
                 id: managedTab
                 objectName: "managedTab"
                 text: qsTr("My Applications")
-                font.weight: window.discoverSelected ? Font.Normal : Font.DemiBold
-                onClicked: window.discoverSelected = false
+                font.weight: (!window.discoverSelected && !window.updatesSelected)
+                             ? Font.DemiBold : Font.Normal
+                onClicked: {
+                    window.discoverSelected = false
+                    window.updatesSelected = false
+                }
                 Accessible.name: text
             }
             HeaderMenuButton {
@@ -345,12 +352,28 @@ ApplicationWindow {
                 font.weight: window.discoverSelected ? Font.DemiBold : Font.Normal
                 onClicked: {
                     window.discoverSelected = true
+                    window.updatesSelected = false
                     if (!window.discoverRequested) {
                         window.discoverRequested = true
                         bridge.searchCatalog("")
                     }
                 }
                 Accessible.name: text
+            }
+            HeaderMenuButton {
+                id: updatesTab
+                objectName: "updatesTab"
+                text: qsTr("Updates")
+                font.weight: window.updatesSelected ? Font.DemiBold : Font.Normal
+                onClicked: {
+                    window.discoverSelected = false
+                    window.updatesSelected = true
+                    if (!window.updatesRequested) {
+                        window.updatesRequested = true
+                        bridge.checkApplicationUpdates(true)
+                    }
+                }
+                Accessible.name: qsTr("Managed application updates")
             }
             Item { Layout.fillWidth: true }
             Label {
@@ -365,7 +388,7 @@ ApplicationWindow {
         ColumnLayout {
             id: filtersPanel
             objectName: "filtersPanel"
-            visible: window.filtersExpanded && !window.discoverSelected
+            visible: window.filtersExpanded && !window.discoverSelected && !window.updatesSelected
             Layout.fillWidth: true
             spacing: 0
 
@@ -686,7 +709,7 @@ ApplicationWindow {
             id: updateBanner
             // Visible whenever there is something to act on: an available
             // tag, a running check/install, or the last status line.
-            visible: !window.discoverSelected && (bridge.updateTag !== "" || bridge.updateStatus !== "")
+            visible: !window.discoverSelected && !window.updatesSelected && (bridge.updateTag !== "" || bridge.updateStatus !== "")
             Layout.fillWidth: true
             Layout.leftMargin: 16
             Layout.rightMargin: 16
@@ -1100,11 +1123,243 @@ ApplicationWindow {
             }
         }
 
+        // ── Updates: AppInstall-managed applications, not the application itself ──
+        ColumnLayout {
+            id: applicationUpdatesPage
+            objectName: "applicationUpdatesPage"
+            visible: window.updatesSelected
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.leftMargin: 16
+            Layout.rightMargin: 16
+            Layout.topMargin: 10
+            Layout.bottomMargin: 12
+            spacing: 10
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 3
+                    Label {
+                        text: qsTr("Application Updates")
+                        font.pixelSize: 19
+                        font.weight: Font.DemiBold
+                        color: Theme.colors.text
+                        Accessible.role: Accessible.Heading
+                    }
+                    Label {
+                        text: qsTr("Check your managed Flatpak, DEB, RPM and AppImage apps. Nothing updates automatically.")
+                        font.pixelSize: 12
+                        color: Theme.colors.textSecondary
+                        wrapMode: Text.WordWrap
+                        textFormat: Text.PlainText
+                        Layout.fillWidth: true
+                    }
+                }
+                BusyIndicator {
+                    running: bridge.appUpdatesBusy
+                    visible: running
+                    implicitHeight: 25
+                    implicitWidth: 25
+                }
+                Button {
+                    id: appUpdateCheckButton
+                    objectName: "appUpdateCheckButton"
+                    text: bridge.appUpdatesBusy ? qsTr("Checking…") : qsTr("Check now")
+                    enabled: !bridge.appUpdatesBusy && !bridge.appUpdateRunning
+                    onClicked: bridge.checkApplicationUpdates(true)
+                    Accessible.name: qsTr("Check for application updates")
+                }
+                Button {
+                    id: appUpdateCancelCheck
+                    objectName: "appUpdateCancelCheck"
+                    visible: bridge.appUpdatesBusy && !bridge.appUpdateRunning
+                    text: qsTr("Cancel check")
+                    onClicked: bridge.cancelApplicationUpdateCheck()
+                }
+                Button {
+                    id: appUpdateCancelInstall
+                    objectName: "appUpdateCancelInstall"
+                    visible: bridge.appUpdateRunning
+                    text: qsTr("Stop update")
+                    onClicked: bridge.cancelRunningFlatpakUpdate()
+                }
+            }
+
+            Flow {
+                id: updatesFilters
+                Layout.fillWidth: true
+                spacing: 6
+                Repeater {
+                    model: [
+                        { label: qsTr("All"), value: "all" },
+                        { label: qsTr("Available"), value: "available" },
+                        { label: qsTr("Up to date"), value: "up-to-date" },
+                        { label: qsTr("Manual"), value: "manual-required" },
+                        { label: qsTr("Unsupported"), value: "unsupported" },
+                        { label: qsTr("Errors"), value: "error" }
+                    ]
+                    delegate: Button {
+                        id: updateFilterButton
+                        required property var modelData
+                        text: modelData.label
+                        font.pixelSize: 12
+                        checked: window.updateFilter === modelData.value
+                        checkable: true
+                        implicitHeight: 31
+                        onClicked: {
+                            window.updateFilter = modelData.value
+                            bridge.updatesModel.setFilter(modelData.value)
+                        }
+                        Accessible.name: qsTr("Show updates: ") + modelData.label
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Label {
+                    Layout.fillWidth: true
+                    text: bridge.appUpdatesStatus
+                    textFormat: Text.PlainText
+                    color: Theme.colors.textSecondary
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                }
+                Label {
+                    text: qsTr("%1 available").arg(bridge.updatesModel.availableCount)
+                    color: Theme.colors.text
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                }
+            }
+
+            ListView {
+                id: appUpdatesList
+                objectName: "appUpdatesList"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                model: bridge.updatesModel
+                clip: true
+                spacing: 8
+                activeFocusOnTab: false
+                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+
+                delegate: Rectangle {
+                    id: updateRow
+                    required property int index
+                    width: appUpdatesList.width - 8
+                    height: 116
+                    radius: 10
+                    color: Theme.colors.surface
+                    border.color: Theme.colors.border
+                    border.width: 1
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        spacing: 12
+                        Rectangle {
+                            width: 44
+                            height: 44
+                            radius: 9
+                            color: Theme.colors.iconFallbackBg
+                            Layout.alignment: Qt.AlignVCenter
+                            Label {
+                                anchors.centerIn: parent
+                                text: model.name.length ? model.name[0].toUpperCase() : "?"
+                                color: Theme.colors.textSecondary
+                                font.pixelSize: 17
+                            }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+                            Label {
+                                Layout.fillWidth: true
+                                text: model.name + " · " + model.format
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                                elide: Text.ElideRight
+                                color: Theme.colors.text
+                                textFormat: Text.PlainText
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: model.currentVersion + "  →  " + model.availableVersion
+                                font.pixelSize: 12
+                                color: Theme.colors.textSecondary
+                                textFormat: Text.PlainText
+                                elide: Text.ElideRight
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: model.reason
+                                font.pixelSize: 11
+                                color: Theme.colors.textSecondary
+                                textFormat: Text.PlainText
+                                elide: Text.ElideRight
+                                maximumLineCount: 2
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                        ColumnLayout {
+                            Layout.alignment: Qt.AlignVCenter
+                            spacing: 6
+                            Label {
+                                text: model.updateState
+                                color: model.updateState === "available"
+                                       ? Theme.colors.success : Theme.colors.textSecondary
+                                font.pixelSize: 11
+                                Layout.alignment: Qt.AlignRight
+                            }
+                            Button {
+                                text: qsTr("Review update")
+                                objectName: "reviewFlatpakUpdateButton"
+                                visible: model.actionable
+                                enabled: !bridge.appUpdatesBusy && !bridge.appUpdateRunning
+                                onClicked: bridge.requestFlatpakUpdate(model.key)
+                                Accessible.name: qsTr("Review update for ") + model.name
+                            }
+                        }
+                    }
+                }
+            }
+
+            Label {
+                visible: bridge.updatesModel.count === 0 && !bridge.appUpdatesBusy
+                Layout.fillWidth: true
+                text: qsTr("No applications in this filter. Use Check now or select All.")
+                color: Theme.colors.textSecondary
+                font.pixelSize: 13
+                horizontalAlignment: Text.AlignHCenter
+                textFormat: Text.PlainText
+            }
+
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: bridge.appUpdateProgress ? 82 : 0
+                visible: bridge.appUpdateProgress !== ""
+                clip: true
+                TextArea {
+                    objectName: "appUpdateProgressOutput"
+                    text: bridge.appUpdateProgress
+                    readOnly: true
+                    wrapMode: Text.WrapAnywhere
+                    selectByMouse: true
+                    font.pixelSize: 11
+                    color: Theme.colors.text
+                    textFormat: TextEdit.PlainText
+                }
+            }
+        }
+
         // ── list ─────────────────────────────────────────────────────
         Item {
             id: contentArea
             objectName: "contentArea"
-            visible: !window.discoverSelected
+            visible: !window.discoverSelected && !window.updatesSelected
             Layout.fillWidth: true
             Layout.fillHeight: true
             Layout.leftMargin: 16
@@ -1206,7 +1461,8 @@ ApplicationWindow {
             Label {
                 id: statusLabel
                 anchors.centerIn: parent
-                text: window.discoverSelected ? bridge.catalogStatus : bridge.statusText
+                text: window.updatesSelected ? bridge.appUpdatesStatus
+                    : window.discoverSelected ? bridge.catalogStatus : bridge.statusText
                 font.pixelSize: 12
                 color: Theme.colors.textSecondary
                 textFormat: Text.PlainText
