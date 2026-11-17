@@ -68,7 +68,8 @@ fedora)
  useradd -m -s /bin/bash appinstall-builder
  chown -R appinstall-builder:appinstall-builder "$root"
  runuser -u appinstall-builder -- env HOME=/home/appinstall-builder \
-   bash -c 'cd "$1" && bash tools/build_rpm.sh "$2"' _ "$root" "$work/new"
+   bash -c 'cd "$1" && bash tools/build_rpm.sh dist' _ "$root"
+ mv -- "$root/dist/$new" "$work/new/$new"
  ;;
 esac
 test -s "$work/new/$new"
