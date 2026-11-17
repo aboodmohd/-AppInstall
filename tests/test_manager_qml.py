@@ -282,13 +282,14 @@ class BridgeEntryPointsTests(QmlManagerBase):
             self.bridge.updateApp('appimage:example')
         self.assertIn('not supported', self.bridge._status_text)
 
-    def test_update_app_routes_through_manager(self):
+    def test_update_app_requires_new_review_gate_not_legacy_direct_update(self):
         with patch.object(manager, 'can_update', return_value=True), \
-             patch.object(manager, 'update_app', return_value='updated') as update, \
-             patch.object(self.bridge, 'refresh'):
+             patch.object(manager, 'update_app') as legacy_update, \
+             patch.object(self.bridge, 'requestFlatpakUpdate') as reviewed_update:
             self.bridge.updateApp('appimage:example')
-        update.assert_called_once_with(self.apps[0])
-        self.assertEqual(self.bridge._status_text, 'updated')
+        legacy_update.assert_not_called()
+        reviewed_update.assert_not_called()
+        self.assertIn('Open the Updates tab', self.bridge._status_text)
 
     def test_backend_failure_is_reported_not_raised(self):
         error = RuntimeError('target file vanished')
