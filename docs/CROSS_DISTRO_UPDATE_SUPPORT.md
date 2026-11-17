@@ -18,19 +18,19 @@ where the GUI or a particular backend cannot.
 ## Portable update contract
 
 - Source install is opted into through a **published stable portable archive**
-  and \`install-user.sh\`. It must be a real user-local installation, not an
+  and `install-user.sh`. It must be a real user-local installation, not an
   unpacked checkout or a system package.
-- \`portable_update.py --desktop-check\` is **read-only**. It queries only the
+- `portable_update.py --desktop-check` is **read-only**. It queries only the
   latest official stable GitHub release and compares strict numeric versions.
   Drafts, prereleases, malformed tags, missing assets and suspicious URLs are
   rejected.
 - In the QML manager, **Install update** asks for a second confirmation.
   The helper revalidates the exact published tag, downloads
-  \`appinstall-V-portable.tar.gz\` plus \`SHA256SUMS\` over HTTPS, enforces
+  `appinstall-V-portable.tar.gz` plus `SHA256SUMS` over HTTPS, enforces
   size/redirect bounds and verifies the SHA-256 digest **before unpacking**.
 - Extraction refuses traversal, symlinks, nonregular entries, excessive
   count/size and a different embedded version. Installation uses the
-  existing per-user \`SourceTransaction\` with staging, journaling and
+  existing per-user `SourceTransaction` with staging, journaling and
   recovery. It does **not** invoke pacman/APT/DNF or install dependencies.
 - AppInstall data, settings, managed application records and MIME defaults
   are preserved. The source transaction protects replaced source files,
@@ -42,25 +42,30 @@ where the GUI or a particular backend cannot.
   signature. Only trust an official release from the project you intend to
   install. No automatic/silent updater is enabled.
 
+**Existing v1.7.0 portable users:** The in-app portable update helper is new in
+v1.8.0; install the verified v1.8.0 portable archive manually **once** after
+publication. Subsequent stable portable versions can use the in-app update
+path. No unpublished PR artifact should be treated as a stable upgrade.
+
 ## First installation on an unlisted distro
 
-The existing \`install.sh\` intentionally refuses unknown native package
+The existing `install.sh` intentionally refuses unknown native package
 families. For a portable user-level installation instead:
 
 1. Install a working Python 3, Bash, tar and gzip; add PySide6/Qt Quick for
    the full graphical manager and the other tools required by the particular
    source you want to install.
 2. Download the **latest published stable** portable archive and the
-   release's common \`SHA256SUMS\` from GitHub. Independently compare the
+   release's common `SHA256SUMS` from GitHub. Independently compare the
    exact expected filename/hash; unpack only after validation.
-3. Run \`bash install-user.sh\` in the unpacked official archive as an ordinary
+3. Run `bash install-user.sh` in the unpacked official archive as an ordinary
    user. The installer refuses to silently shadow a native installation.
 4. On future stable releases the GUI can check and update this **portable**
    installation, or invoke
-   \`python3 ~/.local/share/appinstall/portable_update.py --check\`
+   `python3 ~/.local/share/appinstall/portable_update.py --check`
    for a read-only check.
 5. To apply a specific offered stable version from a terminal, use
-   \`python3 ~/.local/share/appinstall/portable_update.py --update vX.Y.Z\`.
+   `python3 ~/.local/share/appinstall/portable_update.py --update vX.Y.Z`.
    This explicitly performs the user-local update; never run with sudo.
 
 **Not supported:** silently installing a DEB on Arch, pacman archives on
