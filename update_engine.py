@@ -51,6 +51,9 @@ class UpdateCandidate:
     mechanism: str = ""
     reason: str = ""
     requires_review: bool = False
+    reference: str = ""
+    installed_revision: str = ""
+    available_revision: str = ""
 
     def to_dict(self):
         return asdict(self)
@@ -170,7 +173,9 @@ class UpdateEngine:
             available_version=remote[:12] if state == AVAILABLE else "",
             reason=("New commit available for " + ref if state == AVAILABLE
                     else "Installed Flatpak commit matches the remote."),
-            requires_review=state == AVAILABLE)
+            requires_review=state == AVAILABLE,
+            reference=ref, installed_revision=local.lower(),
+            available_revision=remote.lower() if state == AVAILABLE else "")
 
     @staticmethod
     def _deb_policy(text, name):
