@@ -7,6 +7,7 @@ upstream signature; the UI must disclose this before approval.
 """
 from dataclasses import dataclass
 import fcntl
+import ipaddress
 import hashlib
 import json
 import os
@@ -108,6 +109,12 @@ def validate_info(value, *, resolve=True):
                 or parsed.password or parsed.fragment or parsed.query
                 or not parsed.path.endswith(".zsync")):
             raise AppImageUpdateBlocked("AppImage zsync updates require an HTTPS .zsync URL.")
+        try:
+            ip = ipaddress.ip_address(parsed.hostname)
+        except ValueError:
+            ip = None
+        if ip is not None and not ip.is_global:
+            raise AppImageUpdateBlocked("Local/private update addresses are not allowed.")
         # validate_url rejects IP literals pointing into private networks and
         # mixed/public-private DNS answers. The third-party updater manages its
         # own connections; this precheck does not pin DNS after lookup.
