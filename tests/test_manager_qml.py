@@ -455,6 +455,76 @@ class CatalogModelTests(QmlManagerBase):
         self.assertEqual(model.data(i, model.SourceRole), 'Flatpak')
         self.assertEqual(model.data(i, model.NameRole), 'The GIMP')
 
+    def test_featured_flathub_browse_uses_unmodified_install_ids(self):
+        rows = manager_qml.catalog_metadata.normalize_rows([
+            {"source": "Flatpak", "appId": f"org.example.App{i}",
+             "name": f"App{i}", "category": "Graphics"} for i in range(9)])
+        self.bridge._catalog_source = "Flatpak"
+        self.bridge._catalog_query = ""
+        self.bridge._catalog_all = rows
+        self.bridge._rebuild_catalog_view()
+        self.assertTrue(self.bridge.catalogHasFeatured)
+        self.assertEqual(self.bridge.featuredCatalogModel.count, 6)
+        self.assertIn("Graphics", self.bridge.catalogCategories)
+        self.assertEqual(self.bridge.featuredCatalogModel.data(
+            self.bridge.featuredCatalogModel.index(0, 0),
+            self.bridge.featuredCatalogModel.AppIdRole), "org.example.App0")
+        self.bridge._catalog_query = "gimp"
+        self.bridge._rebuild_catalog_view()
+        self.assertFalse(self.bridge.catalogHasFeatured)
+
+    def test_category_selection_paginates_locally(self):
+        rows = manager_qml.catalog_metadata.normalize_rows([
+            {"source": "DEB", "appId": f"graphics{i}", "name": f"G{i}",
+             "category": "Graphics"} for i in range(60)] + [
+            {"source": "DEB", "appId": f"office{i}", "name": f"O{i}",
+             "category": "Office"} for i in range(20)])
+        self.bridge._catalog_source = "DEB"
+        self.bridge._catalog_all = rows
+        self.bridge._rebuild_catalog_view()
+        self.assertEqual(self.bridge.catalogModel.count, 24)
+        self.assertTrue(self.bridge.catalogHasMore)
+        self.assertFalse(self.bridge.catalogHasFeatured)
+        self.bridge.chooseCatalogCategory("Graphics")
+        self.bridge.loadMoreCatalog()
+        self.assertEqual(self.bridge.catalogModel.count, 48)
+        self.bridge.chooseCatalogCategory("Office")
+        self.assertEqual(self.bridge.catalogModel.count, 20)
+        self.assertFalse(self.bridge.catalogHasMore)
+        self.assertEqual(self.bridge.catalogModel.data(
+            self.bridge.catalogModel.index(0, 0),
+            self.bridge.catalogModel.AppIdRole), "office0")
+        self.assertEqual(len(self.bridge._catalog_all), 80)
+
+    def test_late_metadata_rebuilds_categories_safely(self):
+        rows = manager_qml.catalog_metadata.normalize_rows([
+            {"source": "RPM", "appId": "gimp", "category": "Fedora 44"}])
+        self.bridge._catalog_source = "RPM"
+        self.bridge._catalog_all = rows
+        self.bridge._rebuild_catalog_view()
+        self.assertEqual(self.bridge.catalogCategories, ["All", "Other"])
+        rows[0]["category"] = "Graphics"
+        self.bridge._rebuild_catalog_view(preserve_page=True)
+        self.assertEqual(self.bridge.catalogCategories, ["All", "Graphics"])
+        self.bridge.chooseCatalogCategory("Graphics")
+        self.assertEqual(self.bridge.catalogModel.count, 1)
+        self.assertEqual(rows[0]["providerKey"], "rpm:gimp")
+
+    def test_featured_model_reacts_to_cached_artwork(self):
+        row = manager_qml.catalog_metadata.normalize_rows([{
+            "source": "Flatpak", "appId": "org.example.App",
+            "category": "Games"}])[0]
+        self.bridge._catalog_source = "Flatpak"
+        self.bridge._catalog_query = ""
+        self.bridge._catalog_all = [row]
+        self.bridge._rebuild_catalog_view()
+        cached = {"org.example.App": "file:///tmp/verified.png"}
+        self.bridge.catalogModel.apply_artwork(cached)
+        self.bridge.featuredCatalogModel.apply_artwork(cached)
+        for model in (self.bridge.catalogModel, self.bridge.featuredCatalogModel):
+            self.assertEqual(model.data(model.index(0, 0), model.IconRole),
+                             cached["org.example.App"])
+
     def test_model_roles_and_managed_detection(self):
         model = self.bridge.catalogModel
         model.replace(self.sample())
@@ -1256,6 +1326,8 @@ class QmlDiscoverTests(QmlManagerBase):
                          'catalogRetry', 'catalogViewMore', 'flatpakSourceButton',
                          'appimageSourceButton', 'debSourceButton', 'rpmSourceButton',
                          'repositorySetupPanel', 'repositoryEnableButton',
+                         'categoryStrip', 'categoryRepeater', 'featuredStrip',
+                         'featuredHeading',
                          'contentArea', 'appMenuBar'):
                 self.assertIsNotNone(window.findChild(QtCore.QObject, name), name)
             expr = lambda v: QtQml.QQmlExpression(
