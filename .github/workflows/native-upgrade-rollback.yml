@@ -45,7 +45,7 @@ jobs:
             debian)
               apt-get update
               DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-                curl bash python3 dpkg-dev coreutils sed xdg-utils \
+                curl ca-certificates bash python3 dpkg-dev coreutils sed xdg-utils \
                 util-linux passwd desktop-file-utils
               ;;
             fedora)
