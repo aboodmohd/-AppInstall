@@ -41,7 +41,14 @@ class RegistryFixture(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
-        self.root = Path(self.tmp.name)
+        # Some integration suites import separate backend references before
+        # these tests run. Isolate the real XDG registry path as well as the
+        # module function mock, so import order cannot leak into ~/.local.
+        self.root = Path(self.tmp.name) / "appinstall" / "containers"
+        self.root.mkdir(parents=True)
+        env = patch.dict(os.environ, {"XDG_DATA_HOME": self.tmp.name})
+        env.start()
+        self.addCleanup(env.stop)
         self.mock_root = patch.object(backend, "state_dir", return_value=self.root)
         self.mock_root.start()
         self.addCleanup(self.mock_root.stop)
