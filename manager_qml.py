@@ -1295,12 +1295,18 @@ class Bridge(QtCore.QObject):
 
     @QtCore.Slot(str)
     def updateApp(self, key):
+        """My Applications' legacy action routes through the new review gate."""
         app = self._model.app_record(key)
         if not manager.can_update(app):
             self._set_status(
                 'Automatic updates are not supported for this application.')
             return
-        self._guard(manager.update_app, key, 'Update failed', refresh=True)
+        selected = self._updates.candidate(key)
+        if selected is None or selected.state != update_engine.AVAILABLE:
+            self._set_status(
+                'Open the Updates tab and select Check now to review updates for this app.')
+            return
+        self.requestFlatpakUpdate(key)
 
     @QtCore.Slot(str)
     def uninstallApp(self, key):
