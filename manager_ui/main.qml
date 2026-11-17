@@ -1080,14 +1080,16 @@ ApplicationWindow {
                                                 color: Theme.colors.textSecondary
                                                 font.letterSpacing: 0.8
                                             }
-                                            Label {
+                                            TextEdit {
+                                                objectName: "catalogDetailsPackageId"
                                                 Layout.fillWidth: true
                                                 text: bridge.catalogDetails.appId || ""
                                                 font.pixelSize: 12
-                                                textFormat: Text.PlainText
+                                                textFormat: TextEdit.PlainText
                                                 color: Theme.colors.text
-                                                wrapMode: Text.WrapAnywhere
-                                                textInteractionFlags: Qt.TextSelectableByMouse
+                                                wrapMode: TextEdit.WrapAnywhere
+                                                readOnly: true
+                                                selectByMouse: true
                                             }
                                             Label {
                                                 visible: Boolean(bridge.catalogDetails.componentId)
@@ -1097,16 +1099,18 @@ ApplicationWindow {
                                                 color: Theme.colors.textSecondary
                                                 font.letterSpacing: 0.8
                                             }
-                                            Label {
+                                            TextEdit {
+                                                objectName: "catalogDetailsAppStreamId"
                                                 visible: Boolean(bridge.catalogDetails.componentId)
                                                          && bridge.catalogDetails.componentId !== bridge.catalogDetails.appId
                                                 Layout.fillWidth: true
                                                 text: bridge.catalogDetails.componentId || ""
                                                 font.pixelSize: 12
-                                                textFormat: Text.PlainText
+                                                textFormat: TextEdit.PlainText
                                                 color: Theme.colors.text
-                                                wrapMode: Text.WrapAnywhere
-                                                textInteractionFlags: Qt.TextSelectableByMouse
+                                                wrapMode: TextEdit.WrapAnywhere
+                                                readOnly: true
+                                                selectByMouse: true
                                             }
                                         }
                                     }
@@ -1167,7 +1171,6 @@ ApplicationWindow {
                                                     wrapMode: Text.WrapAnywhere
                                                     maximumLineCount: 3
                                                     elide: Text.ElideRight
-                                                    textInteractionFlags: Qt.TextSelectableByMouse
                                                 }
                                             }
                                         }
