@@ -406,6 +406,19 @@ class BridgePreferenceTests(QmlManagerBase):
 class CatalogModelTests(QmlManagerBase):
     """Discover results and installed app records stay separate."""
 
+    def setUp(self):
+        super().setUp()
+        # Metadata and artwork are optional worker-phase providers. Tests of
+        # catalog pagination/search must not access the live network or a
+        # rootless Distrobox container in the CI runner.
+        for obj, member in (
+            (manager_qml.catalog_artwork, "cache_results"),
+            (manager_qml.catalog_metadata, "repo_enrichment"),
+        ):
+            mock = patch.object(obj, member, return_value={})
+            mock.start()
+            self.addCleanup(mock.stop)
+
     def sample(self):
         return [{
             'appId': 'org.gimp.GIMP', 'name': 'GIMP',
@@ -607,9 +620,15 @@ class CatalogModelTests(QmlManagerBase):
         lookup.assert_called_once()
         self.assertEqual(self.bridge.catalogModel.count, 1)
         index = self.bridge.catalogModel.index(0, 0)
+        # Provider URL stays as *metadata*, but the QML Image never receives
+        # it until the image was downloaded/validated into the local cache.
         self.assertEqual(self.bridge.catalogModel.data(
-            index, self.bridge.catalogModel.IconRole), icon_url)
+            index, self.bridge.catalogModel.IconRole), "")
         self.assertEqual(self.bridge._catalog_all[0]['iconUrl'], icon_url)
+        self.bridge.catalogModel.apply_artwork({'gimp': 'file:///tmp/verified-icon.png'})
+        self.assertEqual(self.bridge.catalogModel.data(
+            index, self.bridge.catalogModel.IconRole),
+            'file:///tmp/verified-icon.png')
         self.assertFalse(self.bridge.catalogHasMore)
 
     def test_stale_icon_updates_cannot_replace_another_source(self):
