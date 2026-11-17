@@ -42,10 +42,11 @@ def trusted_url(source, url):
         return False
     try:
         parsed = urllib.parse.urlsplit(url)
+        port = parsed.port
     except ValueError:
         return False
     if (parsed.scheme != "https" or parsed.username or parsed.password
-            or parsed.port not in (None, 443) or parsed.query or parsed.fragment):
+            or port not in (None, 443) or parsed.query or parsed.fragment):
         return False
     path = urllib.parse.unquote(parsed.path)
     segments = path.split("/")
@@ -228,13 +229,16 @@ def cache_results(rows, limit=MAX_FETCHES):
     """Concurrent best-effort fetch, bounded and safe for worker thread use."""
     targets = []
     seen = set()
+    limit = min(MAX_FETCHES, max(0, int(limit)))
+    if not limit:
+        return {}
     for row in rows:
         source, app_id, url = row.get("source", "Flatpak"), row.get("appId"), row.get("iconUrl")
         if (isinstance(app_id, str) and app_id not in seen
                 and trusted_url(source, url)):
             seen.add(app_id)
             targets.append((source, app_id, url))
-        if len(targets) >= min(MAX_FETCHES, max(0, int(limit))):
+        if len(targets) >= limit:
             break
     icons = {}
     with ThreadPoolExecutor(max_workers=4) as pool:
