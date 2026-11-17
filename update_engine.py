@@ -62,10 +62,10 @@ def _clean(value):
 
 def _package_identity(app, kind):
     """Refuse guessed sources, changed containers, and imported local files."""
-    raw = app.get("raw") or {}
+    raw = app.get("raw") if isinstance(app.get("raw"), dict) else {}
     key = app.get("key", "")
     name = raw.get("name")
-    if not isinstance(raw, dict) or not isinstance(key, str):
+    if not isinstance(key, str):
         return None
     if raw.get("kind") != kind or raw.get("install_method") != "repository":
         return None
@@ -141,8 +141,8 @@ class UpdateEngine:
 
     def _flatpak(self, app, cancelled):
         key = app.get("key", "")
-        raw = app.get("raw") or {}
-        app_id = raw.get("appid") or key.removeprefix("flatpak:")
+        raw = app.get("raw") if isinstance(app.get("raw"), dict) else {}
+        app_id = raw.get("appid") or (key.removeprefix("flatpak:") if isinstance(key, str) else "")
         if (not isinstance(key, str) or key != "flatpak:" + str(app_id)
                 or not isinstance(app_id, str) or not APP_ID_RE.fullmatch(app_id)):
             return self._candidate(app, MANUAL_REQUIRED,
@@ -260,7 +260,7 @@ class UpdateEngine:
         # No external version check is performed in PR #1. The next AppImage
         # PR will validate updater metadata, URL and full artifact identity
         # before offering an executable update action.
-        raw = app.get("raw") or {}
+        raw = app.get("raw") if isinstance(app.get("raw"), dict) else {}
         target = app.get("target") or raw.get("target")
         if not isinstance(target, str) or not target:
             return self._candidate(app, MANUAL_REQUIRED,
