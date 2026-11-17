@@ -1601,6 +1601,8 @@ class Bridge(QtCore.QObject):
             'category': (safe['category'] if safe['category']
                          not in ('Debian 13', 'Fedora 44') else ''),
             'categoryGroup': catalog_browse.category_for(safe),
+            'licenseDisplay': ('Proprietary' if safe['license'].lower().startswith(
+                'licenseref-proprietary') else safe['license']),
             'componentId': safe['componentId'],
             'iconUrl': cached_icon,
             'managed': managed,
