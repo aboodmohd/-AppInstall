@@ -952,6 +952,9 @@ ApplicationWindow {
 
                     delegate: Rectangle {
                         id: catalogCard
+                        objectName: "catalogCard"
+                        readonly property string renderedInitial: catalogFallback.text
+                        readonly property bool usingFallback: catalogFallback.visible
                         width: catalogList.cellWidth - 12
                         height: catalogList.cellHeight - 8
                         radius: 12
@@ -996,6 +999,8 @@ ApplicationWindow {
                                     }
                                     Label {
                                         anchors.fill: parent
+                                        id: catalogFallback
+                                        objectName: "catalogIconFallback"
                                         text: model.name.length ? model.name[0].toUpperCase() : "?"
                                         visible: catalogIcon.status !== Image.Ready
                                         color: Theme.colors.textSecondary
