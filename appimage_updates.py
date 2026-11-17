@@ -269,7 +269,7 @@ class AppImageUpgradeService:
             staged.chmod(0o700)
             if sha256_file(staged) != original:
                 raise AppImageUpdateBlocked("Staged AppImage differs from the installed version.")
-            notify("Downloading signed-by-source zsync delta into private staging…")
+            notify("Downloading upstream zsync delta into private staging (checksum is not a signature)…")
             try:
                 proc = self.runner(
                     ["appimageupdatetool", "--overwrite", "--", str(staged)],
