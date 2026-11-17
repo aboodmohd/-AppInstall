@@ -203,7 +203,7 @@ class Engine:
         fcntl.flock(self.lock,fcntl.LOCK_EX | fcntl.LOCK_NB)
         self.registry = json.loads(self.file.read_text()) if self.file.exists() else {}
         for record in self.registry.values():
-            if record.get('status') in ('installing','removing'):
+            if record.get('status') in ('installing','removing','updating'):
                 record['status']='needs-repair'
         self.save()
 
