@@ -467,6 +467,18 @@ def formats_summary(inventory):
 
 # ── Action helpers ─────────────────────────────────────────────────────────
 
+def inspect_application_updates(inventory=None, *, engine=None, force=False, cancelled=None):
+    """Read-only provider checks, for a future UI worker (never call on Qt UI thread).
+
+    Distinct from the existing AppInstall *self-update* checker and from the
+    currently supported Flatpak install/update action. No updates are applied.
+    """
+    from update_engine import UpdateEngine
+    worker = engine if engine is not None else UpdateEngine()
+    records = load_inventory() if inventory is None else inventory
+    return worker.check_many(records, cancelled=cancelled, force=force)
+
+
 def can_uninstall(app):
     return app['format'] in ('appimage', 'flatpak', 'deb', 'rpm')
 
