@@ -33,13 +33,13 @@ reverse order or merge all eight just because CI passed.**
       two skipped and zero failures, on its checked commit.
 - [ ] Phase 8 candidate HEAD: all required CI workflows must pass on the
       **exact** commit. Previous PR runs are not interchangeable.
-- [ ] Verify PKGBUILD \`pkgver=1.8.0\`, appinstall CLI \`VERSION="1.8.0"\`,
+- [ ] Verify PKGBUILD `pkgver=1.8.0`, appinstall CLI `VERSION="1.8.0"`,
       native package metadata, and portable archive version all agree.
 - [ ] Verify one SHA256SUMS covers exactly the 4 expected v1.8.0 artifacts:
-      \`appinstall-1.8.0-1-any.pkg.tar.zst\`,
-      \`appinstall_1.8.0-1_all.deb\`,
-      \`appinstall-1.8.0-1.noarch.rpm\`,
-      \`appinstall-1.8.0-portable.tar.gz\`.
+      `appinstall-1.8.0-1-any.pkg.tar.zst`,
+      `appinstall_1.8.0-1_all.deb`,
+      `appinstall-1.8.0-1.noarch.rpm`,
+      `appinstall-1.8.0-portable.tar.gz`.
       No signed/developer provenance can be inferred from checksum validity.
 - [ ] Verify the four assets from a single clean, **post-merge commit**,
       not PR synthetic merge SHA or outdated run. Record exact Git SHA, run
@@ -57,7 +57,7 @@ reverse order or merge all eight just because CI passed.**
       resulting version, cancellation/recovery and no host package change.
       Mock/CI container acceptance is not identical to live production use.
 - [ ] Eligible AppImage update: actual supported upstream with
-      \`appimageupdatetool\`, two reviews, checksum/format validation,
+      `appimageupdatetool`, two reviews, checksum/format validation,
       atomic replacement and recovery. Also check manual-only fallbacks.
       Do not assert that all AppImages have automated updates.
 - [ ] Source/user-installed portable archive test on at least one distinct
@@ -82,11 +82,11 @@ container backends and optional system tools still matter.
 
 ## Release safety
 
-The existing \`.github/workflows/publish-v1.7.0.yml\` is **locked to v1.7.0**
+The existing `.github/workflows/publish-v1.7.0.yml` is **locked to v1.7.0**
 and must not be repurposed to publish 1.8. A new v1.8 publication gate
 must be written and individually reviewed after the final verified build
 has a fixed immutable commit and assets. It must require manual
-\`workflow_dispatch\` and a separate explicit owner approval; it must
+`workflow_dispatch` and a separate explicit owner approval; it must
 refuse duplicate tags/releases and verify exact artifact hashes, versions
 and provenance before publishing. Do not enable a publish-on-push trigger.
 

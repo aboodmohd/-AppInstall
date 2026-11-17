@@ -22,14 +22,14 @@ acceptance and owner authorization are verified.
 
 ## Candidate installation formats — pending final acceptance
 
-- Arch Linux / CachyOS: \`appinstall-1.8.0-1-any.pkg.tar.zst\`
-- Debian 13 / Ubuntu 24.04, 26.04 / Mint 22: \`appinstall_1.8.0-1_all.deb\`
-- Fedora 44: \`appinstall-1.8.0-1.noarch.rpm\`
-- Other equipped Linux desktops: \`appinstall-1.8.0-portable.tar.gz\`
+- Arch Linux / CachyOS: `appinstall-1.8.0-1-any.pkg.tar.zst`
+- Debian 13 / Ubuntu 24.04, 26.04 / Mint 22: `appinstall_1.8.0-1_all.deb`
+- Fedora 44: `appinstall-1.8.0-1.noarch.rpm`
+- Other equipped Linux desktops: `appinstall-1.8.0-portable.tar.gz`
 
 These are **expected candidate filenames only**, not links to verified or
 published downloads. The final release must also include matching
-\`SHA256SUMS\`, provenance/upgrade/rollback records and real desktop tests.
+`SHA256SUMS`, provenance/upgrade/rollback records and real desktop tests.
 Some package metadata and icons may be unavailable. zsync is not a
 developer signature; Distrobox is not a security sandbox; portable support
 is conditional, not universal. No package installation occurs without

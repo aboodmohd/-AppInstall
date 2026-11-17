@@ -19,7 +19,7 @@ Updates require explicit review rather than automatic system-wide upgrades.
   approval; application updates occur in existing owned containers,
   not through an unreviewed host-wide package upgrade.
 - **AppImage:** supported embedded zsync metadata and a separately
-  installed \`appimageupdatetool\` enable reviewed download/replace with
+  installed `appimageupdatetool` enable reviewed download/replace with
   staging, format checks, atomic replacement and a recovery copy.
   Unsupported AppImages remain manual. zsync is **not a developer signature**.
 
