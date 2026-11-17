@@ -934,36 +934,41 @@ ApplicationWindow {
                 id: featuredStrip
                 objectName: "featuredStrip"
                 Layout.fillWidth: true
-                Layout.preferredHeight: 132
+                // Keep a dedicated gutter for the scrollbar instead of drawing it
+                // over the developer label and Install button.
+                Layout.preferredHeight: 128
                 visible: bridge.catalogHasFeatured
                 clip: true
                 contentWidth: featuredRow.implicitWidth
                 contentHeight: height
                 boundsBehavior: Flickable.StopAtBounds
                 flickableDirection: Flickable.HorizontalFlick
-                ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
+                ScrollBar.horizontal: ScrollBar {
+                    policy: ScrollBar.AsNeeded
+                    height: 4
+                }
                 Row {
                     id: featuredRow
-                    spacing: 10
+                    spacing: 8
                     Repeater {
                         id: featuredRepeater
                         model: bridge.featuredCatalogModel
                         delegate: Rectangle {
-                            width: 250
-                            height: 122
+                            width: 244
+                            height: 110
                             radius: 11
                             color: Theme.colors.surface
                             border.color: Theme.colors.border
                             ColumnLayout {
                                 anchors.fill: parent
-                                anchors.margins: 11
-                                spacing: 6
+                                anchors.margins: 9
+                                spacing: 4
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    spacing: 9
+                                    spacing: 8
                                     Rectangle {
-                                        Layout.preferredWidth: 38
-                                        Layout.preferredHeight: 38
+                                        Layout.preferredWidth: 36
+                                        Layout.preferredHeight: 36
                                         radius: 8
                                         color: Theme.colors.iconFallbackBg
                                         Image {
