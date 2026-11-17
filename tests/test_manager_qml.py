@@ -1309,6 +1309,45 @@ class QmlDiscoverTests(QmlManagerBase):
                 self.engine.deleteLater()
                 self.app.processEvents()
 
+    def test_featured_card_reserves_scrollbar_gutter(self):
+        self.bridge._catalog_source = "Flatpak"
+        self.bridge._catalog_query = ""
+        self.bridge._catalog_all = manager_qml.catalog_metadata.normalize_rows([{
+            "source": "Flatpak", "appId": "org.example.Featured",
+            "name": "Featured Example", "summary": "Sample",
+            "category": "Graphics",
+        }])
+        self.bridge._rebuild_catalog_view()
+        self.engine = QtQml.QQmlApplicationEngine()
+        self.engine.rootContext().setContextProperty('bridge', self.bridge)
+        self.engine.rootContext().setContextProperty('appsModel', self.model)
+        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        with QmlLoadCapture() as capture:
+            self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
+            self.assertTrue(self.engine.rootObjects(), capture.messages)
+            window = self.engine.rootObjects()[0]
+            window.setProperty('discoverSelected', True)
+            window.show()
+            QtTest.QTest.qWait(120)
+            self.app.processEvents()
+            expr = lambda v: QtQml.QQmlExpression(
+                QtQml.qmlContext(window), window, v).evaluate()[0]
+            try:
+                self.assertTrue(expr('featuredStrip.visible'))
+                self.assertTrue(expr('featuredRepeater.itemAt(0) !== null'))
+                self.assertGreaterEqual(
+                    expr('featuredStrip.height - featuredRepeater.itemAt(0).height'),
+                    14)
+                self.assertGreaterEqual(
+                    expr('categoryStrip.y - (featuredStrip.y + featuredStrip.height)'),
+                    0)
+                self.assertFalse(any('ReferenceError' in m for m in capture.messages),
+                                 capture.messages)
+            finally:
+                window.close()
+                self.engine.deleteLater()
+                self.app.processEvents()
+
     def test_discover_switches_pages_and_keeps_header(self):
         self.engine = QtQml.QQmlApplicationEngine()
         self.engine.rootContext().setContextProperty('bridge', self.bridge)
