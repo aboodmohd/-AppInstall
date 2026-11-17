@@ -909,6 +909,167 @@ ApplicationWindow {
             }
 
             RowLayout {
+                id: featuredHeading
+                objectName: "featuredHeading"
+                Layout.fillWidth: true
+                visible: bridge.catalogHasFeatured
+                spacing: 10
+                Label {
+                    text: qsTr("Featured apps")
+                    font.pixelSize: 16
+                    font.weight: Font.DemiBold
+                    color: Theme.colors.text
+                    Accessible.role: Accessible.Heading
+                }
+                Label {
+                    Layout.fillWidth: true
+                    text: qsTr("From Flathub's live popular collection")
+                    font.pixelSize: 11
+                    color: Theme.colors.textSecondary
+                    elide: Text.ElideRight
+                }
+            }
+
+            Flickable {
+                id: featuredStrip
+                objectName: "featuredStrip"
+                Layout.fillWidth: true
+                // Keep a dedicated gutter for the scrollbar instead of drawing it
+                // over the developer label and Install button.
+                Layout.preferredHeight: 128
+                visible: bridge.catalogHasFeatured
+                clip: true
+                contentWidth: featuredRow.implicitWidth
+                contentHeight: height
+                boundsBehavior: Flickable.StopAtBounds
+                flickableDirection: Flickable.HorizontalFlick
+                ScrollBar.horizontal: ScrollBar {
+                    policy: ScrollBar.AsNeeded
+                    height: 4
+                }
+                Row {
+                    id: featuredRow
+                    spacing: 8
+                    Repeater {
+                        id: featuredRepeater
+                        model: bridge.featuredCatalogModel
+                        delegate: Rectangle {
+                            width: 244
+                            height: 110
+                            radius: 11
+                            color: Theme.colors.surface
+                            border.color: Theme.colors.border
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 9
+                                spacing: 4
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    Rectangle {
+                                        Layout.preferredWidth: 36
+                                        Layout.preferredHeight: 36
+                                        radius: 8
+                                        color: Theme.colors.iconFallbackBg
+                                        Image {
+                                            id: featuredIcon
+                                            anchors.fill: parent
+                                            anchors.margins: 3
+                                            source: model.iconUrl
+                                            sourceSize.width: 80
+                                            sourceSize.height: 80
+                                            asynchronous: true
+                                            fillMode: Image.PreserveAspectFit
+                                            visible: status === Image.Ready
+                                        }
+                                        Label {
+                                            anchors.fill: parent
+                                            visible: featuredIcon.status !== Image.Ready
+                                            text: model.name.length ? model.name[0].toUpperCase() : "?"
+                                            color: Theme.colors.textSecondary
+                                            font.pixelSize: 16
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
+                                        }
+                                    }
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: model.name
+                                        textFormat: Text.PlainText
+                                        font.pixelSize: 14
+                                        font.weight: Font.DemiBold
+                                        color: Theme.colors.text
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                                Label {
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    text: model.summary || model.appId
+                                    textFormat: Text.PlainText
+                                    font.pixelSize: 11
+                                    color: Theme.colors.textSecondary
+                                    elide: Text.ElideRight
+                                    maximumLineCount: 2
+                                    wrapMode: Text.WordWrap
+                                    verticalAlignment: Text.AlignTop
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: model.developer || qsTr("Flathub")
+                                        textFormat: Text.PlainText
+                                        font.pixelSize: 10
+                                        color: Theme.colors.textSecondary
+                                        elide: Text.ElideRight
+                                    }
+                                    Button {
+                                        implicitHeight: 27
+                                        implicitWidth: 74
+                                        text: model.managed ? qsTr("Managed") : qsTr("Install")
+                                        enabled: !model.managed
+                                        Accessible.name: text + " " + model.name
+                                        onClicked: bridge.installCatalogEntry(model.appId, model.source)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Flickable {
+                id: categoryStrip
+                objectName: "categoryStrip"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 40
+                clip: true
+                contentWidth: categoryRow.implicitWidth
+                contentHeight: height
+                boundsBehavior: Flickable.StopAtBounds
+                flickableDirection: Flickable.HorizontalFlick
+                ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
+                Row {
+                    id: categoryRow
+                    spacing: 7
+                    Repeater {
+                        id: categoryRepeater
+                        objectName: "categoryRepeater"
+                        model: bridge.catalogCategories
+                        delegate: Button {
+                            required property string modelData
+                            text: modelData
+                            font.bold: bridge.catalogCategory === modelData
+                            implicitHeight: 32
+                            Accessible.name: qsTr("Category: ") + modelData
+                            onClicked: bridge.chooseCatalogCategory(modelData)
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
                 Label {

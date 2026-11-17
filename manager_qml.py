@@ -38,6 +38,7 @@ import flathub_catalog
 import repository_catalog
 import catalog_metadata
 import catalog_artwork
+import catalog_browse
 import update_engine
 import repository_upgrades
 import appimage_updates
@@ -427,8 +428,7 @@ class CatalogModel(QtCore.QAbstractListModel):
         """Accept only local cached icons, never arbitrary remote image URLs."""
         for index, row in enumerate(self._rows):
             uri = cached.get(row['appId'], '')
-            if (isinstance(uri, str) and uri.startswith('file:///')
-                    and uri != row.get('cachedIconUrl', '')):
+            if isinstance(uri, str) and uri.startswith('file:///'):
                 row['cachedIconUrl'] = uri
                 item = self.index(index, 0)
                 self.dataChanged.emit(item, item, [self.IconRole])
@@ -771,6 +771,7 @@ class Bridge(QtCore.QObject):
         self.anchor = anchor  # hidden QWidget used to parent the existing dialogs
         self._model = AppModel(self)
         self._catalog = CatalogModel(self)
+        self._catalog_featured = CatalogModel(self)
         self._catalog_loading = False
         self._catalog_setup_required = False
         self._catalog_initializing = False
@@ -778,6 +779,9 @@ class Bridge(QtCore.QObject):
         self._catalog_source = 'Flatpak'
         self._catalog_query = ''
         self._catalog_all = []
+        self._catalog_visible = []
+        self._catalog_categories = ['All']
+        self._catalog_category = 'All'
         self._catalog_worker = None
         self._catalog_pending = None
         self._updates = UpdateModel(self)
@@ -893,6 +897,24 @@ class Bridge(QtCore.QObject):
     def catalogModel(self):
         return self._catalog
 
+    @QtCore.Property(QtCore.QObject, constant=True)
+    def featuredCatalogModel(self):
+        return self._catalog_featured
+
+    @QtCore.Property(list, notify=catalogResultsChanged)
+    def catalogCategories(self):
+        return self._catalog_categories
+
+    @QtCore.Property(str, notify=catalogResultsChanged)
+    def catalogCategory(self):
+        return self._catalog_category
+
+    @QtCore.Property(bool, notify=catalogResultsChanged)
+    def catalogHasFeatured(self):
+        return (self._catalog_source == 'Flatpak' and not self._catalog_query
+                and self._catalog_category == 'All'
+                and self._catalog_featured.count > 0)
+
     @QtCore.Property(bool, notify=catalogLoadingChanged)
     def catalogLoading(self):
         return self._catalog_loading
@@ -905,9 +927,16 @@ class Bridge(QtCore.QObject):
     def catalogSetupRequired(self):
         return self._catalog_setup_required
 
+    def _display_catalog_rows(self):
+        # Older callers/tests can prepopulate the visible model directly
+        # instead of invoking the Phase 6 view builder.
+        if not self._catalog_visible and self._catalog_category == 'All':
+            return self._catalog_all
+        return self._catalog_visible
+
     @QtCore.Property(bool, notify=catalogResultsChanged)
     def catalogHasMore(self):
-        return self._catalog.count < len(self._catalog_all)
+        return self._catalog.count < len(self._display_catalog_rows())
 
     def _set_catalog_status(self, message):
         self._catalog_status = str(message)
@@ -1495,6 +1524,7 @@ class Bridge(QtCore.QObject):
     def _loaded(self, inventory):
         self._model.refresh_inventory(inventory)
         self._catalog.set_managed(inventory)
+        self._catalog_featured.set_managed(inventory)
         self._loading = False
         self.loadingChanged.emit(False)
         self._announce_count()
@@ -1523,6 +1553,8 @@ class Bridge(QtCore.QObject):
         """Latest-wins search using a single asynchronous worker."""
         query = str(query).strip()[:90]
         source = source if source in ('Flatpak', 'AppImage', 'DEB', 'RPM') else 'Flatpak'
+        if source != self._catalog_source or query != self._catalog_query:
+            self._catalog_category = 'All'
         was_setup_required = (self._catalog_source == source
                               and self._catalog_setup_required)
         self._catalog_source = source
@@ -1531,9 +1563,7 @@ class Bridge(QtCore.QObject):
         self.catalogResultsChanged.emit()
         if query and len(query) < 2:
             self._catalog_pending = None
-            self._catalog_all = []
-            self._catalog.replace([])
-            self.catalogResultsChanged.emit()
+            self._clear_catalog_view()
             self._set_catalog_status('Enter at least two characters.')
             return
         self._catalog_pending = (query, source)
@@ -1593,12 +1623,40 @@ class Bridge(QtCore.QObject):
         self._catalog_pending = (self._catalog_query, source)
         self._start_catalog_worker(initialize=True)
 
+    @QtCore.Slot(str)
+    def chooseCatalogCategory(self, category):
+        """Local view selection only; no new provider or install operations."""
+        if category not in self._catalog_categories or category == self._catalog_category:
+            return
+        self._catalog_category = category
+        self._rebuild_catalog_view()
+
+    def _clear_catalog_view(self):
+        self._catalog_all = []
+        self._catalog_visible = []
+        self._catalog_categories = ['All']
+        self._catalog_category = 'All'
+        self._catalog.replace([])
+        self._catalog_featured.replace([])
+        self.catalogResultsChanged.emit()
+
+    def _rebuild_catalog_view(self, preserve_page=False):
+        self._catalog_categories = catalog_browse.categories_for(self._catalog_all)
+        if self._catalog_category not in self._catalog_categories:
+            self._catalog_category = 'All'
+        self._catalog_visible = catalog_browse.filtered_rows(
+            self._catalog_all, self._catalog_category)
+        page = max(24, self._catalog.count) if preserve_page else 24
+        self._catalog.replace(self._catalog_visible[:page])
+        self._catalog_featured.replace(catalog_browse.featured_rows(
+            self._catalog_all, self._catalog_source, self._catalog_query))
+        self.catalogResultsChanged.emit()
+        self._announce_catalog_results()
+
     def _catalog_needs_setup(self, source):
         if source == self._catalog_source and self._catalog_pending is None:
             self._catalog_setup_required = True
-            self._catalog_all = []
-            self._catalog.replace([])
-            self.catalogResultsChanged.emit()
+            self._clear_catalog_view()
             self._set_catalog_status('Enable the ' + source + ' repository to search available packages.')
 
     def _catalog_ready(self, query, entries):
@@ -1608,12 +1666,11 @@ class Bridge(QtCore.QObject):
         if worker.initializing:
             self._catalog_setup_required = False
             self.catalogResultsChanged.emit()
-        if self._catalog_pending is not None or worker.source != self._catalog_source:
+        if (self._catalog_pending is not None or worker.source != self._catalog_source
+                or worker.query != self._catalog_query):
             return
         self._catalog_all = list(entries)
-        self._catalog.replace(self._catalog_all[:24])
-        self.catalogResultsChanged.emit()
-        self._announce_catalog_results()
+        self._rebuild_catalog_view()
 
     def _catalog_icons_ready(self, query, source, icons):
         worker = self._catalog_worker
@@ -1626,6 +1683,7 @@ class Bridge(QtCore.QObject):
             if icon:
                 row['iconUrl'] = icon
         self._catalog.apply_icons(icons)
+        self._catalog_featured.apply_icons(icons)
 
     def _catalog_metadata_ready(self, query, source, metadata):
         worker = self._catalog_worker
@@ -1647,7 +1705,8 @@ class Bridge(QtCore.QObject):
             if normalized:
                 sanitized[row['appId']] = normalized
                 row.update({k: v for k, v in normalized.items() if v})
-        self._catalog.apply_metadata(sanitized)
+        if sanitized:
+            self._rebuild_catalog_view(preserve_page=True)
 
     def _catalog_artwork_ready(self, query, source, cached):
         worker = self._catalog_worker
@@ -1655,18 +1714,23 @@ class Bridge(QtCore.QObject):
                 or source != self._catalog_source or worker.source != source
                 or worker.query != query):
             return
-        for row in self._catalog_all:
-            local_uri = cached.get(row['appId'], '')
-            if local_uri and isinstance(local_uri, str) and local_uri.startswith('file:///'):
-                row['cachedIconUrl'] = local_uri
         self._catalog.apply_artwork(cached)
+        self._catalog_featured.apply_artwork(cached)
 
     def _announce_catalog_results(self):
-        total = len(self._catalog_all)
+        total = len(self._display_catalog_rows())
         shown = self._catalog.count
         provider = {'Flatpak': 'Flathub', 'AppImage': 'AppImageHub',
                     'DEB': 'Debian APT', 'RPM': 'Fedora DNF'}[self._catalog_source]
-        if not total and self._catalog_source in ('DEB', 'RPM') \
+        if self._catalog_category != 'All':
+            label = self._catalog_category
+            if not total:
+                status = f'No {label} apps in the current {provider} results.'
+            elif shown < total:
+                status = f'Showing {shown} of {total} {label} apps on {provider}.'
+            else:
+                status = f'{total} {label} apps in the current {provider} results.'
+        elif not total and self._catalog_source in ('DEB', 'RPM') \
                 and not self._catalog_setup_required and not self._catalog_query:
             status = ('No browse results from ' + provider
                       + '. Search by package name or refresh the repository.')
@@ -1684,7 +1748,7 @@ class Bridge(QtCore.QObject):
         if self._catalog_loading or not self.catalogHasMore:
             return
         n = self._catalog.count
-        self._catalog.append(self._catalog_all[n:n + 24])
+        self._catalog.append(self._display_catalog_rows()[n:n + 24])
         self.catalogResultsChanged.emit()
         self._announce_catalog_results()
 
@@ -1693,9 +1757,7 @@ class Bridge(QtCore.QObject):
                 self._catalog_worker.source == self._catalog_source:
             if self._catalog_worker.initializing:
                 self._catalog_setup_required = True
-            self._catalog_all = []
-            self._catalog.replace([])
-            self.catalogResultsChanged.emit()
+            self._clear_catalog_view()
             self._set_catalog_status(message)
 
     def _catalog_finished(self):
