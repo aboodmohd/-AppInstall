@@ -9,27 +9,25 @@ if [[ "$GITHUB_ACTIONS" != true || "$CI" != true ||
 fi
 case "$FAMILY" in arch|debian|fedora) ;; *) exit 2 ;; esac
 root="$PWD"
-test "$(sed -n 's/^pkgver=//p' PKGBUILD)" = 1.8.0
+test "$(sed -n 's/^pkgver=//p' PKGBUILD)" = 1.9.0
 test "$(sed -n 's/^pkgrel=//p' PKGBUILD)" = 1
-grep -Fx 'VERSION="1.8.0"' appinstall >/dev/null
+grep -Fx 'VERSION="1.9.0"' appinstall >/dev/null
 work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT
 mkdir -p "$work"/{old,new}
 
 case "$FAMILY" in
 arch)
- old=appinstall-1.7.0-1-any.pkg.tar.zst
- new=appinstall-1.8.0-1-any.pkg.tar.zst
- old_sha=722c4b2cb6211f92de9a4d21047e3aa5c6e4a281644faf9a8779f878c562f917
+ old=appinstall-1.8.0-1-any.pkg.tar.zst
+ new=appinstall-1.9.0-1-any.pkg.tar.zst
  pkgmeta() { test "$(pacman -Q appinstall)" = "appinstall $1"; }
  native_install() { pacman -U --noconfirm "$1"; }
  installed_helper=/usr/bin/portable_update.py
  smoke=/usr/bin/manager_qml.py
  ;;
 debian)
- old=appinstall_1.7.0-1_all.deb
- new=appinstall_1.8.0-1_all.deb
- old_sha=d276dacca8a9338f29a60576207134f5daa9167fd2f25bbb4cacbe2a7ace6bfb
+ old=appinstall_1.8.0-1_all.deb
+ new=appinstall_1.9.0-1_all.deb
  pkgmeta() {
    fmt="$(printf '$%s' '{Version}')"
    test "$(dpkg-query -W -f="$fmt" appinstall)" = "$1"
@@ -39,14 +37,13 @@ debian)
  smoke=/usr/lib/appinstall/manager_qml.py
  ;;
 fedora)
- old=appinstall-1.7.0-1.noarch.rpm
- new=appinstall-1.8.0-1.noarch.rpm
- old_sha=f953a4c163773d922ace262f1163c085057d2c16ad6d361a369030b961f333db
+ old=appinstall-1.8.0-1.noarch.rpm
+ new=appinstall-1.9.0-1.noarch.rpm
  pkgmeta() { test "$(rpm -q --qf '%{VERSION}-%{RELEASE}' appinstall)" = "$1"; }
  native_install() {
    if rpm -q appinstall >/dev/null 2>&1; then
      installed="$(rpm -q --qf '%{VERSION}' appinstall)"
-     if [[ "$installed" == 1.8.0 ]]; then dnf -y downgrade "$1";
+     if [[ "$installed" == 1.9.0 ]]; then dnf -y downgrade "$1";
      else dnf -y upgrade "$1"; fi
    else dnf -y install "$1"; fi
  }
@@ -76,13 +73,28 @@ test -s "$work/new/$new"
 curl --fail --location --silent --show-error --retry 3 \
   --proto '=https' --proto-redir '=https' --connect-timeout 15 \
   --max-time 150 --output "$work/old/$old" \
-  "https://github.com/aboodmohd/-AppInstall/releases/download/v1.7.0/$old"
-printf '%s  %s\n' "$old_sha" "$work/old/$old" | sha256sum -c -
-echo "PASS: verified authentic published v1.7.0 $FAMILY package"
+  "https://github.com/aboodmohd/-AppInstall/releases/download/v1.8.0/$old"
+# Verify the exact old asset against the published v1.8.0 checksum manifest.
+# SHA-256 verifies archive integrity, not an independent publisher signature.
+curl --fail --location --silent --show-error --retry 3 \
+  --proto '=https' --proto-redir '=https' --connect-timeout 15 \
+  --max-time 150 --output "$work/old/SHA256SUMS" \
+  "https://github.com/aboodmohd/-AppInstall/releases/download/v1.8.0/SHA256SUMS"
+matches=0
+old_digest=""
+while read -r digest filename; do
+  if [[ "$filename" == "$old" && "$digest" =~ ^[0-9a-f]{64}$ ]]; then
+    old_digest="$digest"
+    matches=$((matches + 1))
+  fi
+done < "$work/old/SHA256SUMS"
+test "$matches" -eq 1
+(cd "$work/old" && printf '%s  %s\n' "$old_digest" "$old" | sha256sum -c --strict -)
+echo "PASS: verified published v1.8.0 $FAMILY package against SHA256SUMS"
 
 native_install "$work/old/$old"
-pkgmeta 1.7.0-1
-test "$(appinstall --version)" = 'appinstall 1.7.0'
+pkgmeta 1.8.0-1
+test "$(appinstall --version)" = 'appinstall 1.8.0'
 useradd -m -s /bin/bash appinstall-acceptance
 user_home=/home/appinstall-acceptance
 
@@ -124,8 +136,8 @@ PYTHON
 check_data
 
 native_install "$work/new/$new"
-pkgmeta 1.8.0-1
-test "$(appinstall --version)" = 'appinstall 1.8.0'
+pkgmeta 1.9.0-1
+test "$(appinstall --version)" = 'appinstall 1.9.0'
 test -f "$installed_helper"
 test -f "$smoke"
 check_data
@@ -134,12 +146,12 @@ runuser -u appinstall-acceptance -- env HOME="$user_home" \
  XDG_CONFIG_HOME="$user_home/.config" \
  QT_QPA_PLATFORM=offscreen APPINSTALL_DISABLE_UPDATE_TIMER=1 \
  python3 "$smoke" --smoke
-echo "PASS: v1.7.0 -> v1.8.0 $FAMILY native upgrade"
+echo "PASS: v1.8.0 -> v1.9.0 $FAMILY native upgrade"
 
 native_install "$work/old/$old"
-pkgmeta 1.7.0-1
-test "$(appinstall --version)" = 'appinstall 1.7.0'
-test ! -e "$installed_helper"
+pkgmeta 1.8.0-1
+test "$(appinstall --version)" = 'appinstall 1.8.0'
+test -f "$installed_helper"
 check_data
 grep -Fx 'text/plain=preserved-editor.desktop;' "$mime_file"
-echo "PASS: v1.8.0 -> v1.7.0 $FAMILY native downgrade with preserved settings and MIME"
+echo "PASS: v1.9.0 -> v1.8.0 $FAMILY native downgrade with preserved settings and MIME"
