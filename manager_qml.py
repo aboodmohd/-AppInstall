@@ -131,6 +131,7 @@ class AppModel(QtCore.QAbstractListModel):
     IsContainerRole = QtCore.Qt.ItemDataRole.UserRole + 18
     LastLaunchRole = QtCore.Qt.ItemDataRole.UserRole + 19
     DescriptionRole = QtCore.Qt.ItemDataRole.UserRole + 20
+    LibrarySectionRole = QtCore.Qt.ItemDataRole.UserRole + 21
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -141,12 +142,18 @@ class AppModel(QtCore.QAbstractListModel):
         self._format = None
         self._status = None
         self._sort_key = 'name-asc'
+        self._group_library = False
+        self._attention_keys = set()
 
     countChanged = QtCore.Signal()
 
     @QtCore.Property(int, notify=countChanged)
     def count(self):
         return len(self._rows)
+
+    @QtCore.Property(int, notify=countChanged)
+    def attentionCount(self):
+        return len(self._attention_keys)
 
     def roleNames(self):
         return {
@@ -170,6 +177,7 @@ class AppModel(QtCore.QAbstractListModel):
             self.IsContainerRole: b'isContainer',
             self.LastLaunchRole: b'lastLaunch',
             self.DescriptionRole: b'description',
+            self.LibrarySectionRole: b'librarySection',
         }
 
     def rowCount(self, parent=QtCore.QModelIndex()):
@@ -232,6 +240,9 @@ class AppModel(QtCore.QAbstractListModel):
             return str(last.get('started') or '')
         if role == self.DescriptionRole:
             return app.get('description') or ''
+        if role == self.LibrarySectionRole:
+            return ('attention' if app['key'] in self._attention_keys else 'installed') \
+                if self._group_library and self._status is None else ''
         return None
 
     def app_record(self, key):
@@ -274,6 +285,15 @@ class AppModel(QtCore.QAbstractListModel):
         self._sort_key = sort_key or 'name-asc'
         self.refilter()
 
+    @QtCore.Slot()
+    def groupLibrary(self):
+        self._group_library = True
+        self.refilter()
+
+    @staticmethod
+    def _needs_attention(app):
+        return app['status'] != 'installed' or not manager._launcher_exists(app, app['key'])
+
     def refilter(self):
         self.beginResetModel()
         text = self._search
@@ -286,8 +306,12 @@ class AppModel(QtCore.QAbstractListModel):
             if text and text not in app['name'].casefold() and text not in app['key'].casefold():
                 continue
             result.append(app)
-        self._rows = [(app, app['key'] in self._favorites)
-                      for app in self._sorted(result)]
+        ordered = self._sorted(result)
+        self._attention_keys = set()
+        if self._group_library and self._status is None:
+            self._attention_keys = {app['key'] for app in ordered if self._needs_attention(app)}
+            ordered = sorted(ordered, key=lambda app: app['key'] in self._attention_keys)
+        self._rows = [(app, app['key'] in self._favorites) for app in ordered]
         self.endResetModel()
         self.countChanged.emit()
 
@@ -563,6 +587,19 @@ class UpdateModel(QtCore.QAbstractListModel):
     def availableCount(self):
         return sum(row["candidate"].state == update_engine.AVAILABLE for row in self._all)
 
+    @QtCore.Property(int, notify=availableCountChanged)
+    def manualCount(self):
+        return sum(row["candidate"].state in (update_engine.MANUAL_REQUIRED,
+                                              update_engine.UNSUPPORTED)
+                   and row["app"].get("status", "installed") == "installed"
+                   for row in self._all)
+
+    @QtCore.Property(int, notify=availableCountChanged)
+    def attentionCount(self):
+        return sum(row["candidate"].state == update_engine.ERROR
+                   or row["app"].get("status", "installed") != "installed"
+                   for row in self._all)
+
     def roleNames(self):
         return {
             self.KeyRole: b"key", self.NameRole: b"name",
@@ -761,6 +798,7 @@ class Bridge(QtCore.QObject):
     catalogLoadingChanged = QtCore.Signal(bool)
     catalogStatusChanged = QtCore.Signal(str)
     catalogResultsChanged = QtCore.Signal()
+    catalogViewportReset = QtCore.Signal()
     catalogDetailsChanged = QtCore.Signal()
     appUpdateBusyChanged = QtCore.Signal(bool)
     appUpdateStatusChanged = QtCore.Signal(str)
@@ -790,6 +828,7 @@ class Bridge(QtCore.QObject):
         self._catalog_visible = []
         self._catalog_categories = ['All']
         self._catalog_category = 'All'
+        self._catalog_sort = 'recommended'
         self._catalog_detail_key = None
         self._catalog_details = {}
         self._catalog_worker = None
@@ -1686,6 +1725,7 @@ class Bridge(QtCore.QObject):
         self._catalog_source = source
         self._catalog_query = query
         self._catalog_setup_required = was_setup_required if query and len(query) < 2 else False
+        self.catalogViewportReset.emit()
         self.catalogResultsChanged.emit()
         if query and len(query) < 2:
             self._catalog_pending = None
@@ -1757,6 +1797,13 @@ class Bridge(QtCore.QObject):
         self._catalog_category = category
         self._rebuild_catalog_view()
 
+    @QtCore.Slot(str)
+    def sortCatalog(self, order):
+        if order not in ('recommended', 'name') or order == self._catalog_sort:
+            return
+        self._catalog_sort = order
+        self._rebuild_catalog_view(preserve_page=True, reset_viewport=True)
+
     def _clear_catalog_view(self):
         self.closeCatalogDetails()
         self._catalog_all = []
@@ -1767,16 +1814,21 @@ class Bridge(QtCore.QObject):
         self._catalog_featured.replace([])
         self.catalogResultsChanged.emit()
 
-    def _rebuild_catalog_view(self, preserve_page=False):
+    def _rebuild_catalog_view(self, preserve_page=False, reset_viewport=True):
         self._catalog_categories = catalog_browse.categories_for(self._catalog_all)
         if self._catalog_category not in self._catalog_categories:
             self._catalog_category = 'All'
         self._catalog_visible = catalog_browse.filtered_rows(
             self._catalog_all, self._catalog_category)
+        if self._catalog_sort == 'name':
+            self._catalog_visible = sorted(self._catalog_visible,
+                                           key=lambda row: row['name'].casefold())
         page = max(24, self._catalog.count) if preserve_page else 24
         self._catalog.replace(self._catalog_visible[:page])
         self._catalog_featured.replace(catalog_browse.featured_rows(
             self._catalog_all, self._catalog_source, self._catalog_query))
+        if reset_viewport:
+            self.catalogViewportReset.emit()
         self.catalogResultsChanged.emit()
         self._announce_catalog_results()
 
@@ -1833,7 +1885,7 @@ class Bridge(QtCore.QObject):
                 sanitized[row['appId']] = normalized
                 row.update({k: v for k, v in normalized.items() if v})
         if sanitized:
-            self._rebuild_catalog_view(preserve_page=True)
+            self._rebuild_catalog_view(preserve_page=True, reset_viewport=False)
             self._sync_catalog_details()
 
     def _catalog_artwork_ready(self, query, source, cached):
