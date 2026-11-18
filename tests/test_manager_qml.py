@@ -1449,6 +1449,52 @@ class QmlMenuBarTests(QmlManagerBase):
 class QmlDiscoverTests(QmlManagerBase):
     """New tab must not disturb My Applications, header or startup."""
 
+    def test_banner_and_scrolling_cards_fit_at_supported_widths(self):
+        records = []
+        for i in range(18):
+            key = f'appimage:geometry{i}'
+            records.append((key, self.stage_installed_appimage(key, f'App {i}')))
+        inventory = self.load_inventory(records)
+        self.bridge._update_tag = 'v99.0.0'
+        self.bridge._update_status = 'AppInstall update available'
+        self.bridge.updatesModel.replace_results(inventory, [
+            manager_qml.update_engine.UpdateCandidate(
+                key=app['key'], format='appimage', state='manual-required',
+                reason='Long diagnostic text ' * 25) for app in inventory
+        ])
+        self.engine = QtQml.QQmlApplicationEngine()
+        self.engine.rootContext().setContextProperty('bridge', self.bridge)
+        self.engine.rootContext().setContextProperty('appsModel', self.model)
+        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
+        window = self.engine.rootObjects()[0]
+
+        def expr(code):
+            expression = QtQml.QQmlExpression(QtQml.qmlContext(window), window, code)
+            value, _ = expression.evaluate()
+            self.assertFalse(expression.hasError(), expression.error().toString())
+            return value
+
+        try:
+            for width in (720, 800, 1024, 1440):
+                with self.subTest(width=width):
+                    window.resize(width, 650)
+                    window.setProperty('updatesSelected', False)
+                    QtTest.QTest.qWait(45)
+                    self.assertTrue(expr('updateBanner.visible'))
+                    self.assertAlmostEqual(expr('updateBanner.x'), expr('contentArea.x'), delta=1)
+                    self.assertAlmostEqual(expr('updateBanner.x'),
+                                           expr('searchField.mapToItem(grabRoot, 0, 0).x'), delta=1)
+                    self.assertLess(expr('appList.itemAtIndex(0).width'), expr('libraryScrollBar.x'))
+                    window.setProperty('updatesSelected', True)
+                    QtTest.QTest.qWait(45)
+                    self.assertLess(expr('appUpdatesList.itemAtIndex(0).width'),
+                                    expr('updatesScrollBar.x'))
+        finally:
+            window.close()
+            self.engine.deleteLater()
+            self.app.processEvents()
+
     def test_missing_store_icon_draws_letter_without_reference_error(self):
         self.bridge.catalogModel.replace([{
             'source': 'Flatpak', 'appId': 'org.example.Gimp',
@@ -1483,14 +1529,14 @@ class QmlDiscoverTests(QmlManagerBase):
                 self.engine.deleteLater()
                 self.app.processEvents()
 
-    def test_featured_card_reserves_scrollbar_gutter(self):
+    def test_featured_overflow_pages_three_cards_without_a_scrollbar(self):
         self.bridge._catalog_source = "Flatpak"
         self.bridge._catalog_query = ""
         self.bridge._catalog_all = manager_qml.catalog_metadata.normalize_rows([{
-            "source": "Flatpak", "appId": "org.example.Featured",
-            "name": "Featured Example", "summary": "Sample",
+            "source": "Flatpak", "appId": f"org.example.Featured{i}",
+            "name": f"Featured Example {i}", "summary": "Sample",
             "category": "Graphics",
-        }])
+        } for i in range(6)])
         self.bridge._rebuild_catalog_view()
         self.engine = QtQml.QQmlApplicationEngine()
         self.engine.rootContext().setContextProperty('bridge', self.bridge)
@@ -1509,9 +1555,19 @@ class QmlDiscoverTests(QmlManagerBase):
             try:
                 self.assertTrue(expr('featuredStrip.visible'))
                 self.assertTrue(expr('featuredRepeater.itemAt(0) !== null'))
-                self.assertGreaterEqual(
-                    expr('featuredStrip.height - featuredRepeater.itemAt(0).height'),
-                    14)
+                self.assertEqual(expr('featuredStrip.pageCount'), 2)
+                for width in (720, 800, 1024, 1440):
+                    window.resize(width, 700)
+                    self.app.processEvents()
+                    self.assertAlmostEqual(expr(
+                        'featuredRepeater.itemAt(2).mapToItem(featuredStrip, '
+                        'featuredRepeater.itemAt(2).width, 0).x'), expr('featuredStrip.width'), delta=1)
+                    self.assertLess(expr('catalogList.cellWidth * catalogList.columns'),
+                                    expr('catalogScrollBar.x'))
+                    expr('featuredStrip.page = 1')
+                    self.assertAlmostEqual(expr(
+                        'featuredRepeater.itemAt(3).mapToItem(featuredStrip, 0, 0).x'), 0, delta=1)
+                    expr('featuredStrip.page = 0')
                 self.assertGreaterEqual(
                     expr('catalogHeading.y - (featuredStrip.y + featuredStrip.height)'),
                     0)
@@ -1521,6 +1577,73 @@ class QmlDiscoverTests(QmlManagerBase):
                 window.close()
                 self.engine.deleteLater()
                 self.app.processEvents()
+
+    def test_catalog_resets_new_results_and_preserves_pagination_and_metadata(self):
+        def records(source):
+            return [
+                dict(source=source, appId=f'org.example.App{i}', name=f'App {i}',
+                     providerKey=f'flatpak:org.example.App{i}', summary='Fixture',
+                     category='Graphics' if i < 30 else 'Utility')
+                for i in range(50)
+            ]
+
+        self.bridge._catalog_all = records('Flatpak')
+        self.bridge._rebuild_catalog_view()
+        self.engine = QtQml.QQmlApplicationEngine()
+        self.engine.rootContext().setContextProperty('bridge', self.bridge)
+        self.engine.rootContext().setContextProperty('appsModel', self.model)
+        self.engine.addImportPath(str(manager_qml.QML_DIR.parent))
+        self.engine.load(str(manager_qml.QML_DIR / 'main.qml'))
+        window = self.engine.rootObjects()[0]
+        window.resize(800, 700)
+        window.setProperty('discoverSelected', True)
+
+        def expr(code):
+            expression = QtQml.QQmlExpression(QtQml.qmlContext(window), window, code)
+            value, _ = expression.evaluate()
+            self.assertFalse(expression.hasError(), expression.error().toString())
+            return value
+
+        def offset():
+            QtTest.QTest.qWait(30)
+            return expr('catalogList.contentY - catalogList.originY')
+
+        def scroll():
+            expr('catalogList.contentY = catalogList.originY + catalogList.cellHeight * 1.5')
+            self.assertGreater(offset(), 0)
+
+        try:
+            self.assertAlmostEqual(offset(), 0, delta=1)
+            self.assertAlmostEqual(expr('catalogList.itemAtIndex(0).mapToItem(catalogList, 0, 0).y'),
+                                   0, delta=1)
+            scroll()
+            before = offset()
+            expr('catalogViewMore.clicked()')
+            self.assertEqual(self.bridge.catalogModel.count, 48)
+            self.assertAlmostEqual(offset(), before, delta=1)
+            expr('catalogViewMore.clicked()')
+            self.assertEqual(self.bridge.catalogModel.count, 50)
+            self.assertFalse(expr('catalogViewMore.visible'))
+            self.assertAlmostEqual(offset(), before, delta=1)
+            self.bridge._rebuild_catalog_view(preserve_page=True, reset_viewport=False)
+            self.assertAlmostEqual(offset(), before, delta=1)
+            category = next(value for value in self.bridge.catalogCategories if value != 'All')
+            self.bridge.chooseCatalogCategory(category)
+            self.assertAlmostEqual(offset(), 0, delta=1)
+            self.bridge.chooseCatalogCategory('All')
+            self.assertAlmostEqual(offset(), 0, delta=1)
+            for query, source in (('example', 'Flatpak'), ('example', 'AppImage')):
+                scroll()
+                with patch.object(self.bridge, '_start_catalog_worker'):
+                    self.bridge.searchCatalog(query, source)
+                self.assertAlmostEqual(offset(), 0, delta=1)
+                self.bridge._catalog_all = records(source)
+                self.bridge._rebuild_catalog_view()
+                self.assertAlmostEqual(offset(), 0, delta=1)
+        finally:
+            window.close()
+            self.engine.deleteLater()
+            self.app.processEvents()
 
     def test_full_details_page_hides_browse_and_restores_on_back(self):
         self.bridge._catalog_source = "Flatpak"

@@ -1,10 +1,18 @@
+import json
 import os
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
 repo, output, page, width, theme = sys.argv[1:]
 sys.path.insert(0, repo)
+live = os.environ.get("APPINSTALL_LIVE_EVIDENCE") == "1"
+if live and page == "library":
+    # Read the actual registry in a separate process before isolating the UI.
+    live_inventory = json.loads(subprocess.check_output(
+        [sys.executable, "-c", "import json, manager; print(json.dumps(manager.load_inventory()))"],
+        cwd=repo, text=True))
 with tempfile.TemporaryDirectory(prefix="appinstall-ux-") as scratch:
     scratch = Path(scratch)
     for key in ("HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"):
@@ -39,6 +47,13 @@ with tempfile.TemporaryDirectory(prefix="appinstall-ux-") as scratch:
         if image.save(str(path)):
             row["icon"] = str(path)
     bridge.model.refresh_inventory(inventory)
+    if live and page == "library":
+        assert live_inventory, "No managed applications available for read-only testing"
+        bridge.model.refresh_inventory(live_inventory)
+        print(f"Read-only inventory: {bridge.model.count} managed records")
+    else:
+        bridge._update_tag = "v99.0.0"
+        bridge._update_status = "AppInstall update available (fixture)"
     bridge._status_text = "Manage favorites, details and removal from an app’s menu."
     entries = [
         ("Firefox", "Fast, private browsing", "Internet"),
@@ -55,11 +70,11 @@ with tempfile.TemporaryDirectory(prefix="appinstall-ux-") as scratch:
     ]
     bridge._catalog_all = [
         dict(name=name, summary=summary, category=category, appId=f"org.fixture.App{i}",
-             source="Flatpak", popularity=len(entries) - i)
+             source="Flatpak", providerKey=f"flatpak:org.fixture.App{i}")
         for i, (name, summary, category) in enumerate(entries)
     ]
-    bridge._rebuild_catalog_view()
-    bridge._catalog_featured.replace(bridge._catalog_all[:3])
+    if not (live and page == "discover"):
+        bridge._rebuild_catalog_view()
     bridge.updatesModel.replace_results(inventory, [
         update_engine.UpdateCandidate(
             key=row["key"], format=row["format"], installed_version="1.0",
@@ -80,6 +95,13 @@ with tempfile.TemporaryDirectory(prefix="appinstall-ux-") as scratch:
     window.resize(int(width), 900 if int(width) > 800 else 650)
     window.setProperty("discoverSelected", page == "discover")
     window.setProperty("updatesSelected", page == "updates")
+    if live and page == "discover":
+        bridge.searchCatalog("")
+        while bridge.catalogLoading:
+            QtTest.QTest.qWait(100)
+        assert bridge.catalogModel.count, bridge.catalogStatus
+        print(f"Live Flathub data: {bridge.catalogModel.count} visible, "
+              f"{bridge.featuredCatalogModel.count} Featured entries")
     if page == "updates":
         bridge.updatesModel.setFilter("error" if theme == "error" else "all")
     if os.environ.get("APPINSTALL_DESKTOP_SMOKE") == "1":
@@ -90,7 +112,7 @@ with tempfile.TemporaryDirectory(prefix="appinstall-ux-") as scratch:
 
         def evaluate(code):
             expression = QtQml.QQmlExpression(context, window, code)
-            result, undefined = expression.evaluate()
+            result, _ = expression.evaluate()
             assert not expression.hasError(), expression.error().toString()
             return result
 
@@ -105,6 +127,8 @@ with tempfile.TemporaryDirectory(prefix="appinstall-ux-") as scratch:
         QtTest.QTest.keyClick(window, QtCore.Qt.Key_Space)
         QtTest.QTest.qWait(180)
         assert evaluate("discoverPanel.visible") and evaluate("catalogList.columns") >= 2
+        assert abs(evaluate("catalogList.contentY - catalogList.originY")) <= 1
+        assert evaluate("catalogList.cellWidth * catalogList.columns < catalogScrollBar.x")
         evaluate("categoryStrip.forceActiveFocus()")
         QtTest.QTest.keyClick(window, QtCore.Qt.Key_Space)
         QtTest.QTest.qWait(180)

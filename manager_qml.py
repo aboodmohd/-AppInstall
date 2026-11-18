@@ -798,6 +798,7 @@ class Bridge(QtCore.QObject):
     catalogLoadingChanged = QtCore.Signal(bool)
     catalogStatusChanged = QtCore.Signal(str)
     catalogResultsChanged = QtCore.Signal()
+    catalogViewportReset = QtCore.Signal()
     catalogDetailsChanged = QtCore.Signal()
     appUpdateBusyChanged = QtCore.Signal(bool)
     appUpdateStatusChanged = QtCore.Signal(str)
@@ -1724,6 +1725,7 @@ class Bridge(QtCore.QObject):
         self._catalog_source = source
         self._catalog_query = query
         self._catalog_setup_required = was_setup_required if query and len(query) < 2 else False
+        self.catalogViewportReset.emit()
         self.catalogResultsChanged.emit()
         if query and len(query) < 2:
             self._catalog_pending = None
@@ -1800,7 +1802,7 @@ class Bridge(QtCore.QObject):
         if order not in ('recommended', 'name') or order == self._catalog_sort:
             return
         self._catalog_sort = order
-        self._rebuild_catalog_view(preserve_page=True)
+        self._rebuild_catalog_view(preserve_page=True, reset_viewport=True)
 
     def _clear_catalog_view(self):
         self.closeCatalogDetails()
@@ -1812,7 +1814,7 @@ class Bridge(QtCore.QObject):
         self._catalog_featured.replace([])
         self.catalogResultsChanged.emit()
 
-    def _rebuild_catalog_view(self, preserve_page=False):
+    def _rebuild_catalog_view(self, preserve_page=False, reset_viewport=True):
         self._catalog_categories = catalog_browse.categories_for(self._catalog_all)
         if self._catalog_category not in self._catalog_categories:
             self._catalog_category = 'All'
@@ -1825,6 +1827,8 @@ class Bridge(QtCore.QObject):
         self._catalog.replace(self._catalog_visible[:page])
         self._catalog_featured.replace(catalog_browse.featured_rows(
             self._catalog_all, self._catalog_source, self._catalog_query))
+        if reset_viewport:
+            self.catalogViewportReset.emit()
         self.catalogResultsChanged.emit()
         self._announce_catalog_results()
 
@@ -1881,7 +1885,7 @@ class Bridge(QtCore.QObject):
                 sanitized[row['appId']] = normalized
                 row.update({k: v for k, v in normalized.items() if v})
         if sanitized:
-            self._rebuild_catalog_view(preserve_page=True)
+            self._rebuild_catalog_view(preserve_page=True, reset_viewport=False)
             self._sync_catalog_details()
 
     def _catalog_artwork_ready(self, query, source, cached):

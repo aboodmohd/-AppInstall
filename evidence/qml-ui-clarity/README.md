@@ -19,6 +19,15 @@ scrollable result lists rather than reproducing the browser prototype pixel for
 pixel. On short desktops, Featured can be expanded on demand so the catalog
 remains usable.
 
+The PR #89 layout follow-up refreshed the three wide fixtures, light mode, and
+the narrow capture. The library fixture shows an AppInstall update notice
+alongside the attention warning. Discover shows the first catalog row aligned
+at the top and Previous/Next controls for the six Featured results.
+
+Read-only checks also rendered six actual managed records and the first
+24 entries of a live Flathub browse with six Featured results. Local inventory
+captures are not published. No source setup or package action was invoked.
+
 ## Run on CachyOS KDE
 
 From the branch checkout, with PySide6 installed:

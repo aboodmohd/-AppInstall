@@ -24,6 +24,7 @@ ApplicationWindow {
     property bool filtersExpanded: true
     property bool advancedFilters: false
     readonly property int pageInset: Math.max(20, Math.round(width * 0.044))
+    readonly property int scrollGap: 6
     property bool discoverSelected: false
     property bool discoverRequested: false
     property bool updatesSelected: false
@@ -76,6 +77,10 @@ ApplicationWindow {
     Connections {
         target: bridge
         function onDarkChanged() { Theme.mode = bridge.dark ? "dark" : "light" }
+        function onCatalogViewportReset() {
+            catalogList.schedulePosition(0)
+            featuredStrip.page = 0
+        }
     }
 
     // Auto update checks live in the bridge (QTimer + APPINSTALL
@@ -727,14 +732,12 @@ ApplicationWindow {
             // tag, a running check/install, or the last status line.
             visible: !window.discoverSelected && !window.updatesSelected && (bridge.updateTag !== "" || bridge.updateStatus !== "")
             Layout.fillWidth: true
-            Layout.leftMargin: 16
-            Layout.rightMargin: 16
-            Layout.bottomMargin: 10
-            implicitHeight: 44
+            Layout.leftMargin: window.pageInset
+            Layout.rightMargin: window.pageInset
+            Layout.bottomMargin: 6
+            implicitHeight: 32
             radius: 9
-            color: Theme.colors.surface
-            border.color: bridge.updateTag !== "" ? Theme.colors.accent : Theme.colors.border
-            border.width: 1
+            color: "transparent"
 
             RowLayout {
                 anchors.fill: parent
@@ -1350,36 +1353,48 @@ ApplicationWindow {
                     text: featuredStrip.expandedOnShortWindow ? qsTr("Hide featured") : qsTr("Show featured")
                     onClicked: featuredStrip.expandedOnShortWindow = !featuredStrip.expandedOnShortWindow
                 }
+                HeaderMenuButton {
+                    visible: featuredStrip.visible && featuredStrip.pageCount > 1
+                    text: qsTr("Previous")
+                    implicitHeight: 30
+                    enabled: featuredStrip.page > 0
+                    Accessible.name: qsTr("Previous Featured apps")
+                    onClicked: featuredStrip.page--
+                }
+                HeaderMenuButton {
+                    visible: featuredStrip.visible && featuredStrip.pageCount > 1
+                    text: qsTr("Next")
+                    implicitHeight: 30
+                    enabled: featuredStrip.page < featuredStrip.pageCount - 1
+                    Accessible.name: qsTr("Next Featured apps")
+                    onClicked: featuredStrip.page++
+                }
             }
 
-            Flickable {
+            Item {
                 id: featuredStrip
                 objectName: "featuredStrip"
                 property bool expandedOnShortWindow: false
+                property int page: 0
+                readonly property int cardsPerPage: 3
+                readonly property int pageCount: Math.ceil(featuredRepeater.count / cardsPerPage)
+                onPageCountChanged: page = Math.max(0, Math.min(page, pageCount - 1))
                 Layout.fillWidth: true
-                // Keep a dedicated gutter for the scrollbar instead of drawing it
-                // over the developer label and Install button.
-                Layout.preferredHeight: window.height < 700 ? 118 : 156
+                Layout.preferredHeight: window.height < 700 ? 100 : 138
                 visible: !bridge.catalogDetailsAvailable && bridge.catalogHasFeatured
                          && (window.height >= 620 || expandedOnShortWindow)
                 clip: true
-                contentWidth: featuredRow.implicitWidth
-                contentHeight: height
-                boundsBehavior: Flickable.StopAtBounds
-                flickableDirection: Flickable.HorizontalFlick
-                ScrollBar.horizontal: ScrollBar {
-                    policy: ScrollBar.AsNeeded
-                    height: 4
-                }
                 Row {
                     id: featuredRow
                     spacing: 8
+                    x: -featuredStrip.page * (featuredStrip.width + spacing)
                     Repeater {
                         id: featuredRepeater
                         model: bridge.featuredCatalogModel
                         delegate: Rectangle {
-                            width: Math.max(210, (featuredStrip.width - 2 * featuredRow.spacing) / 3)
-                            height: featuredStrip.height - 18
+                            width: (featuredStrip.width - (featuredStrip.cardsPerPage - 1)
+                                    * featuredRow.spacing) / featuredStrip.cardsPerPage
+                            height: featuredStrip.height
                             radius: 11
                             color: Theme.colors.surface
                             border.color: Theme.colors.border
@@ -1450,6 +1465,7 @@ ApplicationWindow {
                                     }
                                     HeaderMenuButton {
                                         implicitHeight: 28
+                                        enabled: Math.floor(index / featuredStrip.cardsPerPage) === featuredStrip.page
                                         text: qsTr("View app")
                                         Accessible.name: qsTr("View details for %1").arg(model.name)
                                         onClicked: bridge.openCatalogDetails(model.appId, model.source)
@@ -1518,12 +1534,48 @@ ApplicationWindow {
                     objectName: "catalogList"
                     anchors.fill: parent
                     visible: !bridge.catalogSetupRequired
-                    property int columns: Math.min(4, Math.max(2, Math.floor(width / 280)))
-                    cellWidth: Math.floor(width / columns)
+                    readonly property real gridWidth: width - catalogScrollBar.width - window.scrollGap
+                    readonly property int columns: Math.min(4, Math.max(2, Math.floor(gridWidth / 280)))
+                    // GridView may refit its visible items after a reset or insert.
+                    // Use an offset relative to its origin, not an absolute contentY.
+                    property real pendingOffset: -1
+                    activeFocusOnTab: false
+                    boundsBehavior: Flickable.StopAtBounds
+                    function schedulePosition(offset) {
+                        pendingOffset = offset
+                        Qt.callLater(applyScheduledPosition)
+                    }
+                    function applyScheduledPosition() {
+                        if (pendingOffset < 0 || !visible || height <= 0 || count === 0)
+                            return
+                        const offset = pendingOffset
+                        pendingOffset = -1
+                        forceLayout()
+                        if (offset === 0)
+                            positionViewAtBeginning()
+                        else
+                            contentY = originY + Math.min(offset, Math.max(0, contentHeight - height))
+                    }
+                    onVisibleChanged: if (visible) Qt.callLater(applyScheduledPosition)
+                    onHeightChanged: if (pendingOffset >= 0) Qt.callLater(applyScheduledPosition)
+                    onCountChanged: if (pendingOffset >= 0) Qt.callLater(applyScheduledPosition)
+                    Connections {
+                        target: bridge.catalogModel
+                        function rememberPosition() {
+                            if (catalogList.pendingOffset < 0)
+                                catalogList.schedulePosition(Math.max(0, catalogList.contentY - catalogList.originY))
+                        }
+                        function onModelAboutToBeReset() { rememberPosition() }
+                        function onRowsAboutToBeInserted() { rememberPosition() }
+                    }
+                    cellWidth: Math.floor(gridWidth / columns)
                     cellHeight: window.height < 700 ? 146 : 174
                     model: bridge.catalogModel
                     clip: true
-                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                    ScrollBar.vertical: ScrollBar {
+                        id: catalogScrollBar
+                        policy: ScrollBar.AsNeeded
+                    }
 
                     delegate: Rectangle {
                         id: catalogCard
@@ -1892,7 +1944,10 @@ ApplicationWindow {
                 clip: true
                 spacing: 8
                 activeFocusOnTab: false
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                ScrollBar.vertical: ScrollBar {
+                    id: updatesScrollBar
+                    policy: ScrollBar.AsNeeded
+                }
 
                 delegate: Rectangle {
                     id: updateRow
@@ -1916,7 +1971,7 @@ ApplicationWindow {
                     readonly property string renderedState: updateStateLabel.text
                     readonly property bool reviewVisible: reviewUpdateAction.visible
                     objectName: "updateAppRow"
-                    width: appUpdatesList.width - (appUpdatesList.contentHeight > appUpdatesList.height ? 12 : 0)
+                    width: appUpdatesList.width - updatesScrollBar.width - window.scrollGap
                     height: 78
                     radius: 10
                     color: Theme.colors.surface
@@ -2077,7 +2132,7 @@ ApplicationWindow {
                 section.property: statusFilter.selectedIndex === 0 ? "librarySection" : ""
                 section.delegate: Label {
                     required property string section
-                    width: appList.width - (appList.contentHeight > appList.height ? 12 : 0)
+                    width: appList.width - libraryScrollBar.width - window.scrollGap
                     topPadding: 12
                     bottomPadding: 9
                     text: section === "attention"
@@ -2090,6 +2145,7 @@ ApplicationWindow {
                 }
 
                 ScrollBar.vertical: ScrollBar {
+                    id: libraryScrollBar
                     policy: ScrollBar.AsNeeded
                 }
 
@@ -2100,7 +2156,7 @@ ApplicationWindow {
 
                 delegate: AppCard {
                     required property int index
-                    width: appList.width - (appList.contentHeight > appList.height ? 12 : 0)
+                    width: appList.width - libraryScrollBar.width - window.scrollGap
                     activeFocusOnTab: true
                     onActiveFocusChanged: {
                         if (activeFocus) {
