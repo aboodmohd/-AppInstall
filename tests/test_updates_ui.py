@@ -212,7 +212,7 @@ class UpdateBridgeTests(unittest.TestCase):
             self.assertFalse(expr("contentArea.visible"))
             self.assertFalse(expr("discoverPanel.visible"))
             self.assertFalse(expr("filtersPanel.visible"))
-            self.assertTrue(expr("appMenuBar.visible"))
+            self.assertTrue(expr("menuToggle.visible"))
         finally:
             window.close()
             engine.deleteLater()
@@ -263,14 +263,16 @@ class UpdateBridgeTests(unittest.TestCase):
             self.assertEqual(self.bridge.updatesModel.availableCount, 0)
             self.assertEqual(rendered("renderedTitle"), "Example App · FLATPAK")
             self.assertEqual(rendered("renderedVersion"), "1.0  →  —")
-            self.assertEqual(rendered("renderedState"), "manual-required")
+            self.assertEqual(self.bridge.updatesModel.manualCount, 1)
+            self.assertEqual(self.bridge.updatesModel.attentionCount, 0)
+            self.assertEqual(rendered("renderedState"), "Manual check")
             self.assertFalse(rendered("reviewVisible"),
                              "Review action exposed despite zero available updates")
 
             self.bridge.updatesModel.replace_results([app()], [candidate()])
             self.assertEqual(self.bridge.updatesModel.availableCount, 1)
             self.assertEqual(rendered("renderedTitle"), "Example App · FLATPAK")
-            self.assertEqual(rendered("renderedState"), "available")
+            self.assertEqual(rendered("renderedState"), "Available")
             self.assertTrue(rendered("reviewVisible"),
                             "Review action hidden for verified Flatpak update")
         finally:

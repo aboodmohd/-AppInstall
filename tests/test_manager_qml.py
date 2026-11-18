@@ -180,6 +180,25 @@ class AppModelTests(QmlManagerBase):
                  for i in range(self.model.rowCount())]
         self.assertEqual(names, ['Alpha', 'Beta'])
 
+    def test_library_groups_attention_without_changing_explicit_status_filters(self):
+        records = []
+        for label, status in (('Alpha', 'installed'), ('Beta', 'needs-repair'),
+                              ('Gamma', 'installed')):
+            key = f'appimage:{label.lower()}'
+            records.append((key, self.stage_installed_appimage(key, label, status=status)))
+        self.load_inventory(records)
+        self.model.groupLibrary()
+        self.model.setSort('name-desc')
+        names = lambda: [self.model.data(self.model.index(i, 0), self.model.NameRole)
+                         for i in range(self.model.rowCount())]
+        self.assertEqual(names(), ['Gamma', 'Alpha', 'Beta'])
+        self.assertEqual(self.model.attentionCount, 1)
+        self.assertEqual(self.model.data(self.model.index(2, 0), self.model.LibrarySectionRole),
+                         'attention')
+        self.model.setStatusFilter('needs-repair')
+        self.assertEqual(names(), ['Beta'])
+        self.assertEqual(self.model.data(self.model.index(0, 0), self.model.LibrarySectionRole), '')
+
     def test_favorites_sort_first(self):
         self.load_inventory([
             ('appimage:beta', self.stage_installed_appimage('appimage:beta', 'Beta')),
@@ -1344,7 +1363,7 @@ class QmlMenuBarTests(QmlManagerBase):
         window.show()
         QtTest.QTest.qWait(75)
         try:
-            for name in ('appMenuBar', 'menuToggle', 'filtersToggle',
+            for name in ('appMenuBar', 'menuToggle',
                          'viewMenuButton', 'toolsMenuButton',
                          'settingsMenuButton', 'helpMenuButton',
                          'filtersPanel', 'installDropdown', 'menuInstallFile',
@@ -1359,7 +1378,7 @@ class QmlMenuBarTests(QmlManagerBase):
             self.engine.deleteLater()
             self.app.processEvents()
 
-    def test_primary_menus_are_side_by_side_not_vertical(self):
+    def test_primary_navigation_and_actions_share_one_header(self):
         self.engine = QtQml.QQmlApplicationEngine()
         self.engine.rootContext().setContextProperty('bridge', self.bridge)
         self.engine.rootContext().setContextProperty('appsModel', self.model)
@@ -1371,15 +1390,15 @@ class QmlMenuBarTests(QmlManagerBase):
         window.show()
         QtTest.QTest.qWait(100)
         try:
-            names = ('viewMenuButton', 'toolsMenuButton',
-                     'settingsMenuButton', 'helpMenuButton')
+            names = ('managedTab', 'discoverTab', 'updatesTab',
+                     'menuToggle', 'installDropdown')
             buttons = [window.findChild(QtCore.QObject, name)
                        for name in names]
             self.assertTrue(all(buttons))
-            positions = [(button.property('x'), button.property('y'))
-                         for button in buttons]
+            positions = [button.mapToScene(QtCore.QPointF(
+                0, button.height() / 2)).toTuple() for button in buttons]
             self.assertTrue(all(positions[i][0] < positions[i + 1][0]
-                                for i in range(3)), positions)
+                                for i in range(len(positions) - 1)), positions)
             self.assertLessEqual(max(y for x, y in positions) -
                                  min(y for x, y in positions), 1, positions)
         finally:
@@ -1387,7 +1406,7 @@ class QmlMenuBarTests(QmlManagerBase):
             self.engine.deleteLater()
             self.app.processEvents()
 
-    def test_header_hides_menu_and_filters_without_losing_app_list(self):
+    def test_header_menu_opens_without_replacing_app_list(self):
         self.engine = QtQml.QQmlApplicationEngine()
         self.engine.rootContext().setContextProperty('bridge', self.bridge)
         self.engine.rootContext().setContextProperty('appsModel', self.model)
@@ -1397,17 +1416,14 @@ class QmlMenuBarTests(QmlManagerBase):
         expr = lambda v: QtQml.QQmlExpression(QtQml.qmlContext(window),
                                                window, v).evaluate()[0]
         try:
-            self.assertTrue(expr('appMenuBar.visible'))
+            self.assertFalse(expr('appMenuBar.visible'))
             self.assertTrue(expr('filtersPanel.visible'))
             self.assertTrue(expr('appList.visible'))
             expr('menuToggle.clicked()')
-            expr('filtersToggle.clicked()')
-            self.assertFalse(expr('appMenuBar.visible'))
-            self.assertFalse(expr('filtersPanel.visible'))
-            self.assertTrue(expr('appList.visible'))
-            expr('menuToggle.clicked()')
-            expr('filtersToggle.clicked()')
             self.assertTrue(expr('appMenuBar.visible'))
+            self.assertTrue(expr('appList.visible'))
+            expr('appMenuBar.close()')
+            self.assertFalse(expr('appMenuBar.visible'))
             self.assertTrue(expr('filtersPanel.visible'))
         finally:
             window.close()
@@ -1424,7 +1440,7 @@ class QmlMenuBarTests(QmlManagerBase):
                        'bridge.setUninstallMode("app_only")',
                        'bridge.setUninstallMode("with_managed_data")'):
             self.assertIn(action, qml)
-        self.assertIn('onClicked: settingsDialog.open()', qml)
+        self.assertIn('onTriggered: settingsDialog.open()', qml)
         self.assertIn('onTriggered: aboutDialog.open()', qml)
         self.assertIn('Qt.openUrlExternally(', qml)
         self.assertNotIn('title: qsTr("File")', qml)
@@ -1497,7 +1513,7 @@ class QmlDiscoverTests(QmlManagerBase):
                     expr('featuredStrip.height - featuredRepeater.itemAt(0).height'),
                     14)
                 self.assertGreaterEqual(
-                    expr('categoryStrip.y - (featuredStrip.y + featuredStrip.height)'),
+                    expr('catalogHeading.y - (featuredStrip.y + featuredStrip.height)'),
                     0)
                 self.assertFalse(any('ReferenceError' in m for m in capture.messages),
                                  capture.messages)
@@ -1619,7 +1635,7 @@ class QmlDiscoverTests(QmlManagerBase):
                          'catalogRetry', 'catalogViewMore', 'flatpakSourceButton',
                          'appimageSourceButton', 'debSourceButton', 'rpmSourceButton',
                          'repositorySetupPanel', 'repositoryEnableButton',
-                         'categoryStrip', 'categoryRepeater', 'featuredStrip',
+                         'categoryStrip', 'featuredStrip',
                          'featuredHeading',
                          'contentArea', 'appMenuBar'):
                 self.assertIsNotNone(window.findChild(QtCore.QObject, name), name)
@@ -1627,14 +1643,14 @@ class QmlDiscoverTests(QmlManagerBase):
                 QtQml.qmlContext(window), window, v).evaluate()[0]
             self.assertFalse(expr('discoverPanel.visible'))
             self.assertTrue(expr('contentArea.visible'))
-            self.assertTrue(expr('appMenuBar.visible'))
+            self.assertTrue(expr('menuToggle.visible'))
             window.setProperty('discoverSelected', True)
             self.app.processEvents()
             self.assertTrue(expr('discoverPanel.visible'))
             self.assertGreaterEqual(expr('catalogList.columns'), 1)
             self.assertFalse(expr('contentArea.visible'))
             self.assertFalse(expr('filtersPanel.visible'))
-            self.assertTrue(expr('appMenuBar.visible'))
+            self.assertTrue(expr('menuToggle.visible'))
             window.setProperty('discoverSelected', False)
             self.app.processEvents()
             self.assertTrue(expr('contentArea.visible'))
@@ -1727,22 +1743,13 @@ class QmlInteractionTests(QmlManagerBase):
     def test_long_name_keeps_actions_inside_narrow_window(self):
         card = self.card()
         self.assertTrue(self.evaluate('nameLabel.truncated', card))
-        # All three right-side actions fit inside the card at 720px.
-        for button in ('openButton', 'detailsButton', 'moreButton'):
+        for button in ('openButton', 'moreButton'):
             self.assertTrue(self.evaluate(
                 f'{button}.mapToItem(card, 0, 0).x + {button}.width <= card.width', card), button)
-        # The favorite star sits beside the name and fits within the card.
-        self.assertTrue(self.evaluate(
-            'pinButton.mapToItem(card, 0, 0).x + pinButton.width <= card.width', card))
         # Short names show in full; only genuinely long names elide.
         self.evaluate('appList.focusCard(1)')
         QtTest.QTest.qWait(30)
         self.assertFalse(self.evaluate('nameLabel.truncated', self.card()))
-        # Favorite is right after the name, status chip right after favorite.
-        self.assertAlmostEqual(
-            self.evaluate('pinButton.x - nameLabel.x - nameLabel.width', self.card()), 8, delta=1)
-        self.assertAlmostEqual(
-            self.evaluate('statusChip.x - pinButton.x - pinButton.width', self.card()), 8, delta=1)
 
     def test_tab_then_arrows_tracks_focused_card_and_scrolls(self):
         self.evaluate('appList.focusCard(0)')
@@ -1774,11 +1781,16 @@ class QmlInteractionTests(QmlManagerBase):
 
     def test_card_describes_keyboard_actions(self):
         description = self.evaluate('card.Accessible.description', self.card())
-        for action in ('Enter', 'Open', 'Space', 'Details', 'Menu', 'Shift+F10'):
+        primary = 'Open' if self.evaluate('card.canLaunch', self.card()) else 'Review'
+        self.assertEqual(self.evaluate('openButton.text', self.card()), primary)
+        for action in ('Enter', primary, 'Space', 'Details', 'Menu', 'Shift+F10'):
             self.assertIn(action, description)
 
     def _click_dropdown_option(self, button, popup, repeater, index):
         """Test an actual button click followed by a popup option click."""
+        if button == 'statusFilter':
+            self.window.setProperty('advancedFilters', True)
+            self.app.processEvents()
         trigger = self.evaluate(button)
         point = trigger.mapToScene(QtCore.QPointF(
             trigger.width() / 2, trigger.height() / 2)).toPoint()
@@ -1810,6 +1822,7 @@ class QmlInteractionTests(QmlManagerBase):
             self.model.data(self.model.index(0, 0), self.model.NameRole).startswith('00 '))
 
     def test_status_dropdown_keyboard_navigation(self):
+        self.window.setProperty('advancedFilters', True)
         self.evaluate('statusFilter.forceActiveFocus()')
         QtTest.QTest.keyClick(self.window, QtCore.Qt.Key_Space)
         QtTest.QTest.qWait(100)
@@ -1857,7 +1870,7 @@ class QmlInteractionTests(QmlManagerBase):
 
         for theme in ('light', 'dark'):
             self.evaluate(f'Theme.mode = "{theme}"')
-            chip = self.evaluate('formatGroup.buttons[0]')
+            chip = self.evaluate('managedTab')
             point = chip.mapToScene(QtCore.QPointF(chip.width() / 2, chip.height() / 2)).toPoint()
             for state in ('normal', 'hover', 'pressed'):
                 with self.subTest(theme=theme, state=state):
@@ -1865,7 +1878,7 @@ class QmlInteractionTests(QmlManagerBase):
                     if state == 'pressed':
                         QtTest.QTest.mousePress(self.window, QtCore.Qt.LeftButton, pos=point)
                     QtTest.QTest.qWait(220)
-                    self.assertTrue(chip.property('checked'))
+                    self.assertTrue(chip.property('highlighted'))
                     self.assertEqual(chip.property('hovered'), state != 'normal')
                     foreground = chip.property('contentItem').property('color')
                     background = chip.property('background').property('color')

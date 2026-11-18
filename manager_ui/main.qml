@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Basic as Basic
 import QtQuick.Layouts
 import manager_ui
 
@@ -12,14 +13,46 @@ ApplicationWindow {
     visible: true
     title: qsTr("AppInstall — My Applications")
     color: Theme.colors.window
-    property bool menuExpanded: true
+    palette.window: Theme.colors.header
+    palette.windowText: Theme.colors.text
+    palette.base: Theme.colors.surface
+    palette.text: Theme.colors.text
+    palette.button: Theme.colors.surfaceAlt
+    palette.buttonText: Theme.colors.text
+    palette.highlight: Theme.colors.iconFallbackBg
+    palette.highlightedText: Theme.colors.text
     property bool filtersExpanded: true
+    property bool advancedFilters: false
+    readonly property int pageInset: Math.max(20, Math.round(width * 0.044))
     property bool discoverSelected: false
     property bool discoverRequested: false
     property bool updatesSelected: false
     property bool updatesRequested: false
     property string updateFilter: "all"
     property string catalogSource: "Flatpak"
+
+    function showManaged() {
+        discoverSelected = false
+        updatesSelected = false
+    }
+
+    function showDiscover() {
+        discoverSelected = true
+        updatesSelected = false
+        if (!discoverRequested) {
+            discoverRequested = true
+            bridge.searchCatalog("")
+        }
+    }
+
+    function showUpdates() {
+        discoverSelected = false
+        updatesSelected = true
+        if (!updatesRequested) {
+            updatesRequested = true
+            bridge.checkApplicationUpdates(true)
+        }
+    }
 
     // Screenshot contract for --screenshot: the QML engine returns the
     // base QWindow wrapper for this root, which lacks grabWindow(); QML
@@ -34,6 +67,7 @@ ApplicationWindow {
     }
 
     Component.onCompleted: {
+        appsModel.groupLibrary()
         Theme.reducedMotion = bridge.reducedMotion
         Theme.mode = bridge.dark ? "dark" : "light"
         searchField.forceActiveFocus()
@@ -125,30 +159,74 @@ ApplicationWindow {
         // ── one-row header: menus and install actions share one line ──
         Rectangle {
             Layout.fillWidth: true
-            implicitHeight: 62
-            color: Theme.colors.surface
+            implicitHeight: 76
+            color: Theme.colors.header
             border.color: Theme.colors.border
             border.width: 0
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 7
+                anchors.leftMargin: window.pageInset
+                anchors.rightMargin: anchors.leftMargin
+                spacing: 12
+
+                Rectangle {
+                    implicitWidth: 38
+                    implicitHeight: 38
+                    radius: 11
+                    color: Theme.colors.iconFallbackBg
+                    Label {
+                        anchors.centerIn: parent
+                        text: "A"
+                        font.pixelSize: 21
+                        font.bold: true
+                        color: Theme.colors.accent
+                    }
+                }
 
                 Label {
-                    text: qsTr("My Applications")
+                    text: qsTr("AppInstall")
                     font.pixelSize: 17
                     font.weight: Font.DemiBold
                     color: Theme.colors.text
                     Accessible.role: Accessible.Heading
                 }
 
+                RowLayout {
+                    id: pageNavigation
+                    objectName: "pageNavigation"
+                    spacing: 4
+
+                    HeaderMenuButton {
+                        id: managedTab
+                        objectName: "managedTab"
+                        text: qsTr("My apps")
+                        highlighted: !window.discoverSelected && !window.updatesSelected
+                        onClicked: window.showManaged()
+                    }
+                    HeaderMenuButton {
+                        id: discoverTab
+                        objectName: "discoverTab"
+                        text: qsTr("Discover")
+                        highlighted: window.discoverSelected
+                        onClicked: window.showDiscover()
+                    }
+                    HeaderMenuButton {
+                        id: updatesTab
+                        objectName: "updatesTab"
+                        text: qsTr("Updates")
+                        highlighted: window.updatesSelected
+                        onClicked: window.showUpdates()
+                    }
+                }
+
+                Item { Layout.fillWidth: true }
+
                 Button {
                     id: menuToggle
                     objectName: "menuToggle"
-                    text: window.menuExpanded ? qsTr("Hide menu") : qsTr("Show menu")
-                    onClicked: window.menuExpanded = !window.menuExpanded
+                    text: qsTr("Menu")
+                    onClicked: appMenuBar.popup(menuToggle, 0, height + 4)
                     Accessible.name: text
                     font.pixelSize: 12
                     implicitHeight: 30
@@ -168,33 +246,29 @@ ApplicationWindow {
                     }
                 }
 
-                // Explicit RowLayout ensures the four navigation actions remain
-                // side by side on KDE and other Qt Quick desktop styles.
-                // Only the menu *contents* pop down; tabs never stack vertically.
-                RowLayout {
+                Menu {
                     id: appMenuBar
                     objectName: "appMenuBar"
-                    visible: window.menuExpanded
-                    Layout.alignment: Qt.AlignVCenter
-                    Layout.preferredWidth: implicitWidth
-                    spacing: 2
 
-                    HeaderMenuButton {
-                        id: viewMenuButton
+                    Menu {
                         objectName: "viewMenuButton"
-                        text: qsTr("View")
-                        onClicked: viewMenuPopup.popup(viewMenuButton, 0, height + 4)
-                        Menu {
-                            id: viewMenuPopup
+                        title: qsTr("View")
                             MenuItem {
                                 objectName: "menuRefresh"
                                 text: qsTr("Refresh Applications")
                                 onTriggered: bridge.refresh()
                             }
                             MenuItem {
+                                text: qsTr("Refresh Discover")
+                                visible: window.discoverSelected
+                                enabled: !bridge.catalogLoading
+                                onTriggered: bridge.searchCatalog(catalogSearchField.text, window.catalogSource)
+                            }
+                            MenuItem {
                                 objectName: "menuFocusSearch"
                                 text: qsTr("Focus Search")
                                 onTriggered: {
+                                    window.showManaged()
                                     window.filtersExpanded = true
                                     searchField.forceActiveFocus()
                                 }
@@ -203,16 +277,11 @@ ApplicationWindow {
                                 text: window.filtersExpanded ? qsTr("Hide Filters") : qsTr("Show Filters")
                                 onTriggered: window.filtersExpanded = !window.filtersExpanded
                             }
-                        }
                     }
 
-                    HeaderMenuButton {
-                        id: toolsMenuButton
+                    Menu {
                         objectName: "toolsMenuButton"
-                        text: qsTr("Tools")
-                        onClicked: toolsMenuPopup.popup(toolsMenuButton, 0, height + 4)
-                        Menu {
-                            id: toolsMenuPopup
+                        title: qsTr("Tools & diagnostics")
                             MenuItem {
                                 text: qsTr("Check for AppInstall Updates")
                                 enabled: bridge.actionVisible && bridge.updateTag === ""
@@ -222,24 +291,18 @@ ApplicationWindow {
                                 text: qsTr("Application Diagnostics")
                                 onTriggered: bridge.openDiagnostics("")
                             }
-                        }
                     }
 
-                    HeaderMenuButton {
-                        id: settingsMenuButton
+                    MenuItem {
                         objectName: "settingsMenuButton"
                         text: qsTr("Settings")
-                        onClicked: settingsDialog.open()
+                        onTriggered: settingsDialog.open()
                         Accessible.name: qsTr("Open AppInstall Settings")
                     }
 
-                    HeaderMenuButton {
-                        id: helpMenuButton
+                    Menu {
                         objectName: "helpMenuButton"
-                        text: qsTr("Help")
-                        onClicked: helpMenuPopup.popup(helpMenuButton, 0, height + 4)
-                        Menu {
-                            id: helpMenuPopup
+                        title: qsTr("Help")
                             MenuItem {
                                 objectName: "menuAbout"
                                 text: qsTr("About AppInstall…")
@@ -249,33 +312,6 @@ ApplicationWindow {
                                 text: qsTr("View Project on GitHub")
                                 onTriggered: Qt.openUrlExternally("https://github.com/aboodmohd/-AppInstall")
                             }
-                        }
-                    }
-                }
-
-                Item { Layout.fillWidth: true; Layout.minimumWidth: 2 }
-
-                Button {
-                    id: filtersToggle
-                    objectName: "filtersToggle"
-                    text: window.filtersExpanded ? qsTr("Hide filters") : qsTr("Show filters")
-                    onClicked: window.filtersExpanded = !window.filtersExpanded
-                    Accessible.name: text
-                    font.pixelSize: 12
-                    implicitHeight: 30
-                    implicitWidth: contentItem.implicitWidth + 18
-                    background: Rectangle {
-                        radius: 7
-                        color: filtersToggle.hovered ? Theme.colors.hover : "transparent"
-                        border.color: filtersToggle.visualFocus ? Theme.colors.focusRing : Theme.colors.border
-                        border.width: 1
-                    }
-                    contentItem: Label {
-                        text: filtersToggle.text
-                        font: filtersToggle.font
-                        color: Theme.colors.textSecondary
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
                     }
                 }
 
@@ -283,17 +319,19 @@ ApplicationWindow {
                 Button {
                     id: installDropdown
                     objectName: "installDropdown"
-                    text: qsTr("Install  ▾")
+                    text: qsTr("Install app")
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
-                    implicitHeight: 32
+                implicitHeight: 44
                     implicitWidth: contentItem.implicitWidth + 26
                     onClicked: installMenu.popup(installDropdown, 0, installDropdown.height + 4)
                     Accessible.name: qsTr("Install an application")
                     background: Rectangle {
-                        radius: 8
+                        radius: 11
                         color: installDropdown.pressed ? Qt.darker(Theme.colors.accent, 1.12)
                              : Theme.colors.accent
+                        border.width: installDropdown.visualFocus ? 2 : 0
+                        border.color: Theme.colors.text
                     }
                     contentItem: Label {
                         text: installDropdown.text
@@ -314,6 +352,10 @@ ApplicationWindow {
                             text: qsTr("Install from URL…")
                             onTriggered: bridge.installFromUrl()
                         }
+                        MenuItem {
+                            text: qsTr("Discover apps")
+                            onTriggered: window.showDiscover()
+                        }
                     }
                 }
             }
@@ -321,66 +363,24 @@ ApplicationWindow {
 
         Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: Theme.colors.border }
 
-        // Navigation is separate from the horizontal View / Tools / Settings /
-        // Help header. The installed-app manager remains intact and unchanged.
-        RowLayout {
-            id: pageNavigation
-            objectName: "pageNavigation"
+        ColumnLayout {
+            visible: !window.discoverSelected && !window.updatesSelected
             Layout.fillWidth: true
-            Layout.leftMargin: 16
-            Layout.rightMargin: 16
-            Layout.topMargin: 12
-            Layout.bottomMargin: 4
-            spacing: 10
-
-            HeaderMenuButton {
-                id: managedTab
-                objectName: "managedTab"
-                text: qsTr("My Applications")
-                font.weight: (!window.discoverSelected && !window.updatesSelected)
-                             ? Font.DemiBold : Font.Normal
-                onClicked: {
-                    window.discoverSelected = false
-                    window.updatesSelected = false
-                }
-                Accessible.name: text
-            }
-            HeaderMenuButton {
-                id: discoverTab
-                objectName: "discoverTab"
-                text: qsTr("Discover Apps")
-                font.weight: window.discoverSelected ? Font.DemiBold : Font.Normal
-                onClicked: {
-                    window.discoverSelected = true
-                    window.updatesSelected = false
-                    if (!window.discoverRequested) {
-                        window.discoverRequested = true
-                        bridge.searchCatalog("")
-                    }
-                }
-                Accessible.name: text
-            }
-            HeaderMenuButton {
-                id: updatesTab
-                objectName: "updatesTab"
-                text: qsTr("Updates")
-                font.weight: window.updatesSelected ? Font.DemiBold : Font.Normal
-                onClicked: {
-                    window.discoverSelected = false
-                    window.updatesSelected = true
-                    if (!window.updatesRequested) {
-                        window.updatesRequested = true
-                        bridge.checkApplicationUpdates(true)
-                    }
-                }
-                Accessible.name: qsTr("Managed application updates")
-            }
-            Item { Layout.fillWidth: true }
+            Layout.leftMargin: window.pageInset
+            Layout.rightMargin: window.pageInset
+            Layout.topMargin: 24
+            spacing: 6
             Label {
-                text: qsTr("Flathub")
+                text: qsTr("My applications")
+                font.pixelSize: 34
+                font.weight: Font.Bold
+                color: Theme.colors.text
+                Accessible.role: Accessible.Heading
+            }
+            Label {
+                text: qsTr("Open and manage the applications you’ve installed.")
+                font.pixelSize: 14
                 color: Theme.colors.textSecondary
-                font.pixelSize: 12
-                visible: window.discoverSelected
             }
         }
 
@@ -395,7 +395,8 @@ ApplicationWindow {
         // ── toolbar: search first, then state filters ─────────────────
         RowLayout {
             Layout.fillWidth: true
-            Layout.margins: 16
+            Layout.leftMargin: window.pageInset
+            Layout.rightMargin: window.pageInset
             Layout.topMargin: 14
             Layout.bottomMargin: 8
             spacing: 10
@@ -404,7 +405,6 @@ ApplicationWindow {
             TextField {
                 id: searchField
                 Layout.fillWidth: true
-                Layout.maximumWidth: 420
                 placeholderText: qsTr("Search applications…")
                 font.pixelSize: 14
                 color: Theme.colors.text
@@ -430,11 +430,26 @@ ApplicationWindow {
                 bottomPadding: 7
             }
 
+            SurfaceComboBox {
+                Accessible.name: qsTr("Filter applications by package format")
+                textRole: "label"
+                valueRole: "value"
+                model: [
+                    {label: qsTr("All formats"), value: "all"},
+                    {label: "AppImage", value: "appimage"},
+                    {label: "Flatpak", value: "flatpak"},
+                    {label: "DEB", value: "deb"},
+                    {label: "RPM", value: "rpm"}
+                ]
+                onActivated: appsModel.setFormatFilter(currentValue)
+            }
+
             // Status filter.
             // Explicit button and popup rather than ComboBox: KDE's style
             // must not intercept the dropdown activation or delegate selection.
             Button {
                 id: statusFilter
+                visible: window.advancedFilters
                 property int selectedIndex: 0
                 readonly property var options: [
                     { label: qsTr("All statuses"), value: "all" },
@@ -655,40 +670,11 @@ ApplicationWindow {
                     }
                 }
             }
-        }
-
-        // ── format chips + count ─────────────────────────────────────
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.leftMargin: 16
-            Layout.rightMargin: 16
-            Layout.bottomMargin: 10
-            spacing: 10
-
-            // Flow (not a row): the chips wrap onto a second line at narrow
-            // widths instead of squeezing the count label out of the window.
-            Flow {
-                Layout.fillWidth: true
-                spacing: 6
-
-                ButtonGroup { id: formatGroup }
-
-                Repeater {
-                    model: [
-                        { label: qsTr("All"),      value: "all" },
-                        { label: qsTr("AppImage"), value: "appimage" },
-                        { label: qsTr("Flatpak"),  value: "flatpak" },
-                        { label: qsTr("DEB"),      value: "deb" },
-                        { label: qsTr("RPM"),      value: "rpm" },
-                    ]
-
-                    delegate: CheckButton {
-                        ButtonGroup.group: formatGroup
-                        checkText: modelData.label
-                        onClicked: appsModel.setFormatFilter(modelData.value)
-                        Component.onCompleted: if (index === 0) checked = true
-                    }
-                }
+            HeaderMenuButton {
+                text: qsTr("Filters")
+                highlighted: window.advancedFilters || statusFilter.selectedIndex !== 0
+                Accessible.description: qsTr("Show or hide the status filter")
+                onClicked: window.advancedFilters = !window.advancedFilters
             }
 
             Label {
@@ -703,6 +689,36 @@ ApplicationWindow {
         }
 
         } // filtersPanel
+
+        Rectangle {
+            visible: contentArea.visible && appsModel.attentionCount > 0
+            Layout.fillWidth: true
+            Layout.leftMargin: window.pageInset
+            Layout.rightMargin: window.pageInset
+            Layout.topMargin: 4
+            Layout.bottomMargin: 4
+            implicitHeight: 44
+            radius: 11
+            color: Theme.colors.warningBg
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 14
+                anchors.rightMargin: 8
+                Label {
+                    Layout.fillWidth: true
+                    elide: Text.ElideRight
+                    text: appsModel.attentionCount === 1
+                          ? qsTr("1 application needs your attention")
+                          : qsTr("%1 applications need your attention").arg(appsModel.attentionCount)
+                    color: Theme.colors.warning
+                    font.weight: Font.DemiBold
+                }
+                HeaderMenuButton {
+                    text: qsTr("Review issues")
+                    onClicked: appList.focusCard(appsModel.count - appsModel.attentionCount)
+                }
+            }
+        }
 
         // ── update banner ────────────────────────────────────────────
         Rectangle {
@@ -800,10 +816,29 @@ ApplicationWindow {
             visible: window.discoverSelected
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.leftMargin: 16
-            Layout.rightMargin: 16
+            Layout.leftMargin: window.pageInset
+            Layout.rightMargin: window.pageInset
             Layout.bottomMargin: 10
             spacing: 10
+
+            ColumnLayout {
+                visible: !bridge.catalogDetailsAvailable
+                Layout.topMargin: 24
+                Layout.bottomMargin: 10
+                spacing: 6
+                Label {
+                    text: qsTr("Discover something great")
+                    font.pixelSize: 34
+                    font.bold: true
+                    color: Theme.colors.text
+                    Accessible.role: Accessible.Heading
+                }
+                Label {
+                    text: qsTr("Browse apps across Flatpak, AppImage, DEB and RPM.")
+                    font.pixelSize: 14
+                    color: Theme.colors.textSecondary
+                }
+            }
 
             // Compact, centered store-style details — no new network requests.
             ColumnLayout {
@@ -1194,63 +1229,53 @@ ApplicationWindow {
             RowLayout {
                 Layout.fillWidth: true
                 visible: !bridge.catalogDetailsAvailable
-                spacing: 7
+                layoutDirection: Qt.RightToLeft
+                spacing: 12
 
-                Button {
+                RowLayout {
+                spacing: 4
+                HeaderMenuButton {
                     id: flatpakSourceButton
                     objectName: "flatpakSourceButton"
                     text: qsTr("Flatpak")
-                    font.bold: window.catalogSource === "Flatpak"
+                    highlighted: window.catalogSource === "Flatpak"
                     onClicked: {
                         window.catalogSource = "Flatpak"
                         bridge.searchCatalog(catalogSearchField.text, "Flatpak")
                     }
                 }
-                Button {
+                HeaderMenuButton {
                     id: appimageSourceButton
                     objectName: "appimageSourceButton"
                     text: qsTr("AppImage")
-                    font.bold: window.catalogSource === "AppImage"
+                    highlighted: window.catalogSource === "AppImage"
                     onClicked: {
                         window.catalogSource = "AppImage"
                         bridge.searchCatalog(catalogSearchField.text, "AppImage")
                     }
                 }
-                Button {
+                HeaderMenuButton {
                     id: debSourceButton
                     objectName: "debSourceButton"
                     text: qsTr("DEB")
-                    font.bold: window.catalogSource === "DEB"
+                    highlighted: window.catalogSource === "DEB"
                     onClicked: {
                         window.catalogSource = "DEB"
                         bridge.searchCatalog(catalogSearchField.text, "DEB")
                     }
                 }
-                Button {
+                HeaderMenuButton {
                     id: rpmSourceButton
                     objectName: "rpmSourceButton"
                     text: qsTr("RPM")
-                    font.bold: window.catalogSource === "RPM"
+                    highlighted: window.catalogSource === "RPM"
                     onClicked: {
                         window.catalogSource = "RPM"
                         bridge.searchCatalog(catalogSearchField.text, "RPM")
                     }
                 }
-                Item { Layout.fillWidth: true }
-                Label {
-                    text: window.catalogSource === "Flatpak" ? "Flathub"
-                          : window.catalogSource === "AppImage" ? "AppImageHub"
-                          : window.catalogSource === "DEB" ? "Debian packages"
-                          : "Fedora packages"
-                    font.pixelSize: 12
-                    color: Theme.colors.textSecondary
                 }
-            }
 
-            RowLayout {
-                Layout.fillWidth: true
-                visible: !bridge.catalogDetailsAvailable
-                spacing: 10
                 TextField {
                     id: catalogSearchField
                     objectName: "catalogSearchField"
@@ -1262,7 +1287,7 @@ ApplicationWindow {
                     color: Theme.colors.text
                     placeholderTextColor: Theme.colors.textSecondary
                     selectByMouse: true
-                    implicitHeight: 38
+                    implicitHeight: 48
                     onTextChanged: catalogTimer.restart()
                     onAccepted: {
                         catalogTimer.stop()
@@ -1282,8 +1307,11 @@ ApplicationWindow {
                 }
                 Button {
                     id: catalogRetry
+                    parent: catalogHeading
                     objectName: "catalogRetry"
                     text: qsTr("Refresh")
+                    visible: !bridge.catalogLoading && bridge.catalogModel.count === 0
+                             && !bridge.catalogSetupRequired
                     enabled: !bridge.catalogLoading
                     onClicked: bridge.searchCatalog(catalogSearchField.text, window.catalogSource)
                     implicitHeight: 36
@@ -1316,16 +1344,24 @@ ApplicationWindow {
                     color: Theme.colors.textSecondary
                     elide: Text.ElideRight
                 }
+                HeaderMenuButton {
+                    visible: window.height < 620
+                    implicitHeight: 30
+                    text: featuredStrip.expandedOnShortWindow ? qsTr("Hide featured") : qsTr("Show featured")
+                    onClicked: featuredStrip.expandedOnShortWindow = !featuredStrip.expandedOnShortWindow
+                }
             }
 
             Flickable {
                 id: featuredStrip
                 objectName: "featuredStrip"
+                property bool expandedOnShortWindow: false
                 Layout.fillWidth: true
                 // Keep a dedicated gutter for the scrollbar instead of drawing it
                 // over the developer label and Install button.
-                Layout.preferredHeight: 128
+                Layout.preferredHeight: window.height < 700 ? 118 : 156
                 visible: !bridge.catalogDetailsAvailable && bridge.catalogHasFeatured
+                         && (window.height >= 620 || expandedOnShortWindow)
                 clip: true
                 contentWidth: featuredRow.implicitWidth
                 contentHeight: height
@@ -1342,14 +1378,14 @@ ApplicationWindow {
                         id: featuredRepeater
                         model: bridge.featuredCatalogModel
                         delegate: Rectangle {
-                            width: 244
-                            height: 110
+                            width: Math.max(210, (featuredStrip.width - 2 * featuredRow.spacing) / 3)
+                            height: featuredStrip.height - 18
                             radius: 11
                             color: Theme.colors.surface
                             border.color: Theme.colors.border
                             ColumnLayout {
                                 anchors.fill: parent
-                                anchors.margins: 9
+                                anchors.margins: window.height < 700 ? 9 : 16
                                 spacing: 4
                                 RowLayout {
                                     Layout.fillWidth: true
@@ -1412,20 +1448,11 @@ ApplicationWindow {
                                         color: Theme.colors.textSecondary
                                         elide: Text.ElideRight
                                     }
-                                    Button {
-                                        implicitHeight: 27
-                                        implicitWidth: 64
-                                        text: qsTr("Details")
-                                        Accessible.name: text + " " + model.name
+                                    HeaderMenuButton {
+                                        implicitHeight: 28
+                                        text: qsTr("View app")
+                                        Accessible.name: qsTr("View details for %1").arg(model.name)
                                         onClicked: bridge.openCatalogDetails(model.appId, model.source)
-                                    }
-                                    Button {
-                                        implicitHeight: 27
-                                        implicitWidth: 74
-                                        text: model.managed ? qsTr("Managed") : qsTr("Install")
-                                        enabled: !model.managed
-                                        Accessible.name: text + " " + model.name
-                                        onClicked: bridge.installCatalogEntry(model.appId, model.source)
                                     }
                                 }
                             }
@@ -1434,48 +1461,36 @@ ApplicationWindow {
                 }
             }
 
-            Flickable {
-                id: categoryStrip
-                objectName: "categoryStrip"
-                Layout.fillWidth: true
-                visible: !bridge.catalogDetailsAvailable
-                Layout.preferredHeight: 40
-                clip: true
-                contentWidth: categoryRow.implicitWidth
-                contentHeight: height
-                boundsBehavior: Flickable.StopAtBounds
-                flickableDirection: Flickable.HorizontalFlick
-                ScrollBar.horizontal: ScrollBar { policy: ScrollBar.AsNeeded }
-                Row {
-                    id: categoryRow
-                    spacing: 7
-                    Repeater {
-                        id: categoryRepeater
-                        objectName: "categoryRepeater"
-                        model: bridge.catalogCategories
-                        delegate: Button {
-                            required property string modelData
-                            text: modelData
-                            font.bold: bridge.catalogCategory === modelData
-                            implicitHeight: 32
-                            Accessible.name: qsTr("Category: ") + modelData
-                            onClicked: bridge.chooseCatalogCategory(modelData)
-                        }
-                    }
-                }
-            }
-
             RowLayout {
+                id: catalogHeading
                 Layout.fillWidth: true
                 visible: !bridge.catalogDetailsAvailable
                 spacing: 8
                 Label {
-                    text: qsTr("Discover applications")
-                    font.pixelSize: 17
+                    text: qsTr("Browse all apps")
+                    font.pixelSize: 20
                     font.weight: Font.DemiBold
                     color: Theme.colors.text
                 }
                 Item { Layout.fillWidth: true }
+                SurfaceComboBox {
+                    id: categoryStrip
+                    objectName: "categoryStrip"
+                    Accessible.name: qsTr("Catalog category")
+                    model: bridge.catalogCategories
+                    currentIndex: Math.max(0, bridge.catalogCategories.indexOf(bridge.catalogCategory))
+                    onActivated: bridge.chooseCatalogCategory(currentText)
+                }
+                SurfaceComboBox {
+                    Accessible.name: qsTr("Sort catalog results")
+                    textRole: "label"
+                    valueRole: "value"
+                    model: [
+                        {label: qsTr("Recommended"), value: "recommended"},
+                        {label: qsTr("Name (A–Z)"), value: "name"}
+                    ]
+                    onActivated: bridge.sortCatalog(currentValue)
+                }
                 BusyIndicator {
                     running: bridge.catalogLoading
                     visible: running
@@ -1483,7 +1498,8 @@ ApplicationWindow {
                     implicitWidth: 23
                 }
                 Label {
-                    text: bridge.catalogStatus
+                    text: bridge.catalogLoading ? bridge.catalogStatus : ""
+                    visible: text !== ""
                     color: Theme.colors.textSecondary
                     font.pixelSize: 12
                     elide: Text.ElideRight
@@ -1502,9 +1518,9 @@ ApplicationWindow {
                     objectName: "catalogList"
                     anchors.fill: parent
                     visible: !bridge.catalogSetupRequired
-                    property int columns: Math.max(1, Math.floor(width / 280))
+                    property int columns: Math.min(4, Math.max(2, Math.floor(width / 280)))
                     cellWidth: Math.floor(width / columns)
-                    cellHeight: 228
+                    cellHeight: window.height < 700 ? 146 : 174
                     model: bridge.catalogModel
                     clip: true
                     ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
@@ -1517,8 +1533,8 @@ ApplicationWindow {
                         width: catalogList.cellWidth - 12
                         height: catalogList.cellHeight - 8
                         radius: 12
-                        color: Theme.colors.surface
-                        border.color: Theme.colors.border
+                        color: cardHover.hovered ? Theme.colors.surfaceAlt : Theme.colors.surface
+                        border.color: activeFocus ? Theme.colors.focusRing : Theme.colors.border
                         border.width: 1
 
                         ToolTip.visible: cardHover.hovered
@@ -1530,6 +1546,16 @@ ApplicationWindow {
                                       + "\nSource: " + model.source
 
                         HoverHandler { id: cardHover }
+                        MouseArea {
+                            anchors.fill: parent
+                            onClicked: bridge.openCatalogDetails(model.appId, model.source)
+                        }
+                        activeFocusOnTab: true
+                        Accessible.role: Accessible.Button
+                        Accessible.name: qsTr("Details for %1").arg(model.name)
+                        Accessible.onPressAction: bridge.openCatalogDetails(model.appId, model.source)
+                        Keys.onReturnPressed: bridge.openCatalogDetails(model.appId, model.source)
+                        Keys.onSpacePressed: bridge.openCatalogDetails(model.appId, model.source)
 
                         ColumnLayout {
                             anchors.fill: parent
@@ -1540,8 +1566,8 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 spacing: 11
                                 Rectangle {
-                                    Layout.preferredWidth: 53
-                                    Layout.preferredHeight: 53
+                                    Layout.preferredWidth: 44
+                                    Layout.preferredHeight: 44
                                     radius: 10
                                     color: Theme.colors.iconFallbackBg
                                     Image {
@@ -1595,16 +1621,6 @@ ApplicationWindow {
 
                             Label {
                                 Layout.fillWidth: true
-                                visible: model.developer !== ""
-                                text: qsTr("By %1").arg(model.developer)
-                                textFormat: Text.PlainText
-                                color: Theme.colors.textSecondary
-                                font.pixelSize: 11
-                                elide: Text.ElideRight
-                            }
-
-                            Label {
-                                Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 text: model.summary || model.appId
                                 textFormat: Text.PlainText
@@ -1627,14 +1643,8 @@ ApplicationWindow {
                                     elide: Text.ElideRight
                                     textFormat: Text.PlainText
                                 }
-                                Button {
-                                    text: qsTr("Details")
-                                    implicitHeight: 32
-                                    implicitWidth: 70
-                                    Accessible.name: text + " " + model.name
-                                    onClicked: bridge.openCatalogDetails(model.appId, model.source)
-                                }
-                                Button {
+                                HeaderMenuButton {
+                                    filled: true
                                     text: model.managed ? qsTr("Managed")
                                         : model.source === "AppImage" && !model.installUrl
                                           ? qsTr("Downloads") : qsTr("Install")
@@ -1725,33 +1735,51 @@ ApplicationWindow {
             visible: window.updatesSelected
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.leftMargin: 16
-            Layout.rightMargin: 16
-            Layout.topMargin: 10
+            Layout.leftMargin: window.pageInset
+            Layout.rightMargin: window.pageInset
+            Layout.topMargin: 24
             Layout.bottomMargin: 12
             spacing: 10
 
-            RowLayout {
+            ColumnLayout {
                 Layout.fillWidth: true
-                spacing: 10
-                ColumnLayout {
+                Layout.bottomMargin: 8
+                spacing: 6
+                Label {
+                    text: qsTr("Application updates")
+                    font.pixelSize: 34
+                    font.bold: true
+                    color: Theme.colors.text
+                    Accessible.role: Accessible.Heading
+                }
+                Label {
+                    text: qsTr("See what’s available and what needs your attention. Nothing updates automatically.")
+                    font.pixelSize: 14
+                    color: Theme.colors.textSecondary
+                    wrapMode: Text.WordWrap
                     Layout.fillWidth: true
-                    spacing: 3
-                    Label {
-                        text: qsTr("Application Updates")
-                        font.pixelSize: 19
-                        font.weight: Font.DemiBold
-                        color: Theme.colors.text
-                        Accessible.role: Accessible.Heading
-                    }
-                    Label {
-                        text: qsTr("Check your managed Flatpak, DEB, RPM and AppImage apps. Nothing updates automatically.")
-                        font.pixelSize: 12
-                        color: Theme.colors.textSecondary
-                        wrapMode: Text.WordWrap
-                        textFormat: Text.PlainText
-                        Layout.fillWidth: true
-                    }
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: updateOverview.implicitHeight + 28
+                radius: 12
+                color: Theme.colors.surface
+                border.color: Theme.colors.border
+                RowLayout {
+                id: updateOverview
+                anchors.fill: parent
+                anchors.margins: 14
+                spacing: 10
+                Label {
+                    Layout.fillWidth: true
+                    text: bridge.appUpdatesStatus
+                    textFormat: Text.PlainText
+                    color: Theme.colors.text
+                    font.pixelSize: 15
+                    font.weight: Font.DemiBold
+                    wrapMode: Text.WordWrap
                 }
                 BusyIndicator {
                     running: bridge.appUpdatesBusy
@@ -1759,8 +1787,9 @@ ApplicationWindow {
                     implicitHeight: 25
                     implicitWidth: 25
                 }
-                Button {
+                HeaderMenuButton {
                     id: appUpdateCheckButton
+                    primary: true
                     objectName: "appUpdateCheckButton"
                     text: bridge.appImagePreparing ? qsTr("Downloading…")
                           : bridge.appUpdatesBusy ? qsTr("Checking…") : qsTr("Check now")
@@ -1782,53 +1811,75 @@ ApplicationWindow {
                     text: qsTr("Stop update")
                     onClicked: bridge.cancelRunningFlatpakUpdate()
                 }
+                }
             }
 
-            Flow {
-                id: updatesFilters
+            RowLayout {
                 Layout.fillWidth: true
-                spacing: 6
+                spacing: 12
                 Repeater {
                     model: [
-                        { label: qsTr("All"), value: "all" },
+                        {label: qsTr("Available updates"), count: bridge.updatesModel.availableCount,
+                         color: Theme.colors.success},
+                        {label: qsTr("Manual or unsupported"), count: bridge.updatesModel.manualCount,
+                         color: Theme.colors.accent},
+                        {label: qsTr("Requires attention"), count: bridge.updatesModel.attentionCount,
+                         color: Theme.colors.warning}
+                    ]
+                    delegate: Rectangle {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 86
+                        radius: 12
+                        color: Theme.colors.surface
+                        border.color: Theme.colors.border
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 13
+                            Label {
+                                text: modelData.label
+                                color: Theme.colors.textSecondary
+                                font.pixelSize: 13
+                            }
+                            Label {
+                                text: modelData.count
+                                color: modelData.color
+                                font.pixelSize: 27
+                                font.bold: true
+                            }
+                        }
+                    }
+                }
+            }
+
+            RowLayout {
+                id: updatesFilters
+                Layout.fillWidth: true
+                Label {
+                    Layout.fillWidth: true
+                    text: qsTr("Update status")
+                    font.pixelSize: 18
+                    font.weight: Font.DemiBold
+                    color: Theme.colors.text
+                    Accessible.role: Accessible.Heading
+                }
+                SurfaceComboBox {
+                    objectName: "updateStatusFilter"
+                    Accessible.name: qsTr("Filter application updates by status")
+                    textRole: "label"
+                    valueRole: "value"
+                    model: [
+                        { label: qsTr("All states"), value: "all" },
                         { label: qsTr("Available"), value: "available" },
                         { label: qsTr("Up to date"), value: "up-to-date" },
                         { label: qsTr("Manual"), value: "manual-required" },
                         { label: qsTr("Unsupported"), value: "unsupported" },
                         { label: qsTr("Errors"), value: "error" }
                     ]
-                    delegate: Button {
-                        id: updateFilterButton
-                        required property var modelData
-                        text: modelData.label
-                        font.pixelSize: 12
-                        checked: window.updateFilter === modelData.value
-                        checkable: true
-                        implicitHeight: 31
-                        onClicked: {
-                            window.updateFilter = modelData.value
-                            bridge.updatesModel.setFilter(modelData.value)
-                        }
-                        Accessible.name: qsTr("Show updates: ") + modelData.label
+                    onActivated: {
+                        window.updateFilter = currentValue
+                        bridge.updatesModel.setFilter(currentValue)
                     }
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                Label {
-                    Layout.fillWidth: true
-                    text: bridge.appUpdatesStatus
-                    textFormat: Text.PlainText
-                    color: Theme.colors.textSecondary
-                    font.pixelSize: 12
-                    wrapMode: Text.WordWrap
-                }
-                Label {
-                    text: qsTr("%1 available").arg(bridge.updatesModel.availableCount)
-                    color: Theme.colors.text
-                    font.pixelSize: 12
-                    font.weight: Font.DemiBold
                 }
             }
 
@@ -1865,8 +1916,8 @@ ApplicationWindow {
                     readonly property string renderedState: updateStateLabel.text
                     readonly property bool reviewVisible: reviewUpdateAction.visible
                     objectName: "updateAppRow"
-                    width: appUpdatesList.width - 8
-                    height: 116
+                    width: appUpdatesList.width - (appUpdatesList.contentHeight > appUpdatesList.height ? 12 : 0)
+                    height: 78
                     radius: 10
                     color: Theme.colors.surface
                     border.color: Theme.colors.border
@@ -1921,21 +1972,33 @@ ApplicationWindow {
                                 elide: Text.ElideRight
                                 maximumLineCount: 2
                                 wrapMode: Text.WordWrap
+                                ToolTip.visible: reasonHover.hovered && truncated
+                                ToolTip.text: text
+                                HoverHandler { id: reasonHover }
                             }
                         }
-                        ColumnLayout {
+                        RowLayout {
                             Layout.alignment: Qt.AlignVCenter
-                            spacing: 6
+                            spacing: 14
                             Label {
                                 id: updateStateLabel
                                 objectName: "updateAppState"
-                                text: updateRow.updateState
-                                color: updateRow.updateState === "available"
-                                       ? Theme.colors.success : Theme.colors.textSecondary
-                                font.pixelSize: 11
-                                Layout.alignment: Qt.AlignRight
+                                readonly property color tone: updateRow.updateState === "available"
+                                    ? Theme.colors.success : updateRow.updateState === "error"
+                                    ? Theme.colors.warning : Theme.colors.textSecondary
+                                text: ({
+                                    "available": qsTr("Available"),
+                                    "manual-required": qsTr("Manual check"),
+                                    "unsupported": qsTr("Unsupported"),
+                                    "up-to-date": qsTr("Up to date"),
+                                    "error": qsTr("Needs attention"),
+                                    "checking": qsTr("Checking")
+                                })[updateRow.updateState] || updateRow.updateState
+                                color: tone
+                                font.pixelSize: 12
                             }
-                            Button {
+                            HeaderMenuButton {
+                                filled: true
                                 text: updateRow.format === "AppImage"
                                       ? qsTr("Download & review")
                                       : qsTr("Review update")
@@ -1945,6 +2008,15 @@ ApplicationWindow {
                                 enabled: !bridge.appUpdatesBusy && !bridge.appUpdateRunning
                                 onClicked: bridge.requestManagedUpdate(updateRow.key)
                                 Accessible.name: qsTr("Review update for ") + updateRow.name
+                            }
+                            HeaderMenuButton {
+                                filled: true
+                                text: qsTr("Review")
+                                visible: updateRow.updateState === "error"
+                                      || updateRow.updateState === "manual-required"
+                                      || updateRow.updateState === "unsupported"
+                                Accessible.name: qsTr("Review application record for %1").arg(updateRow.name)
+                                onClicked: bridge.showDetails(updateRow.key)
                             }
                         }
                     }
@@ -1986,8 +2058,8 @@ ApplicationWindow {
             visible: !window.discoverSelected && !window.updatesSelected
             Layout.fillWidth: true
             Layout.fillHeight: true
-            Layout.leftMargin: 16
-            Layout.rightMargin: 16
+            Layout.leftMargin: window.pageInset
+            Layout.rightMargin: window.pageInset
 
             ListView {
                 id: appList
@@ -2002,6 +2074,20 @@ ApplicationWindow {
                 // into the cards, leaving every card action keyboard-
                 // unreachable. Cards move with Up/Down (see the delegate).
                 activeFocusOnTab: false
+                section.property: statusFilter.selectedIndex === 0 ? "librarySection" : ""
+                section.delegate: Label {
+                    required property string section
+                    width: appList.width - (appList.contentHeight > appList.height ? 12 : 0)
+                    topPadding: 12
+                    bottomPadding: 9
+                    text: section === "attention"
+                          ? qsTr("Needs attention  ·  %1").arg(appsModel.attentionCount)
+                          : qsTr("Installed  ·  %1").arg(appsModel.count - appsModel.attentionCount)
+                    color: Theme.colors.text
+                    font.pixelSize: 19
+                    font.weight: Font.DemiBold
+                    Accessible.role: Accessible.Heading
+                }
 
                 ScrollBar.vertical: ScrollBar {
                     policy: ScrollBar.AsNeeded
@@ -2014,7 +2100,7 @@ ApplicationWindow {
 
                 delegate: AppCard {
                     required property int index
-                    width: appList.width
+                    width: appList.width - (appList.contentHeight > appList.height ? 12 : 0)
                     activeFocusOnTab: true
                     onActiveFocusChanged: {
                         if (activeFocus) {
@@ -2243,67 +2329,69 @@ ApplicationWindow {
     }
 
     // A conventional header tab, but laid out explicitly in a single row.
+    component SurfaceComboBox: Basic.ComboBox {
+        id: surfaceCombo
+        implicitHeight: 40
+        implicitWidth: 144
+        leftPadding: 12
+        rightPadding: 26
+        palette.text: Theme.colors.text
+        palette.buttonText: Theme.colors.text
+        palette.window: Theme.colors.surface
+        palette.base: Theme.colors.surface
+        palette.button: Theme.colors.surface
+        palette.highlight: Theme.colors.iconFallbackBg
+        palette.highlightedText: Theme.colors.text
+        contentItem: Label {
+            text: surfaceCombo.displayText
+            font.pixelSize: 13
+            color: Theme.colors.text
+            verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
+        }
+        indicator: Label {
+            x: surfaceCombo.width - width - 12
+            anchors.verticalCenter: parent.verticalCenter
+            text: "▾"
+            color: Theme.colors.textSecondary
+        }
+        background: Rectangle {
+            radius: 9
+            color: surfaceCombo.hovered ? Theme.colors.surfaceAlt : Theme.colors.surface
+            border.color: surfaceCombo.visualFocus ? Theme.colors.focusRing : Theme.colors.border
+            border.width: surfaceCombo.visualFocus ? 2 : 1
+        }
+    }
+
     component HeaderMenuButton: Button {
         id: headerNav
-        implicitHeight: 32
-        implicitWidth: headerNavLabel.implicitWidth + 18
-        font.pixelSize: 13
+        property bool primary: false
+        property bool filled: false
+        implicitHeight: 42
+        implicitWidth: headerNavLabel.implicitWidth + 28
+        font.pixelSize: 14
+        font.weight: Font.DemiBold
         hoverEnabled: true
         activeFocusOnTab: true
         background: Rectangle {
-            radius: 7
-            color: headerNav.down ? Theme.colors.pressed
-                 : headerNav.hovered ? Theme.colors.hover : "transparent"
+            radius: 10
+            color: headerNav.primary ? (headerNav.enabled ? Theme.colors.accent : Theme.colors.surfaceAlt)
+                 : headerNav.down ? Theme.colors.pressed
+                 : headerNav.highlighted ? Theme.colors.iconFallbackBg
+                 : headerNav.hovered ? Theme.colors.hover
+                 : headerNav.filled ? Theme.colors.surfaceAlt : "transparent"
             border.color: headerNav.visualFocus ? Theme.colors.focusRing : "transparent"
             border.width: headerNav.visualFocus ? 2 : 0
         }
         contentItem: Label {
             id: headerNavLabel
             text: headerNav.text
-            color: Theme.colors.text
+            color: headerNav.primary && headerNav.enabled ? Theme.colors.accentText
+                 : headerNav.highlighted || headerNav.filled ? Theme.colors.text : Theme.colors.textSecondary
             font: headerNav.font
             horizontalAlignment: Text.AlignHCenter
             verticalAlignment: Text.AlignVCenter
         }
     }
 
-    // Format segmented control: checkable chip, selected state is the web
-    // design's accent outline + readable text, visible focus ring. Exclusive
-    // through formatGroup.
-    component CheckButton: Button {
-        id: chip
-        property string checkText
-        checkable: true
-        // Explicit: inline components have been observed to drop out of
-        // the Tab chain otherwise, leaving the filter mouse-only.
-        activeFocusOnTab: true
-        implicitHeight: 28
-        implicitWidth: chipLabel.implicitWidth + 26
-        font.pixelSize: 13
-        hoverEnabled: true
-
-        background: Rectangle {
-            radius: 14
-            // QML hex colors use ARGB; keep these overlays explicitly RGBA.
-            color: Theme.mode === "dark"
-                 ? Qt.rgba(1, 1, 1, chip.pressed ? 0.10 : chip.hovered ? 0.05 : 0)
-                 : Qt.rgba(0, 0, 0, chip.pressed ? 0.08 : chip.hovered ? 0.04 : 0)
-            border.color: chip.visualFocus ? Theme.colors.focusRing
-                        : chip.checked ? Theme.colors.accent
-                        : Theme.colors.border
-            border.width: chip.visualFocus ? 2 : 1
-
-            Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
-            Behavior on border.color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
-        }
-        contentItem: Label {
-            id: chipLabel
-            text: chip.checkText
-            font.pixelSize: 13
-            font.weight: chip.checked ? Font.DemiBold : Font.Medium
-            color: chip.checked ? Theme.colors.text : Theme.colors.textSecondary
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-    }
 }

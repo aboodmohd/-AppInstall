@@ -11,6 +11,7 @@ Item {
 
     required property var model
     readonly property bool showProblems: model.problems !== ""
+    readonly property bool canLaunch: model.canOpen && model.status === "installed"
 
     // Hover tint only — a dense list is hovered constantly, so movement
     // would be noise (Emil: tens/day interactions get no animation).
@@ -22,7 +23,15 @@ Item {
                      + model.formatLabel + (model.version ? " " + model.version : "")
                      + ", " + model.statusLabel
                      + (showProblems ? ". Problems: " + model.problems : "")
-    Accessible.description: qsTr("Enter: Open; Space: Details; Menu or Shift+F10: More actions")
+    Accessible.description: (canLaunch ? qsTr("Enter: Open") : qsTr("Enter: Review"))
+                            + qsTr("; Space: Details; Menu or Shift+F10: More actions")
+
+    function activate() {
+        if (canLaunch)
+            bridge.openApp(model.key)
+        else
+            bridge.showDetails(model.key)
+    }
 
     Rectangle {
         id: cardSurface
@@ -64,7 +73,8 @@ Item {
             Layout.preferredHeight: 44
             radius: 10
             readonly property bool haveImage: model.iconUrl !== "" && image.status === Image.Ready
-            color: haveImage ? "transparent" : Theme.colors.iconFallbackBg
+            color: haveImage ? "transparent" : card.canLaunch
+                   ? Theme.colors.iconFallbackBg : Theme.colors.warningBg
             Image {
                 id: image
                 anchors.fill: parent
@@ -82,7 +92,7 @@ Item {
                 verticalAlignment: Text.AlignVCenter
                 font.pixelSize: 18
                 font.weight: Font.DemiBold
-                color: Theme.colors.textSecondary
+                color: card.canLaunch ? Theme.colors.accent : Theme.colors.warning
             }
         }
 
@@ -110,74 +120,10 @@ Item {
                     ToolTip.text: model.name
                 }
 
-                // Favorite toggle sits beside the name, clickable and in
-                // the ⋯ menu for keyboard users.
-                Button {
-                    id: pinButton
-                    text: model.pinned ? "★" : "☆"
-                    activeFocusOnTab: false
-                    font.pixelSize: 17
-                    implicitWidth: 32
-                    implicitHeight: 30
-                    hoverEnabled: true
-
-                    background: Rectangle {
-                        radius: 7
-                        color: pinButton.pressed ? Theme.colors.pressed
-                             : pinButton.hovered ? Theme.colors.hover
-                             : "transparent"
-                        border.color: pinButton.visualFocus ? Theme.colors.focusRing : "transparent"
-                        border.width: pinButton.visualFocus ? 2 : 0
-                        scale: pinButton.pressed ? 0.97 : 1.0
-
-                        Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
-                        Behavior on scale { NumberAnimation { duration: Theme.pressMs; easing.type: Easing.OutCubic } }
-                    }
-                    contentItem: Label {
-                        text: pinButton.text
-                        font: pinButton.font
-                        color: model.pinned ? Theme.colors.accent : Theme.colors.textSecondary
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    onClicked: bridge.togglePin(model.key)
-                    Accessible.name: (model.pinned
-                                      ? qsTr("Remove %1 from favorites").arg(model.name)
-                                      : qsTr("Add %1 to favorites").arg(model.name))
-                    Accessible.role: Accessible.Button
-                }
-
-                // Status chip: dot + label, tone from the backend status.
-                // Sits right after the favorite, as in the web design.
-                Rectangle {
-                    id: statusChip
-                    radius: 9
-                    implicitHeight: 20
-                    implicitWidth: chipRow.implicitWidth + 14
-                    color: Theme.toneBg(model.statusTone)
-                    border.color: Theme.tone(model.statusTone)
-                    border.width: 0
-
-                    Row {
-                        id: chipRow
-                        anchors.centerIn: parent
-                        spacing: 5
-                        Rectangle {
-                            width: 7; height: 7; radius: 4
-                            anchors.verticalCenter: parent.verticalCenter
-                            color: Theme.tone(model.statusTone)
-                        }
-                        Label {
-                            text: model.statusLabel
-                            font.pixelSize: 12
-                            font.weight: Font.DemiBold
-                            color: Theme.tone(model.statusTone)
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                    }
-                    Layout.alignment: Qt.AlignVCenter
-                    Accessible.role: Accessible.StaticText
-                    Accessible.name: model.statusLabel
+                Label {
+                    visible: model.pinned
+                    text: "★"
+                    color: Theme.colors.accent
                 }
             }
 
@@ -185,28 +131,19 @@ Item {
                 Layout.fillWidth: true
                 text: {
                     var parts = [model.formatLabel]
+                    if (card.showProblems) return parts.concat(model.problems).join(' · ')
                     if (model.version && model.version !== 'unknown') parts.push(model.version)
                     if (model.container) parts.push(model.container)
-                    parts.push(model.sizeText)
+                    if (model.sizeText !== "—") parts.push(model.sizeText)
                     return parts.join(' · ')
                 }
                 elide: Text.ElideRight
                 font.pixelSize: 13
                 color: Theme.colors.textSecondary
                 textFormat: Text.PlainText
-            }
-
-            Label {
-                visible: card.showProblems
-                Layout.fillWidth: true
-                text: model.problems
-                elide: Text.ElideRight
-                font.pixelSize: 12
-                color: Theme.colors.danger
-                textFormat: Text.PlainText
                 ToolTip.visible: truncated && card.hovered
                 ToolTip.delay: 400
-                ToolTip.text: model.problems
+                ToolTip.text: text
             }
         }
 
@@ -216,23 +153,42 @@ Item {
             spacing: 8
             Layout.alignment: Qt.AlignVCenter
 
+            Item {
+                Layout.preferredWidth: Math.max(136, statusText.implicitWidth + 18)
+                implicitHeight: 26
+                Rectangle {
+                    anchors.right: parent.right
+                    width: statusText.implicitWidth + 18
+                    height: parent.height
+                    radius: 13
+                    readonly property string tone: card.canLaunch ? model.statusTone : "warning"
+                    color: Theme.toneBg(tone)
+                    Label {
+                        id: statusText
+                        anchors.centerIn: parent
+                        text: card.canLaunch ? model.statusLabel : qsTr("Needs attention")
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                        color: Theme.tone(parent.tone)
+                    }
+                }
+            }
+
             Button {
                 id: openButton
-                enabled: model.canOpen
-                text: qsTr("Open")
+                text: card.canLaunch ? qsTr("Open") : qsTr("Review")
                 // The card is the Tab stop (whole-item keyboard model);
                 // buttons stay mouse/touch-only so Tab crosses the list.
                 activeFocusOnTab: false
                 font.pixelSize: 13
                 font.weight: Font.Medium
-                implicitWidth: Math.max(contentItem.implicitWidth + 24, 76)
-                implicitHeight: 30
+                implicitWidth: Math.max(contentItem.implicitWidth + 24, 104)
+                implicitHeight: 35
 
                 background: Rectangle {
-                    radius: 7
-                    color: openButton.enabled
-                           ? (openButton.pressed ? Qt.darker(Theme.colors.accent, 1.1) : Theme.colors.accent)
-                           : Theme.colors.surfaceAlt
+                    radius: 10
+                    color: openButton.pressed ? Theme.colors.pressed
+                         : openButton.hovered ? Theme.colors.hover : Theme.colors.surfaceAlt
                     scale: openButton.pressed ? 0.97 : 1.0
 
                     Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
@@ -241,44 +197,12 @@ Item {
                 contentItem: Label {
                     text: openButton.text
                     font: openButton.font
-                    color: openButton.enabled ? Theme.colors.accentText : Theme.colors.textSecondary
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-                onClicked: if (model.canOpen) bridge.openApp(model.key)
-                Accessible.name: "Open " + model.name
-            }
-
-            Button {
-                id: detailsButton
-                text: qsTr("Details")
-                activeFocusOnTab: false
-                font.pixelSize: 13
-                implicitWidth: Math.max(contentItem.implicitWidth + 24, 76)
-                implicitHeight: 30
-                hoverEnabled: true
-
-                background: Rectangle {
-                    radius: 7
-                    color: detailsButton.pressed ? Theme.colors.pressed
-                         : detailsButton.hovered ? Theme.colors.hover
-                         : "transparent"
-                    border.color: Theme.colors.border
-                    border.width: 1
-                    scale: detailsButton.pressed ? 0.97 : 1.0
-
-                    Behavior on color { ColorAnimation { duration: Theme.colorMs; easing.type: Easing.OutCubic } }
-                    Behavior on scale { NumberAnimation { duration: Theme.pressMs; easing.type: Easing.OutCubic } }
-                }
-                contentItem: Label {
-                    text: detailsButton.text
-                    font: detailsButton.font
                     color: Theme.colors.text
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                 }
-                onClicked: bridge.showDetails(model.key)
-                Accessible.name: "Details for " + model.name
+                onClicked: card.activate()
+                Accessible.name: qsTr("%1 — %2").arg(text).arg(model.name)
             }
 
             Button {
@@ -320,9 +244,10 @@ Item {
             Menu {
                 id: moreMenu
 
-                // Favorite toggle in the menu too: the card is the keyboard
-                // focus unit (Enter opens, Menu opens this menu), so the
-                // star button alone would leave favorites mouse-only.
+                MenuItem {
+                    text: qsTr("Details")
+                    onTriggered: bridge.showDetails(model.key)
+                }
                 MenuItem {
                     text: model.pinned ? qsTr("Remove from Favorites")
                                        : qsTr("Add to Favorites")
@@ -382,9 +307,7 @@ Item {
         }
     }
 
-    // Keyboard paths for the card (the card is the focus unit): Enter
-    // opens the app, Space shows its details — the two visible buttons —
-    // and Menu or Shift+F10 opens the ⋯ menu. All instant, no animation.
+    // Enter uses the same launcher gate as the visible primary action.
     Keys.onPressed: (event) => {
         if (event.key === Qt.Key_F10 && event.modifiers === Qt.ShiftModifier) {
             moreMenu.popup(moreButton, 0, moreButton.height + 4)
@@ -392,10 +315,10 @@ Item {
         }
     }
     Keys.onReturnPressed: (event) => {
-        if (model.canOpen) { bridge.openApp(model.key); event.accepted = true }
+        card.activate(); event.accepted = true
     }
     Keys.onEnterPressed: (event) => {
-        if (model.canOpen) { bridge.openApp(model.key); event.accepted = true }
+        card.activate(); event.accepted = true
     }
     Keys.onSpacePressed: (event) => {
         bridge.showDetails(model.key); event.accepted = true
