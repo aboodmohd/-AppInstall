@@ -2,13 +2,11 @@
 
 ![AppInstall logo](appinstall-256.png)
 
-> **v1.8.0 development candidate (unpublished):** The Updates manager,
-> improved source-qualified artwork/categories, Featured shelf, and redesigned
-> Application Details are in stacked draft PRs #78–#85. Published stable
-> v1.7.0 is unchanged; candidate packages and branches are **not** public
-> releases. See [v1.8 release gate](docs/V1_8_RELEASE_CANDIDATE.md) before
-> attempting to publish. Install.sh normally follows the latest *published*
-> stable GitHub release, never a draft PR.
+> **v1.9.0 premium UI release candidate (NOT PUBLISHED):** The new Qt Quick
+> design from merged PR #89 is prepared for a separate release. **v1.8.0 is
+> the latest published stable release.** Candidate builds, PRs and temporary
+> test artifacts are not stable downloads; the installer uses only published
+> stable releases. See [v1.9 candidate gate](docs/V1_9_RELEASE_CANDIDATE.md).
 
 A graphical double-click installer for AppImage, Flatpak, DEB, and RPM files on Linux desktops. DEB/RPM applications run in rootless Debian/Fedora Distrobox containers.
 
@@ -20,7 +18,7 @@ Double-click a supported file, review its source and destination, confirm instal
 
 Managed applications now use monitored launchers. Startup failures show useful errors and logs; open **AppInstall → Application Diagnostics** or run `appinstall --diagnostics` for launch history and safe repair actions. See [Launch Diagnostics](LAUNCH_DIAGNOSTICS.md) for tested behavior and limits.
 
-## AppInstall updates on other Linux distributions (v1.8.0 candidate)
+## AppInstall updates on other Linux distributions (introduced in v1.8.0)
 
 A **portable user-source installation** can now check for future published
 stable AppInstall updates and explicitly install a verified source archive
@@ -32,7 +30,7 @@ are never installed automatically. See
 [Cross-distro update support](docs/CROSS_DISTRO_UPDATE_SUPPORT.md)
 for the exact scope, integrity checks and limitations.
 
-## Discover Apps (v1.7.0 release candidate)
+## Discover Apps (introduced in v1.7.0)
 
 **Discover Apps** uses a responsive application-card grid. The **View more**
 button reveals additional results in batches of 24 without resetting My
@@ -98,9 +96,9 @@ automatic host-native package manager changes are made by Discover.
 `My Applications` and the accepted View/Tools/Settings/Help layout remain
 unchanged.
 
-The v1.7.0 source is a release candidate until the final packages, portable
-archive, and checksums are published. A merged branch alone is not a release.
-See RELEASE_NOTES.md for verification boundaries.
+v1.7.0 and v1.8.0 have been published. The v1.9.0 UI redesign remains a
+candidate until its own versioned artifacts and checksums are approved.
+See RELEASE_NOTES.md for the current candidate boundaries.
 
 ## Install AppInstall
 
@@ -110,20 +108,20 @@ The normal one-command installer still selects an **official native package**
 only for the currently verified hosts: Arch Linux/CachyOS, Debian 13,
 Ubuntu 24.04/26.04, Linux Mint 22, or Fedora 44 on x86_64. It always
 downloads the **latest published stable** release, not an unmerged PR or
-unpublished v1.7.0 build. No host package manager is invoked on an
+unpublished candidate build. No host package manager is invoked on an
 unverified distribution.
 
 ### Other Linux desktops — portable source installation
 
 If your distro is not in the native list, AppInstall also has a
 **distribution-neutral, non-root source route**, not a falsely renamed
-DEB/RPM. Use a verified, published `appinstall-1.7.0-portable.tar.gz`
-archive, after v1.7.0 is published:
+DEB/RPM. Use the verified, published `appinstall-1.8.0-portable.tar.gz`
+archive for the current stable portable install:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf appinstall-1.7.0-portable.tar.gz
-cd appinstall-1.7.0
+tar -xzf appinstall-1.8.0-portable.tar.gz
+cd appinstall-1.8.0
 bash ./install-user.sh
 ~/.local/bin/appinstall --manage
 ```

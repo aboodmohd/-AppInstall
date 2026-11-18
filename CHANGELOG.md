@@ -1,6 +1,16 @@
 # AppInstall Changelog
 
-## 1.8.0 — Updates manager and richer Discover (candidate; unpublished)
+## 1.9.0 — Premium UI/UX redesign (release candidate; not published)
+
+- Redesign the Qt Quick/QML desktop shell with one horizontal navigation bar and a single Install app menu.
+- Group My Applications into Installed and Needs attention, keep Open/Review actions safe, and move secondary maintenance actions into contextual menus.
+- Streamline Discover with search, source tabs, responsive catalog cards, three-at-a-time Featured navigation, and source-aware categories, sorting, and View more.
+- Add model-backed Updates summaries and compact update rows while preserving existing update review, cancellation and confirmation.
+- Correct initial catalog scroll positions, preserve scroll during pagination/metadata refresh, and reserve scrollbar gutters for library and update cards.
+- Provide light/dark themes, keyboard access and responsive Qt layouts tested on CachyOS KDE; preserve existing Python backends and native/portable package behavior.
+- Candidate source is the accepted QML redesign merged via PR #89. A published release requires freshly built artifacts, complete CI and upgrade/rollback acceptance, verified SHA256SUMS, and separate explicit publication approval.
+
+## 1.8.0 — Updates manager and richer Discover (published 2026-11-17)
 
 - Add read-only source-aware update detection and an Updates tab with manual,
   available, unsupported, up-to-date and error states.
@@ -18,8 +28,8 @@
 - Add a redesigned, responsive Application Details page with a compact header,
   verified metadata, readable license labels, optional publisher website and
   existing reviewed install actions. Preserve My Applications and preferences.
-- Prepare v1.8 candidate native packages for Arch/CachyOS, Debian/Ubuntu/Mint,
-  Fedora 44 and a portable source archive. **Not yet published or approved.**
+- Publish v1.8.0 native packages for Arch/CachyOS, Debian/Ubuntu/Mint,
+  Fedora 44 and a portable source archive with a matching checksum manifest.
 - Support explicit, checksum-verified self-updates of portable user-source
   installations across Linux distributions with a working Python/Bash/XDG
   environment. Keep native self-updates on the host package manager path;

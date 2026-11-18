@@ -1,4 +1,4 @@
-name: v1.8 multi-distro release candidate assets
+name: v1.9 multi-distro release candidate assets
 
 on:
   pull_request:
@@ -135,6 +135,6 @@ jobs:
           echo "The four candidate archives and one manifest are ready for review."
       - uses: actions/upload-artifact@v4
         with:
-          name: appinstall-v1.8.0-release-candidate
+          name: appinstall-v1.9.0-release-candidate
           path: release/
           if-no-files-found: error

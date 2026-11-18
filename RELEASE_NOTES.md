@@ -1,49 +1,64 @@
-# AppInstall v1.8.0 — Release candidate (NOT PUBLISHED)
+# AppInstall v1.9.0 — Premium UI/UX Release Candidate (NOT PUBLISHED)
 
-**Development-branch draft.** v1.7.0 is the latest published stable release
-until the exact v1.8.0 packages, source archive, checksum manifest, per-host
-acceptance and owner authorization are verified.
+This document describes a **candidate**, not a published GitHub release. The current
+published stable version is **v1.8.0**. Do not treat draft PR artifacts as final
+downloadable packages or upgrade the owner's daily-use installation without consent.
 
-## Proposed v1.8 changes
+## What's new
 
-- **Application Updates:** source-aware read-only discovery and a dedicated
-  Updates tab. Reviewed, one-at-a-time Flatpak updates use verified ref, origin
-  and target commit. Owned DEB/RPM container packages use exact simulated
-  transactions before opt-in upgrade; imported/foreign packages remain manual.
-- **AppImage updates:** eligible type-2 AppImages with supported zsync metadata
-  and a separately installed updater may be downloaded, reviewed, validated,
-  atomically replaced, and recovered. Other AppImages require manual action.
-- **Discover enhancements:** local verified PNG/WebP icons, source-qualified
-  developer/version/license metadata where available, filters from real
-  categories, and an actual live Flathub popular Featured collection.
-- **Application Details:** compact, responsive display for exact source/package
-  identity, optional homepage, description, version/license/developer and the
-  normal reviewed install flow. Missing metadata is not guessed.
-- **Cross-distro portable self-update:** user-source installs can check the
-  latest published stable GitHub release and, after explicit confirmation,
-  validate the portable archive against its SHA256SUMS and update the user
-  files with the existing recoverable transaction. No foreign native package
-  is installed. Native installs continue using their package-manager paths.
-  This feature requires Python 3 and other portable runtime prerequisites;
-  it cannot guarantee support for every Linux desktop or CPU architecture.
+- **One uncluttered app header:** My apps, Discover, Updates, Menu and Install app
+  occupy one consistent horizontal navigation row.
+- **Cleaner My Applications:** compact icon/name/format rows, Installed and
+  Needs attention grouping, one Open or Review action, and contextual Details,
+  Favorites, repair and removal actions. Missing launchers never enable Open.
+- **Refined Discover Apps:** prominent search, source tabs for Flatpak,
+  AppImage, DEB and RPM, responsive catalog cards, source-specific category
+  and sorting controls, Featured pages showing three cards at a time,
+  keyboard-accessible Previous/Next, and preserved View more pagination.
+- **Clearer Updates:** model-backed summary counts, compact per-app update
+  rows and one status filter. Existing opt-in review, cancellation and
+  confirmation rules remain unchanged.
+- **Layout reliability:** first catalog load/search/source/category changes
+  begin at the top; pagination and metadata refreshes preserve the user's
+  current scroll offset. Separate scrollbar gutters keep cards and actions
+  unobstructed. Compact aligned self-update notice is distinct from warnings.
+- **Desktop polish:** coherent dark/light palettes, system fonts, reduced-motion
+  behavior, accessible keyboard interactions and responsive Qt Quick layouts.
 
-## Candidate installation formats — pending final acceptance
+No Rust rewrite, new package-install backend, new privilege boundary or
+automatic update policy is part of this release.
 
-- Arch Linux / CachyOS: `appinstall-1.8.0-1-any.pkg.tar.zst`
-- Debian 13 / Ubuntu 24.04, 26.04 / Mint 22: `appinstall_1.8.0-1_all.deb`
-- Fedora 44: `appinstall-1.8.0-1.noarch.rpm`
-- Other equipped Linux desktops: `appinstall-1.8.0-portable.tar.gz`
+## Candidate artifacts — NOT YET PUBLISHED
 
-These are **expected candidate filenames only**, not links to verified or
-published downloads. The final release must also include matching
-`SHA256SUMS`, provenance/upgrade/rollback records and real desktop tests.
-Some package metadata and icons may be unavailable. zsync is not a
-developer signature; Distrobox is not a security sandbox; portable support
-is conditional, not universal. No package installation occurs without
-the application's explicit confirmation controls.
+- Arch Linux / CachyOS: `appinstall-1.9.0-1-any.pkg.tar.zst`
+- Debian 13 / Ubuntu 24.04 and 26.04 / Linux Mint 22: `appinstall_1.9.0-1_all.deb`
+- Fedora 44: `appinstall-1.9.0-1.noarch.rpm`
+- Other environments with portable prerequisites: `appinstall-1.9.0-portable.tar.gz`
+- A single `SHA256SUMS` manifest must verify all four files.
 
-Do not install PR build artifacts on a primary system merely because CI
-passed. Final owner merge, tag and publish approvals remain mandatory.
+The portable source bundle is **not** a universal binary; it requires host
+Python/Bash/XDG/Qt dependencies. DEB/RPM applications still use AppInstall-
+managed rootless Distrobox containers, which are **not** security sandboxes.
+
+## Evidence and remaining release gates
+
+- Source: redesign PR #89, merged to main as `ad6e6ac3c625ced685bd283f05291143806f6452`.
+- Before this version bump: 767 local tests ran, one skipped, no failures.
+  The accepted QML branch had 29/29 passing GitHub checks at commit `4367df5`.
+- Real Qt desktop acceptance: CachyOS KDE Wayland and XWayland for reviewed UI
+  fixtures and read-only managed-app/catalog rendering. This does **not** prove
+  all real package transactions or every desktop/distro.
+- **Still required:** build all four v1.9.0 formats from the finalized source;
+  verify exact archive contents and SHA-256 manifest; pass all CI on the
+  candidate; verify upgrade and rollback from the published v1.8.0 packages
+  in disposable hosts; obtain final owner approval to merge/tag/publish.
+- An old one-time `publish-v1.7.0.yml` workflow must not be repurposed.
+  Publication must be a separately reviewed manual operation; no tag or
+  release may be created just because the candidate CI succeeds.
+
+Previous stable: [AppInstall v1.8.0 — Updates & Discover](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.8.0).
+
+---
 
 ---
 

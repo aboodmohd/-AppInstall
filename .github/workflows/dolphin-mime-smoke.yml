@@ -12,7 +12,9 @@ permissions:
 jobs:
   dolphin-mime:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # Dolphin pulls a large KDE dependency graph; GitHub's Ubuntu mirrors
+    # can spend over 15 minutes downloading packages even when tests are healthy.
+    timeout-minutes: 40
     steps:
       - name: Check out source
         uses: actions/checkout@v5
