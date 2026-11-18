@@ -1,0 +1,110 @@
+{
+  "schema": "rust-anything/bridge@1",
+  "root": "../..",
+  "unit": "catalog_browse.py",
+  "language": "python",
+  "kind": "pyo3",
+  "crate_name": "catalog-browse-rs",
+  "exports": [
+    {
+      "name": "category_for",
+      "file": "catalog_browse.py",
+      "line": 37,
+      "params": [
+        {
+          "name": "row",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "categories_for",
+      "file": "catalog_browse.py",
+      "line": 54,
+      "params": [
+        {
+          "name": "rows",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "filtered_rows",
+      "file": "catalog_browse.py",
+      "line": 59,
+      "params": [
+        {
+          "name": "rows",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "selected",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    },
+    {
+      "name": "featured_rows",
+      "file": "catalog_browse.py",
+      "line": 67,
+      "params": [
+        {
+          "name": "rows",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "source",
+          "ts_type": "unknown",
+          "optional": false,
+          "rest": false
+        },
+        {
+          "name": "query",
+          "ts_type": "string",
+          "optional": true,
+          "rest": false,
+          "default": "\"\""
+        },
+        {
+          "name": "limit",
+          "ts_type": "int",
+          "optional": true,
+          "rest": false,
+          "default": "6"
+        }
+      ],
+      "returns": "unknown",
+      "is_async": false,
+      "is_generator": false,
+      "type_params": [],
+      "uses_instanceof": false
+    }
+  ],
+  "classes": [],
+  "js_only": []
+}

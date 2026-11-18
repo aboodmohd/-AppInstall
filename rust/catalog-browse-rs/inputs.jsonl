@@ -1,0 +1,10 @@
+{"fn":"category_for","args":[{"category":"unknown; inSTANT_messaging"}]}
+{"fn":"category_for","args":[{"category":"taſk-manager"}]}
+{"fn":"category_for","args":[{"category":"\u001cNeT-work\u001f"}]}
+{"fn":"category_for","args":[{"category":42}]}
+{"fn":"categories_for","args":[[{"category":"Game"},null,{"category":"Network"},{"category":"Game"}]]}
+{"fn":"filtered_rows","args":[[null,{"category":"Game","id":1},{"category":"Network"},{"category":"Game","id":2}],"Games"]}
+{"fn":"filtered_rows","args":[[null,{},1],"All"]}
+{"fn":"filtered_rows","args":[[{}],null]}
+{"fn":"featured_rows","args":[[null,{"providerKey":"flatpak:A"},{"source":"RPM","providerKey":"flatpak:B"},{"providerKey":"flatpak:A"},{"source":"Flatpak","providerKey":"flatpak:C"},{"providerKey":0}],"Flatpak"," ",2]}
+{"fn":"featured_rows","args":[[{"providerKey":"flatpak:A"},{"providerKey":"flatpak:B"}],"Flatpak","",1]}
