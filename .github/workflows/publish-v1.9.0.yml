@@ -1,0 +1,185 @@
+name: Publish AppInstall v1.9.0 (manual only)
+
+# Version-locked release gate: this workflow NEVER runs on push or pull_request.
+# Public publication requires the owner to invoke it with an explicit phrase.
+on:
+  workflow_dispatch:
+    inputs:
+      approval:
+        description: "Enter PUBLISH_APPINSTALL_V1_9_0 after reviewing all final checks"
+        type: string
+        required: true
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: appinstall-v1.9.0-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Verify exact main artifacts and publish v1.9.0
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ github.token }}
+      APPROVAL: ${{ inputs.approval }}
+      TARGET_SHA: 850b01c1fbcef2fdaff447d617e3d9b0917002ab
+      EXPECTED_TREE: 26f4b01b34c5f337a01272c4ec0395cc8b246b5e
+      BUILD_RUN_ID: "44307640711"
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Require explicit publication approval and verified merged source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          test "$APPROVAL" = PUBLISH_APPINSTALL_V1_9_0 || {
+            echo "Publication requires the exact manual approval phrase." >&2
+            exit 1
+          }
+          # Source artifacts were built from this accepted merged source commit.
+          git cat-file -e "$TARGET_SHA^{commit}"
+          git merge-base --is-ancestor "$TARGET_SHA" HEAD
+          test "$(git rev-parse "$TARGET_SHA^{tree}")" = "$EXPECTED_TREE"
+          test "$(git show "$TARGET_SHA:PKGBUILD" | sed -n 's/^pkgver=//p')" = 1.9.0
+          test "$(git show "$TARGET_SHA:PKGBUILD" | sed -n 's/^pkgrel=//p')" = 1
+          test "$(git show "$TARGET_SHA:appinstall" | sed -n 's/^VERSION="\([^"]*\)"$/\1/p')" = 1.9.0
+
+          # Never overwrite or re-upload an existing stable tag or release.
+          if git ls-remote --tags origin refs/tags/v1.9.0 | grep -q .; then
+            echo "Tag v1.9.0 exists; refusing to publish." >&2
+            exit 1
+          fi
+          if gh release view v1.9.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release v1.9.0 exists; refusing to publish." >&2
+            exit 1
+          fi
+
+      - name: Verify every post-merge status and exact CI build source
+        shell: bash
+        run: |
+          set -euo pipefail
+          checks="$(gh api "repos/$GITHUB_REPOSITORY/commits/$TARGET_SHA/check-runs?per_page=100")"
+          # This release is pinned to the merged HEAD, not a PR synthetic SHA.
+          jq -e '.total_count == 29 and (.check_runs | length == 29) and
+                all(.check_runs[]; .status == "completed" and .conclusion == "success")' <<<"$checks"
+          run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID")"
+          jq -e --arg sha "$TARGET_SHA" '
+              .head_sha == $sha and
+              .event == "push" and .head_branch == "main" and
+              .status == "completed" and .conclusion == "success"
+          ' <<<"$run"
+          test "$(jq -r '.name' <<<"$run")" = "v1.9 multi-distro release candidate assets"
+
+      - name: Download source-pinned release assets and independently check hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          gh run download "$BUILD_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --name appinstall-v1.9.0-release-candidate --dir release
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          directory = Path("release")
+          required = {
+              "appinstall-1.9.0-1-any.pkg.tar.zst",
+              "appinstall_1.9.0-1_all.deb",
+              "appinstall-1.9.0-1.noarch.rpm",
+              "appinstall-1.9.0-portable.tar.gz",
+          }
+          found = {p.name for p in directory.iterdir() if p.is_file()}
+          assert found == required | {"SHA256SUMS"}, (found, required)
+          manifest = (directory / "SHA256SUMS").read_text().splitlines()
+          assert len(manifest) == 4, manifest
+          entries = []
+          for line in manifest:
+              matched = re.fullmatch(r"([0-9a-f]{64})  ([A-Za-z0-9_.-]+)", line)
+              assert matched is not None, line
+              entries.append(matched.group(2))
+          assert set(entries) == required and len(set(entries)) == 4, entries
+          assert all((directory / name).stat().st_size > 1000 for name in required)
+          PY
+          (cd release && sha256sum --check --strict SHA256SUMS)
+          echo "PASS: four version-matched release archives and checksum manifest."
+
+      - name: Prepare public release notes
+        shell: bash
+        run: |
+          cat > /tmp/appinstall-v1.9.0-notes.md <<'NOTES'
+          # AppInstall v1.9.0 — Premium UI/UX
+
+          AppInstall v1.9.0 brings the approved Python + Qt Quick/QML redesign
+          to **My Applications**, **Discover Apps**, and **Updates**.
+
+          - A streamlined navigation row and consolidated Install app menu
+          - Cleaner installed-app cards and prominent Open/Review actions
+          - Distinct Installed and Needs attention sections
+          - Improved Discover search, category/source controls and responsive cards
+          - Three-at-a-time Featured navigation with accessible Previous/Next
+          - Stable catalog scrolling across searches, category changes and pagination
+          - Clearer update summaries, aligned rows and unobstructed scrollbars
+          - Dark/light Qt palettes and responsive keyboard-accessible layout
+
+          The current package installers and review/confirmation safeguards remain
+          unchanged. No Rust rewrite or new package backend is included.
+
+          ## Downloads
+
+          | Linux family | Release asset |
+          | --- | --- |
+          | Arch Linux / CachyOS (x86_64) | `appinstall-1.9.0-1-any.pkg.tar.zst` |
+          | Debian 13 / Ubuntu 24.04, 26.04 / Mint 22 (x86_64) | `appinstall_1.9.0-1_all.deb` |
+          | Fedora 44 (x86_64) | `appinstall-1.9.0-1.noarch.rpm` |
+          | Other Linux installations with portable prerequisites | `appinstall-1.9.0-portable.tar.gz` |
+
+          Verify downloaded files using the accompanying `SHA256SUMS`.
+          The stable [one-command installer](https://github.com/aboodmohd/-AppInstall#install-appinstall)
+          selects an appropriate native package only for supported Linux families.
+          The portable archive is source code, not a universal binary. A working
+          Python 3, Bash, XDG integration and PySide6/Qt Quick environment is
+          required for the full graphical interface.
+
+          **Verification:** 29/29 post-merge GitHub checks on
+          `850b01c1fbcef2fdaff447d617e3d9b0917002ab`, including 767 automated tests (2 skipped).
+          Fresh pacman, APT, RPM and portable packages were built from that
+          exact merged source. Upgrade and rollback from the published v1.8.0
+          packages passed in disposable Arch, Debian 13 and Fedora 44 CI.
+          Tests in virtual desktops do not guarantee all physical setups.
+          AppImage, Flatpak and container-managed DEB/RPM update compatibility
+          varies by source. Distrobox is not a security sandbox.
+          NOTES
+
+      - name: Publish immutable v1.9.0 tag and official GitHub release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create v1.9.0 --repo "$GITHUB_REPOSITORY" \
+            --target "$TARGET_SHA" \
+            --title "AppInstall v1.9.0 — Premium UI/UX" \
+            --notes-file /tmp/appinstall-v1.9.0-notes.md \
+            --latest --fail-on-no-commits \
+            release/appinstall-1.9.0-1-any.pkg.tar.zst \
+            release/appinstall_1.9.0-1_all.deb \
+            release/appinstall-1.9.0-1.noarch.rpm \
+            release/appinstall-1.9.0-portable.tar.gz \
+            release/SHA256SUMS
+
+      - name: Verify public release identity and complete asset list
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/v1.9.0" --jq '.object.sha')" = "$TARGET_SHA"
+          gh release view v1.9.0 --repo "$GITHUB_REPOSITORY" \
+            --json tagName,isDraft,isPrerelease,assets \
+            --jq '.tagName == "v1.9.0" and
+                  (.isDraft | not) and (.isPrerelease | not) and
+                  (.assets | length == 5)' | grep -Fx true
+          gh release view v1.9.0 --repo "$GITHUB_REPOSITORY" --json url --jq '.url'
