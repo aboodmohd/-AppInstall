@@ -2,11 +2,11 @@
 
 ![AppInstall logo](appinstall-256.png)
 
-> **v1.9.0 premium UI release candidate (NOT PUBLISHED):** The new Qt Quick
-> design from merged PR #89 is prepared for a separate release. **v1.8.0 is
-> the latest published stable release.** Candidate builds, PRs and temporary
-> test artifacts are not stable downloads; the installer uses only published
-> stable releases. See [v1.9 candidate gate](docs/V1_9_RELEASE_CANDIDATE.md).
+[![Latest release](https://img.shields.io/github/v/release/aboodmohd/-AppInstall)](https://github.com/aboodmohd/-AppInstall/releases/latest)
+
+> **Latest published stable: [v1.9.0 — Premium UI/UX](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.9.0).**
+> The Qt Quick/QML redesign is included in the published release. The installer
+> uses only published stable releases, never draft PR artifacts or test builds.
 
 A graphical double-click installer for AppImage, Flatpak, DEB, and RPM files on Linux desktops. DEB/RPM applications run in rootless Debian/Fedora Distrobox containers.
 
@@ -29,6 +29,27 @@ keeps its own package-manager update path; missing Qt or backend dependencies
 are never installed automatically. See
 [Cross-distro update support](docs/CROSS_DISTRO_UPDATE_SUPPORT.md)
 for the exact scope, integrity checks and limitations.
+
+## Premium UI/UX (introduced in v1.9.0)
+
+- **My Applications:** one horizontal navigation row (My apps, Discover,
+  Updates, Menu, Install app), compact app rows, and separate Installed and
+  Needs attention groups with Open or Review actions. Secondary actions live
+  in each row's contextual menu; a missing launcher never enables Open.
+- **Discover Apps:** prominent search, Flatpak/AppImage/DEB/RPM source tabs,
+  responsive catalog cards, source-specific category and sorting controls,
+  three-at-a-time Featured pages with keyboard-accessible Previous/Next, and
+  preserved View more pagination.
+- **Updates:** model-backed summary counts, compact per-app rows and one status
+  filter, with the existing opt-in review, cancellation and confirmation rules
+  unchanged.
+- **Desktop polish:** coherent dark/light palettes, system fonts, reduced-motion
+  support, keyboard-accessible controls, and reliable scroll positions and
+  gutters across searches, category changes and pagination.
+
+The package installers, review/confirmation safeguards, container backends and
+compatibility limits are unchanged. See [RELEASE_NOTES.md](RELEASE_NOTES.md)
+for the full release record.
 
 ## Discover Apps (introduced in v1.7.0)
 
@@ -96,9 +117,9 @@ automatic host-native package manager changes are made by Discover.
 `My Applications` and the accepted View/Tools/Settings/Help layout remain
 unchanged.
 
-v1.7.0 and v1.8.0 have been published. The v1.9.0 UI redesign remains a
-candidate until its own versioned artifacts and checksums are approved.
-See RELEASE_NOTES.md for the current candidate boundaries.
+v1.7.0, v1.8.0 and v1.9.0 are published stable releases. See
+[RELEASE_NOTES.md](RELEASE_NOTES.md) for the release history and the current
+supported scope.
 
 ## Install AppInstall
 
@@ -115,13 +136,13 @@ unverified distribution.
 
 If your distro is not in the native list, AppInstall also has a
 **distribution-neutral, non-root source route**, not a falsely renamed
-DEB/RPM. Use the verified, published `appinstall-1.8.0-portable.tar.gz`
+DEB/RPM. Use the verified, published `appinstall-1.9.0-portable.tar.gz`
 archive for the current stable portable install:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf appinstall-1.8.0-portable.tar.gz
-cd appinstall-1.8.0
+tar -xzf appinstall-1.9.0-portable.tar.gz
+cd appinstall-1.9.0
 bash ./install-user.sh
 ~/.local/bin/appinstall --manage
 ```
@@ -288,7 +309,7 @@ AppImages with the same embedded application name replace the previous AppInstal
 
 ## Uninstall and recovery
 
-For installs using the **one-command pacman installer**, use the `curl ... | bash -s -- --uninstall` command in [Install AppInstall](#install-appinstall-arch-linux--cachyos). It removes the system package and offers to restore your previous MIME defaults without deleting managed applications, containers or user data.
+For installs using the **one-command installer**, use the `curl ... | bash -s -- --uninstall` command in [Install AppInstall](#install-appinstall). It removes the system package and offers to restore your previous MIME defaults without deleting managed applications, containers or user data.
 
 For **source installs** using `./install-user.sh`, run `~/.local/bin/appinstall-uninstall` to remove user registration and restore prior associations if AppInstall still owns them. Installed applications are kept. `appinstall --remove NAME` removes an AppInstall-managed AppImage; use Flatpak or your software center to remove Flatpak apps.
 

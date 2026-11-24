@@ -1,6 +1,6 @@
 # AppInstall Changelog
 
-## 1.9.0 — Premium UI/UX redesign (release candidate; not published)
+## 1.9.0 — Premium UI/UX redesign (published 2026-11-18)
 
 - Redesign the Qt Quick/QML desktop shell with one horizontal navigation bar and a single Install app menu.
 - Group My Applications into Installed and Needs attention, keep Open/Review actions safe, and move secondary maintenance actions into contextual menus.
@@ -8,7 +8,7 @@
 - Add model-backed Updates summaries and compact update rows while preserving existing update review, cancellation and confirmation.
 - Correct initial catalog scroll positions, preserve scroll during pagination/metadata refresh, and reserve scrollbar gutters for library and update cards.
 - Provide light/dark themes, keyboard access and responsive Qt layouts tested on CachyOS KDE; preserve existing Python backends and native/portable package behavior.
-- Candidate source is the accepted QML redesign merged via PR #89. A published release requires freshly built artifacts, complete CI and upgrade/rollback acceptance, verified SHA256SUMS, and separate explicit publication approval.
+- Published four native/portable artifacts with a verified SHA256SUMS manifest after 29/29 post-merge checks and upgrade/rollback acceptance from v1.8.0. The source is the accepted QML redesign merged via PR #89.
 
 ## 1.8.0 — Updates manager and richer Discover (published 2026-11-17)
 
