@@ -1,4 +1,4 @@
-# AppInstall v1.8 — Cross-distro update support
+# AppInstall v1.9 — Cross-distro update support
 
 **Scope: widest practical Linux coverage without forcing another
 distribution's package format onto the host.**
@@ -42,10 +42,11 @@ where the GUI or a particular backend cannot.
   signature. Only trust an official release from the project you intend to
   install. No automatic/silent updater is enabled.
 
-**Existing v1.7.0 portable users:** The in-app portable update helper is new in
-v1.8.0; install the verified v1.8.0 portable archive manually **once** after
-publication. Subsequent stable portable versions can use the in-app update
-path. No unpublished PR artifact should be treated as a stable upgrade.
+**Existing v1.7.0 portable users:** The in-app portable update helper was
+introduced in v1.8.0; those users needed one manual install of the verified
+v1.8.0 portable archive. New portable installations should use the current
+stable v1.9.0 archive. Subsequent stable portable versions can use the in-app
+update path. No unpublished PR artifact should be treated as a stable upgrade.
 
 ## First installation on an unlisted distro
 

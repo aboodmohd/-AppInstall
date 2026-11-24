@@ -1,5 +1,9 @@
 # Fedora 44 native RPM — Candidate Acceptance
 
+> Historical acceptance record for the v1.6.0 candidate. Fedora 44 native RPM
+> support was subsequently published in v1.6.0 and later stable releases; see
+> [RELEASE_NOTES.md](RELEASE_NOTES.md) for current status.
+
 **Status: Fedora 44 CI acceptance passed on PR #71; live desktop acceptance
 is still pending.** Fedora support is included in the v1.6.0 release
 candidate. Published v1.5.0 remains immutable; the v1.6.0 tag and

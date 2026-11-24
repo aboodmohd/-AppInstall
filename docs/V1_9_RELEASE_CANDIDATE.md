@@ -1,18 +1,20 @@
-# AppInstall v1.9.0 — Premium UI release candidate gate
+# AppInstall v1.9.0 — Premium UI release acceptance (published)
 
-**Status: NO-GO for publication.** Preparation branch: `release/v1.9.0-premium-ui-prep`.
+**Status: published.** Released as [v1.9.0](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.9.0)
+on 2026-11-18. Preparation branch: `release/v1.9.0-premium-ui-prep`.
 Source baseline: accepted UI merge `ad6e6ac3c625ced685bd283f05291143806f6452` on `main`.
-Current published stable: [v1.8.0](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.8.0).
+Previous stable: [v1.8.0](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.8.0).
 
 ## Scope and owner decisions
 
 - UI/UX-only release based on reviewed and merged PR #89; preserve all existing
   Python, QML, Bash, AppImage, Flatpak, DEB and RPM workflows.
-- Proposed version: `1.9.0`, `pkgrel=1`; do **not** publish or merge the
-  candidate merely because its tests pass.
+- Shipped version: `1.9.0`, `pkgrel=1`. The checklist below is the historical
+  pre-publication record; gating was completed before the release was published.
 - The separately versioned `install.sh` installer resolves the latest stable
   GitHub release; no need to change the installer itself to 1.9.0.
-- No release publication workflow is enabled in this preparation PR.
+- Release publication was handled by the separately reviewed manual workflow
+  recorded in [V1_9_PUBLICATION_GATE.md](V1_9_PUBLICATION_GATE.md).
 
 ## Acceptance checklist
 
@@ -46,8 +48,8 @@ Current published stable: [v1.8.0](https://github.com/aboodmohd/-AppInstall/rele
 
 An automatically passing release-candidate job only builds review artifacts.
 `publish-v1.7.0.yml` is locked to its older tag, and must not be altered or
-used for v1.9.0. A newly reviewed, manual-only publication path must refuse
-existing tags/releases, confirm exact build commit, archive names and SHA256SUMS,
-and publish only after the owner explicitly authorizes it.
+used for v1.9.0. The reviewed manual-only publication path refused existing
+tags/releases, confirmed exact build commit, archive names and SHA256SUMS,
+and published only after the owner explicitly authorized it.
 
-No GitHub release, git tag, package install or merge is performed by this plan.
+This plan is complete; the published release is linked above.

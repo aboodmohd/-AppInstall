@@ -25,7 +25,7 @@ Use `--dry-run` to inspect the package selection and `--uninstall` to remove
 AppInstall. Use `--set-defaults` to opt into changing per-user file handlers
 or `--no-defaults` to keep them. Previous defaults are backed up.
 
-## v1.7.0 portable source route for other Linux distributions
+## Portable source route for other Linux distributions (v1.9.0)
 
 **Use this route if the native one-command installer rejects your host.**
 It is suitable for Linux desktop systems capable of running Python 3, Bash,
@@ -33,24 +33,25 @@ freedesktop xdg-utils and PySide6/Qt Quick. It does not need root for
 AppInstall itself and does not attempt to run foreign package managers.
 Not all distributions or desktop sessions are tested.
 
-Once the **published** v1.7.0 release includes the portable archive and
-a matching SHA256SUMS manifest, download both from the same release page,
+The **published** v1.9.0 release includes the portable archive and a matching
+SHA256SUMS manifest. Download both from the
+[v1.9.0 release page](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.9.0),
 verify the archive's hash, then install as your regular desktop user:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf appinstall-1.7.0-portable.tar.gz
-cd appinstall-1.7.0
+tar -xzf appinstall-1.9.0-portable.tar.gz
+cd appinstall-1.9.0
 bash ./install-user.sh
 ~/.local/bin/appinstall --version
 ~/.local/bin/appinstall --manage
 ```
 
 On a distribution where `git` is available, an equivalent source workflow
-can be used **after the v1.7.0 tag is published**:
+can be used with the **published v1.9.0 tag**:
 
 ```bash
-git clone --depth 1 --branch v1.7.0 https://github.com/aboodmohd/-AppInstall.git
+git clone --depth 1 --branch v1.9.0 https://github.com/aboodmohd/-AppInstall.git
 cd -- -AppInstall
 bash ./install-user.sh
 ```
@@ -63,16 +64,16 @@ absent, Discover Apps cannot open; KDialog/Zenity CLI fallback may still
 work for some operations. Install graphical dependencies through your
 distribution's repository, not a guessed native AppInstall package.
 
-The v1.7.0 native CI targets remain **Arch/CachyOS, Debian 13,
+The v1.9.0 native CI targets remain **Arch/CachyOS, Debian 13,
 Ubuntu 24.04/26.04, Linux Mint 22 and Fedora 44**, on x86_64.
 Other distributions require independent compatibility checks; this
 portable option is not a guarantee that every application will work.
 See `RELEASE_NOTES.md`.
 
-## Native Fedora 44 RPM (v1.6.0)
+## Native Fedora 44 RPM (introduced in v1.6.0)
 
 Fedora 44 (x86_64) uses DNF and the native
-`appinstall-1.6.0-1.noarch.rpm` package. The one-command installer
+`appinstall-1.9.0-1.noarch.rpm` package. The one-command installer
 fetches it only from a published stable release alongside `SHA256SUMS`,
 validates the package checksum and RPM name/version/architecture and
 obtains user consent before installing via DNF.
@@ -84,8 +85,8 @@ after installing `rpm-build` and dependencies:
 bash tools/build_rpm.sh dist
 ```
 
-Verify the generated RPM and install the local candidate explicitly with
-`sudo dnf install ./dist/appinstall-1.6.0-1.noarch.rpm`. The rpm
+Verify the generated RPM and install the locally built package explicitly with
+`sudo dnf install ./dist/appinstall-1.9.0-1.noarch.rpm`. The rpm
 builder is not a substitute for a release checksum. Use the
 release's verified downloadable RPM for normal installation; CI tests are
 not live desktop acceptance.
@@ -104,19 +105,17 @@ not live desktop acceptance.
 
 ## Install from package (Arch/CachyOS)
 
-Download from [the v1.6.0 release](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.6.0)
-**once it has been publicly published**. Do not use an unpublished
-candidate artifact as an official stable release.
+Download from [the v1.9.0 release](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.9.0):
 
 ```sh
-curl -fLO https://github.com/aboodmohd/-AppInstall/releases/download/v1.6.0/appinstall-1.6.0-1-any.pkg.tar.zst
-curl -fLO https://github.com/aboodmohd/-AppInstall/releases/download/v1.6.0/SHA256SUMS
+curl -fLO https://github.com/aboodmohd/-AppInstall/releases/download/v1.9.0/appinstall-1.9.0-1-any.pkg.tar.zst
+curl -fLO https://github.com/aboodmohd/-AppInstall/releases/download/v1.9.0/SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS
-sudo pacman -U ./appinstall-1.6.0-1-any.pkg.tar.zst
+sudo pacman -U ./appinstall-1.9.0-1-any.pkg.tar.zst
 ```
 
 For the published release, check that the output includes
-`appinstall-1.6.0-1-any.pkg.tar.zst: OK` before installing.
+`appinstall-1.9.0-1-any.pkg.tar.zst: OK` before installing.
 
 The one-command installer performs download + verification +
 installation automatically.

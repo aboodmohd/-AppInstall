@@ -1,8 +1,9 @@
-# AppInstall v1.9.0 — Premium UI/UX Release Candidate (NOT PUBLISHED)
+# AppInstall v1.9.0 — Premium UI/UX (published 2026-11-18)
 
-This document describes a **candidate**, not a published GitHub release. The current
-published stable version is **v1.8.0**. Do not treat draft PR artifacts as final
-downloadable packages or upgrade the owner's daily-use installation without consent.
+This is the latest published stable release:
+[v1.9.0 — Premium UI/UX](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.9.0).
+The notes below describe the published artifacts and their verification.
+Upgrade and rollback from the published v1.8.0 packages were checked in CI.
 
 ## What's new
 
@@ -28,35 +29,40 @@ downloadable packages or upgrade the owner's daily-use installation without cons
 No Rust rewrite, new package-install backend, new privilege boundary or
 automatic update policy is part of this release.
 
-## Candidate artifacts — NOT YET PUBLISHED
+## Release assets
 
 - Arch Linux / CachyOS: `appinstall-1.9.0-1-any.pkg.tar.zst`
 - Debian 13 / Ubuntu 24.04 and 26.04 / Linux Mint 22: `appinstall_1.9.0-1_all.deb`
 - Fedora 44: `appinstall-1.9.0-1.noarch.rpm`
 - Other environments with portable prerequisites: `appinstall-1.9.0-portable.tar.gz`
-- A single `SHA256SUMS` manifest must verify all four files.
+- A single `SHA256SUMS` manifest verifies all four files.
 
 The portable source bundle is **not** a universal binary; it requires host
 Python/Bash/XDG/Qt dependencies. DEB/RPM applications still use AppInstall-
 managed rootless Distrobox containers, which are **not** security sandboxes.
 
-## Evidence and remaining release gates
+## Verification
 
-- Source: redesign PR #89, merged to main as `ad6e6ac3c625ced685bd283f05291143806f6452`.
-- Before this version bump: 767 local tests ran, one skipped, no failures.
-  The accepted QML branch had 29/29 passing GitHub checks at commit `4367df5`.
+- Source: redesign PR #89, merged to main as `ad6e6ac3c625ced685bd283f05291143806f6452`;
+  the stable release targets `850b01c1fbcef2fdaff447d617e3d9b0917002ab`.
+- 29/29 post-merge GitHub checks passed on `850b01c1fbcef2fdaff447d617e3d9b0917002ab`,
+  including 767 automated tests (2 skipped).
+- Fresh pacman, APT, RPM and portable packages were built from that exact merged
+  source; `SHA256SUMS` covers the four published assets.
+- Upgrade and rollback from published v1.8.0 packages passed in disposable Arch,
+  Debian 13 and Fedora 44 CI.
 - Real Qt desktop acceptance: CachyOS KDE Wayland and XWayland for reviewed UI
   fixtures and read-only managed-app/catalog rendering. This does **not** prove
   all real package transactions or every desktop/distro.
-- **Still required:** build all four v1.9.0 formats from the finalized source;
-  verify exact archive contents and SHA-256 manifest; pass all CI on the
-  candidate; verify upgrade and rollback from the published v1.8.0 packages
-  in disposable hosts; obtain final owner approval to merge/tag/publish.
-- An old one-time `publish-v1.7.0.yml` workflow must not be repurposed.
-  Publication must be a separately reviewed manual operation; no tag or
-  release may be created just because the candidate CI succeeds.
+- Tests in virtual desktops do not guarantee all physical setups. AppImage,
+  Flatpak and container-managed DEB/RPM update compatibility varies by source.
+  Distrobox is not a security sandbox.
 
 Previous stable: [AppInstall v1.8.0 — Updates & Discover](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.8.0).
+
+> Historical release notes for earlier versions follow. They are retained as
+> written at the time each version was prepared; v1.7.0 and v1.8.0 are also
+> published stable releases.
 
 ---
 
