@@ -64,7 +64,7 @@ SUPPORTED_IDS="arch cachyos fedora"
 # Optional backends offered after core installation (pacman package names).
 OPTIONAL_PKGS=(flatpak podman distrobox squashfs-tools fuse2 kdialog zenity libnotify)
 
-INSTALLER_VERSION="1.9.4"
+INSTALLER_VERSION="1.9.5"
 
 # ---------------------------------------------------------------------------
 # Flags / state. Defaults respect pre-existing environment values so the test
@@ -827,6 +827,9 @@ install_package_file() { # verified pkg path
     run_root pacman -U --needed --noconfirm -- "$pkg" || die 5 "pacman reported an error and the package was not installed."
   fi
   [[ -e "$APP_BIN" ]] || die 5 "pacman finished but $APP_BIN is missing — treat the install as failed and re-run."
+  if [[ -f /usr/lib/abood-appinstall/install_mode.py ]]; then
+    python3 /usr/lib/abood-appinstall/install_mode.py --repair-native-desktop >/dev/null 2>&1 || true
+  fi
   info "AppInstall installed: $APP_BIN exists."
   log_write "pacman-U-ok pkg=$(basename "$pkg")"
 }

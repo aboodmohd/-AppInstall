@@ -1,5 +1,11 @@
 # AppInstall Changelog
 
+## 1.9.5 — Native update routing hotfix (candidate)
+
+- Route native Arch/DEB/RPM installations to their package-backed updater even when stale portable source modules remain.
+- Repair stale user-level AppInstall desktop entries that point to removed temporary portable launchers.
+- Add regression tests reproducing the exact portable-updater refusal on a native installation.
+
 ## 1.9.4 — Update check reliability (candidate)
 
 - Classify AppInstall self-update failures (network, timeout, HTTP/rate-limit, TLS, dependency, backend) and show actionable messages.

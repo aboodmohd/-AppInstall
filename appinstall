@@ -10,7 +10,14 @@
 set -u
 IFS=$'\n\t'
 
-VERSION="1.9.4"
+VERSION="1.9.5"
+_repair_desktop_launcher() {
+  local marker
+  marker="$(dirname -- "$(realpath -- "$0")")/install_mode.py"
+  [ -f "$marker" ] || marker=/usr/lib/abood-appinstall/install_mode.py
+  [ -f "$marker" ] || return 0
+  python3 "$marker" --repair-native-desktop >/dev/null 2>&1 || true
+}
 INSTALL_DIR="${APPINSTALL_APPIMAGES:-$HOME/Applications}"
 APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/pixmaps"
@@ -575,6 +582,7 @@ main() {
   # --widgets; both orders are honoured.
   if [ "$MANAGE" -eq 1 ]; then
     local monitor_flag
+    _repair_desktop_launcher
     monitor="$(dirname -- "$(realpath -- "$0")")/launch_monitor.py"
     [ -f "$monitor" ] || monitor="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/launch_monitor.py"
     if [ -f "$monitor" ] && python3 "$monitor" --help 2>/dev/null | grep -q -- '--migrate-flatpak'; then
@@ -601,6 +609,7 @@ main() {
   # no file given: open the Installed Applications Manager (QML by default;
   # --widgets selects the legacy Widgets interface).
   if [ $# -eq 0 ]; then
+    _repair_desktop_launcher
     if [ "$USE_WIDGETS" -eq 1 ]; then
       manager="$(dirname -- "$(realpath -- "$0")")/manager.py"
     else
