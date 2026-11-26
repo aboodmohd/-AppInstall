@@ -50,7 +50,7 @@ jobs:
         run: python3 -m unittest tests.test_install_sh -v
 
   arch-integration:
-    name: Arch container integration (install.sh real download + pacman)
+    name: Arch container integration (candidate download + pacman)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     container:
@@ -63,11 +63,34 @@ jobs:
         run: |
           set -eu
           pacman -Syu --noconfirm
-          pacman -S --needed --noconfirm curl xdg-utils python pyside6 sudo
+          pacman -S --needed --noconfirm curl xdg-utils python pyside6 qt6-declarative sudo
           useradd --create-home --shell /bin/bash appuser
           echo 'appuser ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/appuser
           chmod 0440 /etc/sudoers.d/appuser
           chown -R appuser:appuser "$GITHUB_WORKSPACE"
+
+      - name: Build and checksum the unpublished candidate for installer tests
+        run: |
+          set -euo pipefail
+          runuser -u appuser -- makepkg --noconfirm --clean
+          version="$(sed -n 's/^pkgver=//p' PKGBUILD)"
+          release="$(sed -n 's/^pkgrel=//p' PKGBUILD)"
+          mkdir -p /tmp/appinstall-candidate
+          package="abood-appinstall-${version}-${release}-any.pkg.tar.zst"
+          mv -- "$package" /tmp/appinstall-candidate/
+          (cd /tmp/appinstall-candidate && sha256sum -- "$package" > SHA256SUMS)
+          python3 - "$version" "$package" <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+          version, package = sys.argv[1:]
+          root = Path("/tmp/appinstall-candidate")
+          Path("/tmp/appinstall-candidate.json").write_text(json.dumps({
+              "tag_name": "v" + version, "draft": False, "prerelease": False,
+              "assets": [{"name": name, "browser_download_url": (root / name).as_uri()}
+                         for name in (package, "SHA256SUMS")],
+          }))
+          PY
 
       - name: Refuse unsupported Fedora version with a clear message
         env:
@@ -90,11 +113,9 @@ jobs:
           fi
 
       - name: Refuse to install without consent when noninteractive
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
-          runuser -u appuser -- env HOME=/home/appuser GITHUB_TOKEN="$GITHUB_TOKEN" \
+          runuser -u appuser -- env HOME=/home/appuser APPINSTALL_TEST_RELEASES_JSON=/tmp/appinstall-candidate.json \
             bash -c "cd '$GITHUB_WORKSPACE' && ./install.sh < /dev/null" \
             >/tmp/nonint.out 2>/tmp/nonint.err && rc=0 || rc=$?
           if [ "$rc" -ne 2 ]; then
@@ -140,22 +161,18 @@ jobs:
           rm -f "$GITHUB_WORKSPACE/abood-appinstall-1.0.0-1-any.pkg.tar.zst" "$GITHUB_WORKSPACE/SHA256SUMS"
 
       - name: Dry run with explicit flags leaves no state or packages
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           before="$(sha256sum /home/appuser/.local/share/appinstall/installer/install-log.txt)"
-          sudo -u appuser env HOME=/home/appuser GITHUB_TOKEN="$GITHUB_TOKEN" \
+          sudo -u appuser env HOME=/home/appuser APPINSTALL_TEST_RELEASES_JSON=/tmp/appinstall-candidate.json \
             bash -c "cd '$GITHUB_WORKSPACE' && ./install.sh --dry-run --set-defaults --with-optional"
           test ! -e /home/appuser/.config/mimeapps.list
           test "$before" = "$(sha256sum /home/appuser/.local/share/appinstall/installer/install-log.txt)"
           ! pacman -Q abood-appinstall 2>/dev/null
 
-      - name: Install the verified stable release through the one-command flow
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install the verified candidate through the one-command flow
         run: |
           set -eu
-          sudo -u appuser env HOME=/home/appuser GITHUB_TOKEN="$GITHUB_TOKEN" \
+          sudo -u appuser env HOME=/home/appuser APPINSTALL_TEST_RELEASES_JSON=/tmp/appinstall-candidate.json \
             bash -c "cd '$GITHUB_WORKSPACE' && ./install.sh --yes --set-defaults --no-optional" \
             > /tmp/install.out 2>/tmp/install.err || {
               cat /tmp/install.out /tmp/install.err >&2
@@ -189,11 +206,9 @@ jobs:
           test -x /home/appuser/.local/share/appinstall/installer/restore-mime-defaults.sh
 
       - name: Rerun is idempotent (already latest → nothing to install)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
-          sudo -u appuser env HOME=/home/appuser GITHUB_TOKEN="$GITHUB_TOKEN" \
+          sudo -u appuser env HOME=/home/appuser APPINSTALL_TEST_RELEASES_JSON=/tmp/appinstall-candidate.json \
             bash -c "cd '$GITHUB_WORKSPACE' && ./install.sh --yes --set-defaults --no-optional" \
             > /tmp/rerun.out 2>/tmp/rerun.err || {
               cat /tmp/rerun.out /tmp/rerun.err >&2

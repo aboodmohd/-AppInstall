@@ -842,7 +842,7 @@ uninstall_flow() {
     if [[ "$family" == fedora ]]; then
       local dnf_flags=()
       [[ $ASSUME_YES -eq 1 ]] && dnf_flags+=(-y)
-      run_root dnf "${dnf_flags[@]}" --no-autoremove remove "$PACKAGE_ID" || die 5 "DNF removal failed."
+      run_root dnf "${dnf_flags[@]}" remove --no-autoremove "$PACKAGE_ID" || die 5 "DNF removal failed."
     elif [[ "$family" == debian ]]; then
       local apt_flags=()
       [[ $ASSUME_YES -eq 1 ]] && apt_flags+=(-y)

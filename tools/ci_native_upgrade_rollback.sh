@@ -39,7 +39,7 @@ fedora)
  new=abood-appinstall-1.9.1-1.noarch.rpm
  pkgmeta() { test "$(rpm -q --qf '%{VERSION}-%{RELEASE}' appinstall)" = "$1"; }
  native_install() { dnf -y install "$1"; }
- remove_new() { dnf -y --no-autoremove remove abood-appinstall; }
+ remove_new() { dnf -y remove --no-autoremove abood-appinstall; }
  ;;
 esac
 installed_helper=/usr/lib/abood-appinstall/portable_update.py

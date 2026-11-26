@@ -73,7 +73,7 @@ jobs:
           pkg="dist/abood-appinstall-${version}-${release}.noarch.rpm"
           test -s "$pkg"
           rpm -qp --qf '%{NAME}|%{VERSION}|%{RELEASE}|%{ARCH}\n' "$pkg" |
-            grep -Fx "appinstall|${version}|${release}|noarch"
+            grep -Fx "abood-appinstall|${version}|${release}|noarch"
           rpm -qpl "$pkg" | grep -Fx /usr/bin/abood-appinstall
           rpm -qpl "$pkg" | grep -Fx /usr/lib/abood-appinstall/manager_ui/main.qml
           rpm -qpl "$pkg" | grep -Fx /usr/share/licenses/abood-appinstall/LICENSE
@@ -102,7 +102,7 @@ jobs:
             APPINSTALL_DISABLE_UPDATE_TIMER=1 \
             python3 /usr/lib/abood-appinstall/manager_qml.py --smoke
           rpm -V abood-appinstall
-          dnf -y remove abood-appinstall
+          dnf -y remove --no-autoremove abood-appinstall
           if rpm -q abood-appinstall; then exit 1; fi
           grep -Fxq 'preserve user data' /home/appbuild/Applications/keep
           grep -Fxq 'text/plain=original.desktop;' /home/appbuild/.config/mimeapps.list
