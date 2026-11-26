@@ -98,6 +98,16 @@ def quoted(p):
 # The metadata journal is recovered before reading MIME defaults, otherwise
 # we could reuse values from a partially applied previous attempt.
 with SourceTransaction(state, destinations) as transaction:
+    legacy_uninstaller = bindir / 'appinstall-uninstall'
+    if not uninstalling and record.is_file() and legacy_uninstaller.is_file():
+        legacy_command = ('#!/bin/sh\nexec python3 ' +
+                          shlex.quote(str(state / 'integration.py')) +
+                          ' --uninstall\n')
+        if legacy_uninstaller.read_text(encoding='utf-8', errors='replace') == legacy_command:
+            raise SystemExit(
+                'A legacy portable AppInstall shares this data directory. '
+                'Follow the portable migration in UPGRADE.md before continuing.'
+            )
     parser = configparser.RawConfigParser(
         strict=False, delimiters=('=',), interpolation=None)
     parser.optionxform = str

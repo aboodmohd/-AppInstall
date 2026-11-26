@@ -64,7 +64,7 @@ SUPPORTED_IDS="arch cachyos fedora"
 # Optional backends offered after core installation (pacman package names).
 OPTIONAL_PKGS=(flatpak podman distrobox squashfs-tools fuse2 kdialog zenity libnotify)
 
-INSTALLER_VERSION="1.8.0"
+INSTALLER_VERSION="1.9.1"
 
 # ---------------------------------------------------------------------------
 # Flags / state. Defaults respect pre-existing environment values so the test
@@ -1042,8 +1042,9 @@ main() {
   # --- 7. resolve the latest stable release ---------------------------
   local installed_rel="" installed="0"
   installed_rel="$(installed_version "$family")" || true
-  if [[ -z "$installed_rel" ]] && package_slot_occupied "$family"; then
-    die 2 "The $PACKAGE_ID package slot is occupied, but its ownership or origin does not match AppInstall."
+  if [[ -z "$installed_rel" ]] &&
+     { package_slot_occupied "$family" || [[ -e "$APP_BIN" || -L "$APP_BIN" ]]; }; then
+    die 2 "The $PACKAGE_ID package slot or launcher is occupied, but its ownership or origin does not match AppInstall."
   fi
   if [[ $DESKTOP_CHECK -eq 0 ]]; then
     check_shadow_conflicts
@@ -1052,11 +1053,8 @@ main() {
 
   info "Resolving the latest stable release from GitHub (drafts and prereleases are never used)…"
   local release tag pkg_url sums_url pkg_name
-  if [[ "$family" == debian || "$family" == fedora ]]; then
-    release="$(resolve_release "$family")" || die 4 "No verified native package for $family in latest stable release. The published v1.5.0 does not include an RPM; never install another distro's package."
-  else
-    release="$(resolve_release "$family")" || die 4 "GitHub API query for the latest stable release failed (network issue or rate limit). Optionally export GITHUB_TOKEN=<token> to raise the API rate limit, then retry."
-  fi
+  release="$(resolve_release "$family")" ||
+    die 4 "No $PACKAGE_ID asset for $family in the latest stable release, or the release could not be fetched. Legacy appinstall assets are not accepted."
   IFS='|' read -r tag pkg_url sums_url pkg_name <<<"$release"
   local pkg_ver
   pkg_ver="$(package_version_from_asset "$pkg_name")"

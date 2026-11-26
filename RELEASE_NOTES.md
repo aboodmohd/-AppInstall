@@ -1,6 +1,24 @@
-# AppInstall v1.9.0 — Premium UI/UX (published 2026-11-18)
+# AppInstall v1.9.1 — Package identity maintenance candidate
 
-This is the latest published stable release:
+Not published. The latest published stable release is still v1.9.0.
+
+AppInstall retains its public name and Premium UI. Native packages and the CLI now use `abood-appinstall`; the desktop ID is `io.github.aboodmohd.AppInstall`. This keeps the official package separate from unrelated software using the legacy `appinstall` name. The update helper checks local package ownership and origin before comparing versions.
+
+Follow [the migration and rollback guide](UPGRADE.md#migration-from-the-legacy-appinstall-package) for the first upgrade. Settings, application records, and Distrobox registry paths do not change.
+
+Candidate artifacts (CI only):
+
+- Arch Linux / CachyOS: `abood-appinstall-1.9.1-1-any.pkg.tar.zst`
+- Debian / Ubuntu: `abood-appinstall_1.9.1-1_all.deb`
+- Fedora: `abood-appinstall-1.9.1-1.noarch.rpm`
+- Portable: `appinstall-1.9.1-portable.tar.gz`
+- `SHA256SUMS`
+
+## Previous stable release
+
+### AppInstall v1.9.0 — Premium UI/UX (published 2026-11-18)
+
+Published stable release:
 [v1.9.0 — Premium UI/UX](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.9.0).
 The notes below describe the published artifacts and their verification.
 Upgrade and rollback from the published v1.8.0 packages were checked in CI.

@@ -126,7 +126,7 @@ jobs:
                      "browser_download_url": (dist / name).as_uri()}
                     for name in names]
           (dist / "fedora-release-fixture.json").write_text(json.dumps({
-              "tag_name": "v" + pkg.name.split("-")[1],
+              "tag_name": "v" + pkg.name.removeprefix("abood-appinstall-").split("-", 1)[0],
               "draft": False, "prerelease": False, "assets": assets,
           }))
           PY

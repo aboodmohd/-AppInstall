@@ -6,6 +6,7 @@ installation is touched.
 import errno
 import json
 import os
+import shlex
 from pathlib import Path
 import subprocess
 import sys
@@ -19,6 +20,24 @@ MIME = "application/vnd.flatpak"
 
 
 class SourceUpgradeSmokeTests(unittest.TestCase):
+    def test_legacy_portable_uninstaller_blocks_overlay(self):
+        # v1.9.0's uninstaller dispatches into the shared AppInstall data
+        # directory. Replacing that module would change what the old command removes.
+        legacy = self.home / ".local/bin/appinstall-uninstall"
+        legacy.parent.mkdir(parents=True)
+        self.state.mkdir(parents=True)
+        legacy.write_text(f"#!/bin/sh\nexec python3 {shlex.quote(str(self.state / 'integration.py'))} --uninstall\n")
+        (self.state / "associations.json").write_text("{}")
+        before = self.defaults_file.read_bytes()
+        result = subprocess.run(
+            [sys.executable, str(REGISTER)], env=self.env,
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("legacy portable", result.stderr)
+        self.assertEqual(self.defaults_file.read_bytes(), before)
+        self.assertFalse((self.home / ".local/bin/abood-appinstall").exists())
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix="appinstall-upgrade-")
         self.addCleanup(self.temp.cleanup)

@@ -9,24 +9,24 @@ if [[ "$GITHUB_ACTIONS" != true || "$CI" != true ||
 fi
 case "$FAMILY" in arch|debian|fedora) ;; *) exit 2 ;; esac
 root="$PWD"
-test "$(sed -n 's/^pkgver=//p' PKGBUILD)" = 1.9.0
+test "$(sed -n 's/^pkgver=//p' PKGBUILD)" = 1.9.1
 test "$(sed -n 's/^pkgrel=//p' PKGBUILD)" = 1
-grep -Fx 'VERSION="1.9.0"' appinstall >/dev/null
+grep -Fx 'VERSION="1.9.1"' appinstall >/dev/null
 work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT
 mkdir -p "$work"/{old,new}
 
 case "$FAMILY" in
 arch)
- old=appinstall-1.8.0-1-any.pkg.tar.zst
- new=abood-appinstall-1.9.0-1-any.pkg.tar.zst
+ old=appinstall-1.9.0-1-any.pkg.tar.zst
+ new=abood-appinstall-1.9.1-1-any.pkg.tar.zst
  pkgmeta() { test "$(pacman -Q appinstall)" = "appinstall $1"; }
  native_install() { pacman -U --noconfirm "$1"; }
  remove_new() { pacman -R --noconfirm abood-appinstall; }
  ;;
 debian)
- old=appinstall_1.8.0-1_all.deb
- new=abood-appinstall_1.9.0-1_all.deb
+ old=appinstall_1.9.0-1_all.deb
+ new=abood-appinstall_1.9.1-1_all.deb
  pkgmeta() {
    fmt="$(printf '$%s' '{Version}')"
    test "$(dpkg-query -W -f="$fmt" appinstall)" = "$1"
@@ -35,8 +35,8 @@ debian)
  remove_new() { apt-get remove -y abood-appinstall; }
  ;;
 fedora)
- old=appinstall-1.8.0-1.noarch.rpm
- new=abood-appinstall-1.9.0-1.noarch.rpm
+ old=appinstall-1.9.0-1.noarch.rpm
+ new=abood-appinstall-1.9.1-1.noarch.rpm
  pkgmeta() { test "$(rpm -q --qf '%{VERSION}-%{RELEASE}' appinstall)" = "$1"; }
  native_install() { dnf -y install "$1"; }
  remove_new() { dnf -y --no-autoremove remove abood-appinstall; }
@@ -66,13 +66,13 @@ test -s "$work/new/$new"
 curl --fail --location --silent --show-error --retry 3 \
   --proto '=https' --proto-redir '=https' --connect-timeout 15 \
   --max-time 150 --output "$work/old/$old" \
-  "https://github.com/aboodmohd/-AppInstall/releases/download/v1.8.0/$old"
-# Verify the exact old asset against the published v1.8.0 checksum manifest.
+  "https://github.com/aboodmohd/-AppInstall/releases/download/v1.9.0/$old"
+# Verify the exact old asset against the published v1.9.0 checksum manifest.
 # SHA-256 verifies archive integrity, not an independent publisher signature.
 curl --fail --location --silent --show-error --retry 3 \
   --proto '=https' --proto-redir '=https' --connect-timeout 15 \
   --max-time 150 --output "$work/old/SHA256SUMS" \
-  "https://github.com/aboodmohd/-AppInstall/releases/download/v1.8.0/SHA256SUMS"
+  "https://github.com/aboodmohd/-AppInstall/releases/download/v1.9.0/SHA256SUMS"
 matches=0
 old_digest=""
 while read -r digest filename; do
@@ -83,11 +83,11 @@ while read -r digest filename; do
 done < "$work/old/SHA256SUMS"
 test "$matches" -eq 1
 (cd "$work/old" && printf '%s  %s\n' "$old_digest" "$old" | sha256sum -c --strict -)
-echo "PASS: verified published v1.8.0 $FAMILY package against SHA256SUMS"
+echo "PASS: verified published v1.9.0 $FAMILY package against SHA256SUMS"
 
 native_install "$work/old/$old"
-pkgmeta 1.8.0-1
-test "$(appinstall --version)" = 'appinstall 1.8.0'
+pkgmeta 1.9.0-1
+test "$(appinstall --version)" = 'appinstall 1.9.0'
 useradd -m -s /bin/bash appinstall-acceptance
 user_home=/home/appinstall-acceptance
 
@@ -129,9 +129,9 @@ PYTHON
 check_data
 
 native_install "$work/new/$new"
-pkgmeta 1.8.0-1
-test "$(abood-appinstall --version)" = 'appinstall 1.9.0'
-test "$(bash -c 'source ./install.sh; installed_version "$1"' _ "$FAMILY")" = 1.9.0-1
+pkgmeta 1.9.0-1
+test "$(abood-appinstall --version)" = 'appinstall 1.9.1'
+test "$(bash -c 'source ./install.sh; installed_version "$1"' _ "$FAMILY")" = 1.9.1-1
 test -f "$installed_helper"
 test -f "$smoke"
 check_data
@@ -140,12 +140,12 @@ runuser -u appinstall-acceptance -- env HOME="$user_home" \
  XDG_CONFIG_HOME="$user_home/.config" \
  QT_QPA_PLATFORM=offscreen APPINSTALL_DISABLE_UPDATE_TIMER=1 \
  python3 "$smoke" --smoke
-echo "PASS: v1.8.0 legacy -> v1.9.0 $FAMILY identity migration preserved both packages"
+echo "PASS: v1.9.0 legacy -> v1.9.1 $FAMILY identity migration preserved both packages"
 
 remove_new
-pkgmeta 1.8.0-1
-test "$(appinstall --version)" = 'appinstall 1.8.0'
+pkgmeta 1.9.0-1
+test "$(appinstall --version)" = 'appinstall 1.9.0'
 test ! -e "$installed_helper"
 check_data
 grep -Fx 'text/plain=preserved-editor.desktop;' "$mime_file"
-echo "PASS: v1.9.0 -> v1.8.0 $FAMILY migration rollback with preserved settings and MIME"
+echo "PASS: v1.9.1 -> v1.9.0 $FAMILY migration rollback with preserved settings and MIME"
