@@ -20,7 +20,7 @@ class InstallModeTests(unittest.TestCase):
         entry = self.root/'.local/share/applications'/mode.DESKTOP_ID
         entry.parent.mkdir(parents=True)
         entry.write_text('[Desktop Entry]\nName=AppInstall\n'
-                         'Exec=/tmp/removed-portable/bin/abood-appinstall %F\n'
+                         'Exec=/tmp/existing-portable/bin/abood-appinstall %F\n'
                          'Icon=custom\n')
         with patch.object(mode, 'native_installation', return_value=True):
             self.assertTrue(mode.repair_user_desktop_entry(self.root))

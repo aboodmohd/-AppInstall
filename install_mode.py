@@ -87,9 +87,6 @@ def repair_user_desktop_entry(home=None):
                '/appinstall' in current)
     if not is_ours:
         return False
-    target = Path(os.path.expanduser(current)) if current.startswith(('~', '/')) else None
-    if target is not None and target.is_file():
-        return False
     lines[exec_index] = 'Exec='+expected+' %F'
     temp = entry.with_name('.'+entry.name+'.appinstall-repair.tmp')
     temp.write_text('\n'.join(lines)+'\n', encoding='utf-8')
