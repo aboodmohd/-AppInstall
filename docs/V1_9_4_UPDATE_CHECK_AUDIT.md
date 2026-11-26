@@ -17,7 +17,7 @@ Application update scans were partly isolated: `UpdateEngine.check_one()` return
 
 - `install.sh` emits `APPINSTALL_UPDATE_ERROR=<category>: <actionable detail>` on stderr for DNS, connection/proxy, timeout, HTTP/rate-limit and TLS failures. Both desktop and normal release discovery use the same `api_get()` path.
 - `manager_qml.py` and `manager.py` classify those markers plus legacy output keywords into network, timeout, HTTP/API-limit, TLS, dependency, unsupported and backend categories. The status now names the category and the dialog includes an action before the bounded diagnostic output.
-- A 150-second `QTimer` stops the self-update helper and reports a timeout, so the UI cannot wait indefinitely.
+- A 150-second `QTimer` stops the self-update helper and its whole process group (via `setsid` on POSIX) and reports a timeout, so the UI cannot wait indefinitely and no `curl` child is left behind.
 - `update_engine.py` adds `backend_error_reason()` and catches every provider exception per application; one failing backend can no longer suppress results from other applications.
 - Widgets and QML Premium UI share the same classifier.
 

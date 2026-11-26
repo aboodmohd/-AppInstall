@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -1413,6 +1414,31 @@ class UninstallDialog(QDialog):
         return {path for path, cb in self.checks.items() if cb.isChecked()}
 
 
+def update_process_command(helper, args):
+    helper = Path(helper)
+    if os.name == 'posix' and shutil.which('setsid'):
+        setsid = shutil.which('setsid')
+        if helper.suffix == '.py':
+            return setsid, [sys.executable, str(helper), *args]
+        return setsid, ['/usr/bin/bash', str(helper), *args]
+    if helper.suffix == '.py':
+        return sys.executable, [str(helper), *args]
+    return '/usr/bin/bash', [str(helper), *args]
+
+
+def terminate_update_tree(process):
+    pid = getattr(process, 'processId', lambda: 0)()
+    if os.name == 'posix' and pid:
+        try:
+            pgid = os.getpgid(pid)
+            if pgid and pgid != os.getpgrp():
+                os.killpg(pgid, signal.SIGKILL)
+                return
+        except (OSError, AttributeError):
+            pass
+    process.kill()
+
+
 class ManagerWindow(QMainWindow):
     """Main window of the Installed Applications Manager."""
 
@@ -1891,7 +1917,8 @@ class ManagerWindow(QMainWindow):
         self.update_manual = manual
         self.update_status.setText('Checking for updates…')
         self.update_check_button.setEnabled(False)
-        self.update_process.start('/usr/bin/bash', [str(self.update_helper), '--desktop-check'])
+        executable, argv = update_process_command(self.update_helper, ['--desktop-check'])
+        self.update_process.start(executable, argv)
         self.update_process.closeWriteChannel()
         self.update_check_timeout.start()
 
@@ -1902,9 +1929,9 @@ class ManagerWindow(QMainWindow):
         self.update_button.setEnabled(False)
         self.update_check_button.setEnabled(False)
         self.update_status.setText(f'Installing AppInstall {self.update_tag}…')
-        self.update_process.start('/usr/bin/bash', [
-            str(self.update_helper), '--desktop-update', self.update_tag,
-        ])
+        executable, argv = update_process_command(
+            self.update_helper, ['--desktop-update', self.update_tag])
+        self.update_process.start(executable, argv)
         self.update_process.closeWriteChannel()
 
     def _update_process_error(self, error):
@@ -1917,7 +1944,7 @@ class ManagerWindow(QMainWindow):
         self.update_operation = ''
         self.update_check_button.setEnabled(True)
         self.update_button.setEnabled(True)
-        self.update_process.kill()
+        terminate_update_tree(self.update_process)
         self.update_status.setText('Update check failed: timeout')
         if self.update_manual:
             self._show_update_details(
@@ -2002,7 +2029,7 @@ class ManagerWindow(QMainWindow):
             event.ignore()
             return
         if self.update_operation == 'check':
-            self.update_process.kill()
+            terminate_update_tree(self.update_process)
             self.update_process.waitForFinished(1000)
         super().closeEvent(event)
 
