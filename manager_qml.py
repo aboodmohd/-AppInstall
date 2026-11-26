@@ -2461,6 +2461,7 @@ class Bridge(QtCore.QObject):
             self._set_status('AppInstall is updating. Closing is blocked until it finishes.')
             return False
         if self._update_operation == 'check':
+            self._update_manual = False
             terminate_update_tree(self._update_process)
             self._update_process.waitForFinished(1000)
         return True

@@ -2029,6 +2029,7 @@ class ManagerWindow(QMainWindow):
             event.ignore()
             return
         if self.update_operation == 'check':
+            self.update_manual = False
             terminate_update_tree(self.update_process)
             self.update_process.waitForFinished(1000)
         super().closeEvent(event)
