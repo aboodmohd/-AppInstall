@@ -1,0 +1,12 @@
+_repair_desktop_entries() {
+  local user home
+  while IFS=: read -r user _ _ _ home _; do
+    [[ -n "$user" && -d "$home" ]] || continue
+    runuser -u "$user" -- env XDG_DATA_HOME="$home/.local/share" \
+      python3 /usr/lib/abood-appinstall/install_mode.py \
+      --repair-native-desktop >/dev/null 2>&1 || true
+  done < <(getent passwd | awk -F: '$3 >= 1000 && $7 !~ /(nologin|false)$/')
+}
+
+post_install() { _repair_desktop_entries; }
+post_upgrade() { _repair_desktop_entries; }

@@ -41,6 +41,7 @@ import catalog_metadata
 import catalog_artwork
 import catalog_browse
 import update_engine
+import install_mode
 import repository_upgrades
 import appimage_updates
 
@@ -86,11 +87,15 @@ def find_update_helper():
     candidate even when missing so callers can disable update UI.
     """
     here = Path(__file__).resolve().parent
+    # A verified native package always owns its updater, even when a stale
+    # user-level launcher or source modules are still present.
+    if install_mode.native_installation():
+        native = install_mode.packaged_helper()
+        if native is not None:
+            return native
     adjacent = here / 'appinstall-installer'
     if adjacent.is_file():
         return adjacent
-    # A source installation deploys all modules to the XDG user data tree,
-    # not the checkout. Native installations must retain their own updater.
     portable = here / 'portable_update.py'
     user_data = Path(os.environ.get(
         'XDG_DATA_HOME', Path.home() / '.local/share')) / 'appinstall'

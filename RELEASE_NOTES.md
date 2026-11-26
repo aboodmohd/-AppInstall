@@ -1,3 +1,13 @@
+# AppInstall v1.9.5 — Native update routing hotfix (candidate)
+
+Unpublished development candidate. The latest published stable release is v1.9.4.
+
+Fixes the live CachyOS error `AppInstall portable update refused: Portable AppInstall user launcher is missing or is a symlink` on a native `abood-appinstall` installation. The cause was a stale user-level desktop entry pointing to a removed temporary portable launcher; module path alone misclassified the installation as portable. Native package ownership now wins, and stale AppInstall desktop entries are repaired to the package-owned executable.
+
+Candidate artifact prefix: `appinstall-1.9.5-portable.tar.gz`; native packages use `abood-appinstall` version `1.9.5-1`.
+
+## Previous release notes
+
 # AppInstall v1.9.4 — Update check reliability (candidate)
 
 Unpublished development candidate. The latest published stable release is v1.9.3.

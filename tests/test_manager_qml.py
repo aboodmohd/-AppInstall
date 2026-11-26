@@ -1251,6 +1251,10 @@ class HelperResolutionTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.base = Path(self.temp.name)
+        self.native = patch.object(manager_qml.install_mode,
+                                   'native_installation', return_value=False)
+        self.native.start()
+        self.addCleanup(self.native.stop)
 
     def tearDown(self):
         self.temp.cleanup()
@@ -1265,6 +1269,19 @@ class HelperResolutionTests(unittest.TestCase):
         helper = self.resolve()
         self.assertEqual(helper, self.base / 'appinstall-installer')
         self.assertTrue(helper.is_file())
+
+    def test_native_package_ignores_stale_portable_source(self):
+        data = self.base/'data/appinstall'
+        data.mkdir(parents=True)
+        (data/'portable_update.py').write_text('# stale portable updater\n')
+        native = self.base/'native-installer'
+        native.write_text('# native updater\n')
+        with patch.object(manager_qml.install_mode, 'native_installation',
+                          return_value=True), \
+             patch.object(manager_qml.install_mode, 'packaged_helper',
+                          return_value=native), \
+             patch.object(manager_qml, '__file__', str(data/'manager_qml.py')):
+            self.assertEqual(manager_qml.find_update_helper(), native)
 
     def test_user_source_install_picks_portable_helper_before_path(self):
         data = self.base / 'data'
