@@ -34,15 +34,23 @@ Initial CI exposed that `install_mode.py` was added to `source=` but not install
 
 ## Repair safety
 
-The repair rewrites only the `Exec=` line of the fixed filename
-`~/.local/share/applications/io.github.aboodmohd.AppInstall.desktop`, and only
-when all of these hold: native package ownership is verified, the entry is a
-regular file (not a symlink), the entry is positively identified as AppInstall,
-the launcher path is absolute or `~/`, and that launcher no longer exists.
-Existing portable launchers, PATH-based commands, unrelated entries and all
-other desktop-entry fields are left untouched. Package scriptlets run the
-packaged module with `runuser -u <user>`, so root never executes user-owned
-code; only the invoking user's own AppInstall entry is considered.
+The repair rewrites only the executable token of the `Exec=` line of the fixed
+filename `~/.local/share/applications/io.github.aboodmohd.AppInstall.desktop`,
+and only when all of these hold: native package ownership is verified, the
+entry is a regular file (not a symlink), the entry is positively identified as
+AppInstall, the launcher path is absolute or `~/`, and that launcher no longer
+exists. `Exec` is parsed with `shlex`, so quoted paths containing spaces are
+handled correctly, and any extra arguments (for example `--widgets %F`) are
+preserved. Existing portable launchers, PATH-based commands, unrelated entries
+and all other desktop-entry fields are left untouched. The replacement is
+written through a unique `mkstemp` file in the same directory. Package
+scriptlets run the packaged module with `runuser -u <user>`, so root never
+executes user-owned code; only the invoking user's own AppInstall entry is
+considered. `bash -n` now also validates `appinstall.install` in CI.
+
+Not covered by native package scriptlets: DEB/RPM installs rely on the first
+native CLI launch to repair a stale user desktop entry. Update routing itself
+is package-ownership based and applies equally to Arch, DEB and RPM.
 
 ## Verification status (final candidate)
 

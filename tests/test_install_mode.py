@@ -40,6 +40,28 @@ class InstallModeTests(unittest.TestCase):
             self.assertFalse(mode.repair_user_desktop_entry(self.root))
         self.assertIn('Exec='+str(launcher)+' %F', entry.read_text())
 
+    def test_keeps_existing_quoted_launcher_with_spaces(self):
+        entry = self.root/'.local/share/applications'/mode.DESKTOP_ID
+        entry.parent.mkdir(parents=True)
+        launcher = self.root/'My Apps'/'abood-appinstall'
+        launcher.parent.mkdir(parents=True)
+        launcher.write_text('#!/bin/sh\n')
+        entry.write_text('[Desktop Entry]\nName=AppInstall\n'
+                         'Exec="'+str(launcher)+'" %F\nIcon=custom\n')
+        with patch.object(mode, 'native_installation', return_value=True):
+            self.assertFalse(mode.repair_user_desktop_entry(self.root))
+        self.assertIn('Exec="'+str(launcher)+'" %F', entry.read_text())
+
+    def test_preserves_exec_arguments_when_repairing(self):
+        entry = self.root/'.local/share/applications'/mode.DESKTOP_ID
+        entry.parent.mkdir(parents=True)
+        entry.write_text('[Desktop Entry]\nName=AppInstall\n'
+                         'Exec="/tmp/gone/My Apps/abood-appinstall" --widgets %F\n')
+        with patch.object(mode, 'native_installation', return_value=True):
+            self.assertTrue(mode.repair_user_desktop_entry(self.root))
+        self.assertIn('Exec='+str(mode.NATIVE_EXEC)+' --widgets %F',
+                      entry.read_text())
+
     def test_does_not_repair_unrelated_entry(self):
         entry = self.root/'.local/share/applications'/mode.DESKTOP_ID
         entry.parent.mkdir(parents=True)

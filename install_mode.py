@@ -7,8 +7,10 @@ or points outside the verified native installation.
 """
 import os
 from pathlib import Path
+import shlex
 import subprocess
 import sys
+import tempfile
 
 PACKAGE = 'abood-appinstall'
 NATIVE_EXEC = Path('/usr/bin/abood-appinstall')
@@ -76,7 +78,10 @@ def repair_user_desktop_entry(home=None):
                        if line.startswith('Exec=')), None)
     if exec_index is None:
         return False
-    current = lines[exec_index][5:].strip().split()[0].strip('"')
+    try:
+        current, *args = shlex.split(lines[exec_index][5:].strip())
+    except ValueError:
+        return False
     expected = str(NATIVE_EXEC)
     if current == expected:
         return False
@@ -90,10 +95,12 @@ def repair_user_desktop_entry(home=None):
         return False
     if Path(os.path.expanduser(current)).exists():
         return False
-    lines[exec_index] = 'Exec='+expected+' %F'
-    temp = entry.with_name('.'+entry.name+'.appinstall-repair.tmp')
-    temp.write_text('\n'.join(lines)+'\n', encoding='utf-8')
-    os.replace(temp, entry)
+    lines[exec_index] = 'Exec='+shlex.join([expected, *args])
+    fd, name = tempfile.mkstemp(dir=entry.parent,
+                                prefix='.'+entry.name+'.', suffix='.tmp')
+    with os.fdopen(fd, 'w', encoding='utf-8') as handle:
+        handle.write('\n'.join(lines)+'\n')
+    os.replace(name, entry)
     return True
 
 
