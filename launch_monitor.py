@@ -608,7 +608,7 @@ def restore_launchers(preserve_records=False):
                 if not isinstance(record, dict):
                     continue
                 for entry in record.get('exports',[]):
-                    if not isinstance(entry, dict) or entry.get('path')!=str(path):
+                    if isinstance(entry, dict) and entry.get('path')==str(path):
                         entry['sha256']=hashlib.sha256(path.read_bytes()).hexdigest()
                         changed_container_exports = True
             if not preserve_records:

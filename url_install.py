@@ -104,8 +104,12 @@ def installation_failure(result):
         log = SafeLog(path, private_values())
         log.add(message)
         output = (result.stderr or '')[-65536:] + '\n' + (result.stdout or '')[-65536:]
-        log.add(re.sub(r"""https?://[^\s<>"']+""", '<redacted URL>', output,
-                       flags=re.IGNORECASE))
+        output = re.sub(r'(?i)(authorization:\s*basic\s+)\S+', r'\1[REDACTED]', output)
+        output = re.sub(r'(?i)([A-Za-z0-9.-]+\.[A-Za-z]{2,}/[^\s?#]*\?)[^\s#]*',
+                        r'\1[REDACTED]', output)
+        output = re.sub(r"""https?://[^\s<>"']+""", '<redacted URL>', output,
+                        flags=re.IGNORECASE)
+        log.add(output)
         log.flush()
         logs = sorted(directory.glob('failure-*.log'),
                       key=lambda item: item.stat().st_mtime_ns)

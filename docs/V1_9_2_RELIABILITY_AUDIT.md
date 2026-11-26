@@ -94,3 +94,16 @@ Remaining limitations: full interactive Qt workflows and a real browser/URL flow
 - Filesystem layout was verified in Arch, Debian 13, Ubuntu 24.04 and Fedora 44 disposable installs: `/usr/bin/abood-appinstall` is the only executable entry point; modules live under `/usr/lib/abood-appinstall`.
 
 Limitations: VS Code's `--version` refused to run as container root, so package installation was verified through `dpkg-query` rather than a graphical launch. Flatpak behavior was verified with real export files and symlinks, not an installed Flatpak application. A full Yay system upgrade was not run.
+
+## 9. Final security review fixes — Confirmed
+
+A final independent review found and the following were fixed before release:
+
+- APT source fragments with `Trusted: yes` / `[trusted=yes]` are now rejected instead of copied; signature verification cannot be silently disabled by a vendor fragment.
+- All URIs in a deb822 `URIs:` list, including continuation lines, are validated before a stanza is copied; extra untrusted URIs can no longer be smuggled into the scoped source tree.
+- APT sources are staged in a fresh `mktemp -d` directory inside the container and removed after the transaction, instead of writing to a fixed symlink-targetable path.
+- `restore_launchers(preserve_records=True)` now updates only the export hash whose path matches the launcher being restored. A reversed condition previously rewrote unrelated records.
+- Themed-icon publication uses `O_EXCL | O_NOFOLLOW`, closing the check-then-write symlink race.
+- Diagnostic redaction now removes HTTP Basic credentials and schemeless URLs with query secrets, in addition to existing bearer/token/password patterns.
+
+Evidence: new trust tests reject `Trusted: yes`, multi-URI stanzas, commented `Signed-By` and prefix-spoofed URLs; a new monitor test proves unrelated export hashes are unchanged; a new URL test proves Basic and query credentials are redacted. Real Chrome/VS Code/Edge/Brave installs were repeated after these fixes and all four still installed with a subsequent unrelated DEB.

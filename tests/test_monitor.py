@@ -31,6 +31,23 @@ class MonitorTests(unittest.TestCase):
         self.assertTrue(path.is_symlink())
         self.assertEqual(m.desktop_values(path.read_text())['Name'], 'Updated')
 
+    def test_uninstall_does_not_rewrite_unrelated_export_hashes(self):
+        first = self.spec(key='test:first')
+        unrelated_path = self.root/'unrelated.desktop'
+        unrelated_path.write_text('[Desktop Entry]\nName=Unrelated\nExec=true\n')
+        containers = self.root/'data/appinstall/containers'
+        containers.mkdir(parents=True, exist_ok=True)
+        import hashlib as _h
+        registry = {'deb:one': {'exports': [
+            {'path': first['desktop'], 'sha256': _h.sha256(Path(first['desktop']).read_bytes()).hexdigest()},
+            {'path': str(unrelated_path), 'sha256': _h.sha256(unrelated_path.read_bytes()).hexdigest()},
+        ]}}
+        (containers/'registry.json').write_text(json.dumps(registry))
+        second_hash = registry['deb:one']['exports'][1]['sha256']
+        m.restore_launchers(preserve_records=True)
+        after = json.loads((containers/'registry.json').read_text())
+        self.assertEqual(after['deb:one']['exports'][1]['sha256'], second_hash)
+
     def test_uninstall_detaches_appimage_but_preserves_registry(self):
         target = self.root/'app.AppImage'
         target.write_text('#!/bin/sh\nexit 0\n')

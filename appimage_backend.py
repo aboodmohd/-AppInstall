@@ -239,8 +239,14 @@ def install(source, destination, fallback=False):
                     # Never overwrite a pre-existing user icon or follow
                     # its symlink; our desktop launcher already uses the
                     # generation-owned absolute icon path.
-                    if not themed_icon.exists() and not themed_icon.is_symlink():
-                        shutil.copyfile(installed_icon, themed_icon)
+                    try:
+                        fd = os.open(themed_icon, os.O_WRONLY | os.O_CREAT |
+                                     os.O_EXCL | os.O_NOFOLLOW, 0o644)
+                        with os.fdopen(fd, 'wb') as output, \
+                             open(installed_icon, 'rb') as source:
+                            shutil.copyfileobj(source, output)
+                    except FileExistsError:
+                        pass
                 break
             except OSError:
                 continue
