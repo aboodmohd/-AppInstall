@@ -4,9 +4,10 @@
 
 [![Latest release](https://img.shields.io/github/v/release/aboodmohd/-AppInstall)](https://github.com/aboodmohd/-AppInstall/releases/latest)
 
-> **Latest published stable: [v1.9.0 — Premium UI/UX](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.9.0).**
-> The Qt Quick/QML redesign is included in the published release. The installer
-> uses only published stable releases, never draft PR artifacts or test builds.
+> **[Download the latest stable AppInstall](https://github.com/aboodmohd/-AppInstall/releases/latest).**
+> Starting with v1.9.1, the package and command are `abood-appinstall` and
+> the desktop ID is `io.github.aboodmohd.AppInstall`. The AppInstall name and
+> Premium UI are unchanged. Existing users: [migrate from the legacy package](UPGRADE.md#migration-from-the-legacy-appinstall-package).
 
 A graphical double-click installer for AppImage, Flatpak, DEB, and RPM files on Linux desktops. DEB/RPM applications run in rootless Debian/Fedora Distrobox containers.
 
@@ -16,7 +17,7 @@ Install PySide6 for the graphical app preview (for example, `pyside6` on Arch). 
 
 Double-click a supported file, review its source and destination, confirm installation, then choose whether to open the application. AppImage downloads are copied into `~/Applications`; the originals remain untouched. Flatpak applications and repositories are installed for the current user.
 
-Managed applications now use monitored launchers. Startup failures show useful errors and logs; open **AppInstall → Application Diagnostics** or run `appinstall --diagnostics` for launch history and safe repair actions. See [Launch Diagnostics](LAUNCH_DIAGNOSTICS.md) for tested behavior and limits.
+Managed applications now use monitored launchers. Startup failures show useful errors and logs; open **AppInstall → Application Diagnostics** or run `abood-appinstall --diagnostics` for launch history and safe repair actions. See [Launch Diagnostics](LAUNCH_DIAGNOSTICS.md) for tested behavior and limits.
 
 ## AppInstall updates on other Linux distributions (introduced in v1.8.0)
 
@@ -136,15 +137,15 @@ unverified distribution.
 
 If your distro is not in the native list, AppInstall also has a
 **distribution-neutral, non-root source route**, not a falsely renamed
-DEB/RPM. Use the verified, published `appinstall-1.9.0-portable.tar.gz`
+DEB/RPM. Use the verified, published `appinstall-1.9.1-portable.tar.gz`
 archive for the current stable portable install:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf appinstall-1.9.0-portable.tar.gz
-cd appinstall-1.9.0
+tar -xzf appinstall-1.9.1-portable.tar.gz
+cd appinstall-1.9.1
 bash ./install-user.sh
-~/.local/bin/appinstall --manage
+~/.local/bin/abood-appinstall --manage
 ```
 
 Install Python 3, Bash, freedesktop `xdg-utils`, and for the Discover GUI,
@@ -155,7 +156,7 @@ native pacman/dpkg/RPM AppInstall packages before adding a potentially
 shadowing user copy. The portable archive includes source code, **not**
 bundled Qt libraries, universal binaries, or guarantees of compatibility
 on every Linux distribution, libc, architecture or desktop session.
-For portable removal run `~/.local/bin/appinstall-uninstall`; the
+For portable removal run `~/.local/bin/abood-appinstall-uninstall`; the
 installer preserves managed packages and user data.
 
 
@@ -181,12 +182,12 @@ changes are optional and previous per-user defaults are backed up.
 Verify the installation or open the application manager:
 
 ```bash
-appinstall --version
-appinstall --manage
+abood-appinstall --version
+abood-appinstall --manage
 ```
 
 The Qt Quick/QML **My Applications** window is the default starting with v1.5.0. For the previous Qt Widgets interface, run
-`appinstall --manage --widgets`. Both interfaces use the same managed
+`abood-appinstall --manage --widgets`. Both interfaces use the same managed
 application records. Status and Sort controls support keyboard and mouse
 selection. The one-command installer always selects the latest *published* stable version,
 not a development branch or an unpublished build.
@@ -211,7 +212,7 @@ DEB/RPM apps inside AppInstall uses Distrobox and is separate from installing
 AppInstall itself.
 
 On KDE, GNOME, XFCE, COSMIC, Niri, Hyprland, Sway, and i3, you can
-open **My Applications** with `appinstall --manage` and use **Install from
+open **My Applications** with `abood-appinstall --manage` and use **Install from
 File…**. The file picker works without a desktop portal. File-manager
 associations and launcher menus vary by session. CI checks the common X11
 and Wayland paths. Individual desktop sessions may need separate testing.
@@ -235,11 +236,11 @@ successful workflow run. From the extracted directory, run:
 
 ```bash
 sha256sum -c SHA256SUMS
-sudo apt install ./appinstall_*_all.deb
-appinstall --version
+sudo apt install ./abood-appinstall_*_all.deb
+abood-appinstall --version
 ```
 
-The APT package is removed with `sudo apt remove appinstall`. Ubuntu users
+The APT package is removed with `install.sh --uninstall`. Ubuntu users
 need the Universe repository enabled. For a minimal manual install, add `--no-install-recommends` to the APT command.
 
 ## Install from source (alternative)
@@ -258,7 +259,7 @@ Install Python 3 and either **KDialog** (KDE) or **Zenity** (GNOME/Xfce), then r
 
 The My Applications manager watches for external changes to its managed registries and updates its list automatically, generally within a couple of seconds. The installer registers file associations for the current user and saves their previous values. It does not require root. If Flatpak is missing when installing an application, AppInstall offers setup through apt-get, dnf, pacman or zypper with a PolicyKit administrator prompt. Other systems receive manual instructions. Immutable systems need their distribution's own Flatpak setup procedure.
 
-The Arch package can be built with `makepkg`. Package installation registers AppInstall as an available file handler, **but does not automatically make it the default**. In Dolphin, use **Open With → AppInstall** and select it as the default for each desired format. `./install-user.sh` is for **source installs from a checked-out repository**; do not run it from an extracted pacman package. To inspect possible conflicts between source and package installs, run `type -a appinstall` and see [UPGRADE.md](UPGRADE.md).
+The Arch package can be built with `makepkg`. Package installation registers AppInstall as an available file handler, **but does not automatically make it the default**. In Dolphin, use **Open With → AppInstall** and select it as the default for each desired format. `./install-user.sh` is for **source installs from a checked-out repository**; do not run it from an extracted pacman package. To inspect possible conflicts between source and package installs, run `type -a abood-appinstall` and see [UPGRADE.md](UPGRADE.md).
 
 ## Supported files
 
@@ -271,7 +272,7 @@ Local integration is usually quick. Download speed, runtime size, extraction and
 
 ## Install from URL
 
-AppInstall can install applications from a direct HTTPS download URL. Open the **Installed Applications Manager** (`appinstall --manage`), click **Install from URL…**, paste the direct link to the package file, and download it. The download runs in the background with a progress bar (file name, bytes, total size, percentage and speed) and can be cancelled at any time; cancelled downloads remove the partial temporary file and leave installed applications unchanged.
+AppInstall can install applications from a direct HTTPS download URL. Open the **Installed Applications Manager** (`abood-appinstall --manage`), click **Install from URL…**, paste the direct link to the package file, and download it. The download runs in the background with a progress bar (file name, bytes, total size, percentage and speed) and can be cancelled at any time; cancelled downloads remove the partial temporary file and leave installed applications unchanged.
 
 When the download finishes, AppInstall detects the real package format (AppImage, Flatpak, Flatpak reference/repository, DEB or RPM) from the file contents — not blindly from the URL extension — and opens the existing package preview so you can review the source, size, SHA-256 digest and proposed installation method before confirming. The download is never installed automatically.
 
@@ -284,23 +285,23 @@ The downloaded file is then handed to the normal installation backends (AppImage
 
 CLI:
 ```sh
-appinstall --install-url https://example.com/releases/application.AppImage
-appinstall --yes --install-url https://example.com/releases/application.AppImage
+abood-appinstall --install-url https://example.com/releases/application.AppImage
+abood-appinstall --yes --install-url https://example.com/releases/application.AppImage
 ```
 `--yes` bypasses confirmation (scripts only). Cancellation with `Ctrl+C` removes the partial download.
 
 ## CLI
 
 ```sh
-appinstall FILE.AppImage
-appinstall --diagnostics
-appinstall --yes --nolaunch FILE.flatpakref
-appinstall --dir ~/Games FILE.AppImage
-appinstall --install-url https://example.com/releases/application.AppImage
-appinstall --yes --install-url https://example.com/releases/application.AppImage
-appinstall --list
-appinstall --remove NAME
-appinstall --detect FILE
+abood-appinstall FILE.AppImage
+abood-appinstall --diagnostics
+abood-appinstall --yes --nolaunch FILE.flatpakref
+abood-appinstall --dir ~/Games FILE.AppImage
+abood-appinstall --install-url https://example.com/releases/application.AppImage
+abood-appinstall --yes --install-url https://example.com/releases/application.AppImage
+abood-appinstall --list
+abood-appinstall --remove NAME
+abood-appinstall --detect FILE
 ```
 
 `--yes` bypasses confirmation and disables the Open prompt. `--nolaunch` suppresses the Open prompt. `APPINSTALL_APPIMAGES` sets the default AppImage directory. Application menu and icon directories respect `XDG_DATA_HOME`; association settings respect `XDG_CONFIG_HOME`.
@@ -311,7 +312,7 @@ AppImages with the same embedded application name replace the previous AppInstal
 
 For installs using the **one-command installer**, use the `curl ... | bash -s -- --uninstall` command in [Install AppInstall](#install-appinstall). It removes the system package and offers to restore your previous MIME defaults without deleting managed applications, containers or user data.
 
-For **source installs** using `./install-user.sh`, run `~/.local/bin/appinstall-uninstall` to remove user registration and restore prior associations if AppInstall still owns them. Installed applications are kept. `appinstall --remove NAME` removes an AppInstall-managed AppImage; use Flatpak or your software center to remove Flatpak apps.
+For **source installs** using `./install-user.sh`, run `~/.local/bin/abood-appinstall-uninstall` to remove user registration and restore prior associations if AppInstall still owns them. Installed applications are kept. `abood-appinstall --remove NAME` removes an AppInstall-managed AppImage; use Flatpak or your software center to remove Flatpak apps.
 
 If your file manager opens AppImages directly, use **Open With → AppInstall**, then choose it as the default. Executable handling varies by file manager. After installing Flatpak for the first time, logging out and back in may be needed for its applications to appear in menus.
 
@@ -363,9 +364,9 @@ CLI-only packages are recorded without a graphical launcher.
 Lifecycle commands use a registry key such as `deb:example` or `rpm:example`:
 
 ```sh
-appinstall --container-info deb:example
-appinstall --container-launch deb:example
-appinstall --container-remove deb:example
+abood-appinstall --container-info deb:example
+abood-appinstall --container-launch deb:example
+abood-appinstall --container-remove deb:example
 ```
 
 Select the same package file again to reinstall; select a newer file to update.
@@ -402,7 +403,7 @@ slower than subsequent app installation.
 
 The source and affected user files were backed up to:
 `~/appinstall-backups/20261101-215534/`.
-Restore `source/` to `~/appinstall/`, `binary` to `~/.local/bin/appinstall`, and
+Restore `source/` to `~/appinstall/`, `binary` to `~/.local/bin/abood-appinstall`, and
 `installed/` to `~/.local/share/appinstall/` to return to the previous code.
 The backup also contains the application-launcher directory and MIME config;
 restore individual affected files rather than replacing unrelated later changes.

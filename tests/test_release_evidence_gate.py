@@ -36,10 +36,10 @@ class ReleaseEvidenceGateTests(unittest.TestCase):
         self.package = self.root / 'candidate.pkg.tar.zst'
         self.package.write_bytes(b'mocked archive')
         icon_lines = ''.join(
-            f'usr/share/icons/hicolor/{s}x{s}/apps/appinstall.png\n'
+            f'usr/share/icons/hicolor/{s}x{s}/apps/io.github.aboodmohd.AppInstall.png\n'
             for s in gate.APP_INSTALL_ICON_SIZES)
-        self.files = ('usr/bin/appinstall\n' + icon_lines +
-                      'usr/share/licenses/appinstall/LICENSE\n')
+        self.files = ('usr/bin/abood-appinstall\n' + icon_lines +
+                      'usr/share/licenses/abood-appinstall/LICENSE\n')
 
     def verify(self, files=None, license_data=None):
         results = [subprocess.CompletedProcess([], 0, self.files if files is None else files),
@@ -91,7 +91,7 @@ class ReleaseEvidenceGateTests(unittest.TestCase):
             self.verify()
 
     def test_packaged_unexpected_image_is_rejected(self):
-        for extra in ('usr/share/picture.png', 'usr/share/icons/hicolor/99x99/apps/appinstall.png',
+        for extra in ('usr/share/picture.png', 'usr/share/icons/hicolor/99x99/apps/io.github.aboodmohd.AppInstall.png',
                       'usr/share/evidence/phase4/RESULTS.md'):
             with self.subTest(extra=extra), self.assertRaisesRegex(
                     ValueError, 'unexpectedly includes screenshot/image evidence'):
@@ -99,7 +99,7 @@ class ReleaseEvidenceGateTests(unittest.TestCase):
 
     def test_packaged_icon_inventory_must_be_complete(self):
         """Dropping one packaged icon is rejected."""
-        missing = 'usr/share/icons/hicolor/512x512/apps/appinstall.png\n'
+        missing = 'usr/share/icons/hicolor/512x512/apps/io.github.aboodmohd.AppInstall.png\n'
         files = self.files.replace(missing, "", 1)
         with self.assertRaisesRegex(ValueError, 'Packaged AppInstall icon inventory'):
             self.verify(files=files)
@@ -107,9 +107,9 @@ class ReleaseEvidenceGateTests(unittest.TestCase):
     def test_missing_packaged_license_is_rejected(self):
         # Icons present, license omitted: must fail at the license check.
         icon_lines = ''.join(
-            f'usr/share/icons/hicolor/{s}x{s}/apps/appinstall.png\n'
+            f'usr/share/icons/hicolor/{s}x{s}/apps/io.github.aboodmohd.AppInstall.png\n'
             for s in gate.APP_INSTALL_ICON_SIZES)
-        files = 'usr/bin/appinstall\n' + icon_lines
+        files = 'usr/bin/abood-appinstall\n' + icon_lines
         with self.assertRaisesRegex(ValueError, 'missing its MIT license'):
             self.verify(files=files)
 

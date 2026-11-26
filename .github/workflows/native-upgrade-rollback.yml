@@ -1,4 +1,4 @@
-name: v1.8.0 to v1.9.0 native upgrade and rollback (disposable)
+name: Native identity migration and rollback (disposable)
 
 on:
   pull_request:
@@ -55,6 +55,6 @@ jobs:
                 curl coreutils findutils xdg-utils desktop-file-utils
               ;;
           esac
-      - name: Verify authentic stable upgrade and version rollback
+      - name: Verify authentic legacy package migration and rollback
         shell: bash
         run: bash tools/ci_native_upgrade_rollback.sh

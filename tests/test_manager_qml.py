@@ -1210,7 +1210,7 @@ class ThemeTests(QmlManagerBase):
 
 class HelperResolutionTests(unittest.TestCase):
     """The updater helper: packaged installer first, install.sh in a
-    source checkout, PATH as the last resort."""
+    source checkout, never PATH."""
 
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -1245,11 +1245,11 @@ class HelperResolutionTests(unittest.TestCase):
         (self.base / 'install.sh').write_text('#!/bin/sh\n')
         self.assertEqual(self.resolve(), self.base / 'install.sh')
 
-    def test_path_lookup_is_the_last_resort(self):
+    def test_unrelated_helper_on_path_is_ignored(self):
         with patch.object(manager_qml.shutil, 'which',
                           return_value='/opt/bin/appinstall-installer'):
             self.assertEqual(self.resolve(),
-                             Path('/opt/bin/appinstall-installer'))
+                             self.base / 'appinstall-installer')
 
     def test_missing_helper_returns_the_adjacent_candidate(self):
         # PATH may carry a real appinstall-installer (a system install);

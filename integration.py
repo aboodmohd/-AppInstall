@@ -5,6 +5,7 @@ import io
 import json
 import os
 from pathlib import Path
+import re
 import shlex
 import shutil
 import stat
@@ -16,7 +17,7 @@ data = Path(os.environ.get('XDG_DATA_HOME', home / '.local/share'))
 config = Path(os.environ.get('XDG_CONFIG_HOME', home / '.config'))
 state = data / 'appinstall'
 apps = data / 'applications'
-service_menu = data / 'kio' / 'servicemenus' / 'appinstall-appimage-review.desktop'
+service_menu = data / 'kio' / 'servicemenus' / 'io.github.aboodmohd.AppInstall.AppImageReview.desktop'
 bindir = home / '.local/bin'
 mime_path = config / 'mimeapps.list'
 record = state / 'associations.json'
@@ -25,6 +26,7 @@ mimes = [
     'application/x-rpm', 'application/vnd.flatpak',
     'application/vnd.flatpak.ref', 'application/vnd.flatpak.repo',
     'application/vnd.appimage', 'application/x-iso9660-appimage',
+    'application/x-quickdrop-appimage',
 ]
 modules = (
     'integration.py', 'source_transaction.py', 'confirm.py',
@@ -41,7 +43,7 @@ ICON_SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
 # Flat, makepkg-compatible source basenames; installed to hicolor destinations.
 icon_sources = tuple(f'appinstall-{size}.png' for size in ICON_SIZES)
 icon_destinations = tuple(
-    data / 'icons' / 'hicolor' / f'{size}x{size}' / 'apps' / 'appinstall.png'
+    data / 'icons' / 'hicolor' / f'{size}x{size}' / 'apps' / 'io.github.aboodmohd.AppInstall.png'
     for size in ICON_SIZES)
 # QML files that manager_qml.py loads at runtime: Theme.qml, main.qml,
 # AppCard.qml, and the qmldir import descriptor. manager_qml.py resolves
@@ -55,8 +57,8 @@ root = Path(__file__).resolve().parent
 
 if not uninstalling:
     # Check every required file before writing any user-owned location.
-    required = ('appinstall', 'appinstall.desktop',
-                'appinstall-appimage-review.desktop', *modules, *icon_sources,
+    required = ('appinstall', 'io.github.aboodmohd.AppInstall.desktop',
+                'io.github.aboodmohd.AppInstall.AppImageReview.desktop', *modules, *icon_sources,
                 *qml_sources)
     missing = [name for name in required if not (root / name).is_file()]
     if missing:
@@ -73,9 +75,9 @@ destinations = [
     *(state / name for name in modules),
     *icon_destinations,
     *qml_destinations,
-    bindir / 'appinstall',
-    bindir / 'appinstall-uninstall',
-    apps / 'appinstall.desktop',
+    bindir / 'abood-appinstall',
+    bindir / 'abood-appinstall-uninstall',
+    apps / 'io.github.aboodmohd.AppInstall.desktop',
     service_menu,
     record,
     mime_path,
@@ -87,12 +89,25 @@ def current_mode(target, default):
 
 
 def quoted(p):
+    # Some xdg-mime versions cannot resolve a quoted Exec even without spaces.
+    if re.fullmatch(r'/[A-Za-z0-9_./-]+', str(p)):
+        return str(p)
     return '"' + str(p).replace('\\', '\\\\\\\\').replace('"', '\\\\\\"').replace('`', '\\\\\\`').replace('$', '\\\\\\$').replace('%', '%%') + '"'
 
 # Recovery and publication are serialized across two source installers.
 # The metadata journal is recovered before reading MIME defaults, otherwise
 # we could reuse values from a partially applied previous attempt.
 with SourceTransaction(state, destinations) as transaction:
+    legacy_uninstaller = bindir / 'appinstall-uninstall'
+    if not uninstalling and record.is_file() and legacy_uninstaller.is_file():
+        legacy_command = ('#!/bin/sh\nexec python3 ' +
+                          shlex.quote(str(state / 'integration.py')) +
+                          ' --uninstall\n')
+        if legacy_uninstaller.read_text(encoding='utf-8', errors='replace') == legacy_command:
+            raise SystemExit(
+                'A legacy portable AppInstall shares this data directory. '
+                'Follow the portable migration in UPGRADE.md before continuing.'
+            )
     parser = configparser.RawConfigParser(
         strict=False, delimiters=('=',), interpolation=None)
     parser.optionxform = str
@@ -106,7 +121,7 @@ with SourceTransaction(state, destinations) as transaction:
 
     if uninstalling:
         for mime, previous in old.items():
-            if defaults.get(mime) == 'appinstall.desktop;':
+            if defaults.get(mime) == 'io.github.aboodmohd.AppInstall.desktop;':
                 if previous is None:
                     defaults.pop(mime, None)
                 else:
@@ -117,11 +132,11 @@ with SourceTransaction(state, destinations) as transaction:
                     encoding='utf-8').splitlines():
                 changes[service_menu] = None
         for target in (
-            apps / 'appinstall.desktop',
+            apps / 'io.github.aboodmohd.AppInstall.desktop',
             *icon_destinations,
             *qml_destinations,
-            bindir / 'appinstall',
-            bindir / 'appinstall-uninstall',
+            bindir / 'abood-appinstall',
+            bindir / 'abood-appinstall-uninstall',
             state / 'integration.py',
             state / 'source_transaction.py',
             state / 'confirm.py',
@@ -137,7 +152,7 @@ with SourceTransaction(state, destinations) as transaction:
         for mime in mimes:
             if mime not in old:
                 old[mime] = defaults.get(mime)
-            defaults[mime] = 'appinstall.desktop;'
+            defaults[mime] = 'io.github.aboodmohd.AppInstall.desktop;'
         if service_menu.exists() and not service_menu.is_symlink():
             # Never overwrite an unrelated user's same-named service menu.
             existing = service_menu.read_text(encoding='utf-8')
@@ -150,19 +165,19 @@ with SourceTransaction(state, destinations) as transaction:
             changes[state / name] = (
                 source.read_bytes(), stat.S_IMODE(source.stat().st_mode))
         app = root / 'appinstall'
-        changes[bindir / 'appinstall'] = (
+        changes[bindir / 'abood-appinstall'] = (
             app.read_bytes(), stat.S_IMODE(app.stat().st_mode))
-        desktop = (root / 'appinstall.desktop').read_text().replace(
+        desktop = (root / 'io.github.aboodmohd.AppInstall.desktop').read_text().replace(
             'Exec=appinstall %F',
-            'Exec=' + quoted(bindir / 'appinstall') + ' %F')
-        changes[apps / 'appinstall.desktop'] = (desktop.encode(), 0o644)
-        review_menu = (root / 'appinstall-appimage-review.desktop').read_text().replace(
+            'Exec=' + quoted(bindir / 'abood-appinstall') + ' %F')
+        changes[apps / 'io.github.aboodmohd.AppInstall.desktop'] = (desktop.encode(), 0o644)
+        review_menu = (root / 'io.github.aboodmohd.AppInstall.AppImageReview.desktop').read_text().replace(
             'Exec=appinstall %f',
-            'Exec=' + quoted(bindir / 'appinstall') + ' %f')
+            'Exec=' + quoted(bindir / 'abood-appinstall') + ' %f')
         changes[service_menu] = (review_menu.encode(), 0o755)
         for size in ICON_SIZES:
             src_icon = root / f'appinstall-{size}.png'
-            dst_icon = data / 'icons' / 'hicolor' / f'{size}x{size}' / 'apps' / 'appinstall.png'
+            dst_icon = data / 'icons' / 'hicolor' / f'{size}x{size}' / 'apps' / 'io.github.aboodmohd.AppInstall.png'
             changes[dst_icon] = (src_icon.read_bytes(), 0o644)
         for src in qml_sources:
             source = root / src
@@ -172,7 +187,7 @@ with SourceTransaction(state, destinations) as transaction:
             '#!/bin/sh\nexec python3 '+
             shlex.quote(str(state / 'integration.py'))+
             ' --uninstall\n')
-        changes[bindir / 'appinstall-uninstall'] = (
+        changes[bindir / 'abood-appinstall-uninstall'] = (
             uninstall.encode(), 0o755)
 
     with io.StringIO() as buffer:

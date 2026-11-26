@@ -229,7 +229,7 @@ def format_size(size):
 
 
 # Extension → MIME mapping for dropped package files. Every value must also
-# appear in the MimeType= line of appinstall.desktop (enforced by tests). The
+# appear in the MimeType= line of io.github.aboodmohd.AppInstall.desktop (enforced by tests). The
 # iso9660-appimage and quickdrop-appimage MIME types are AppImage containers
 # sharing the same .AppImage extension, so no extra entry is needed.
 PACKAGE_MIMES = {
@@ -258,7 +258,7 @@ def _appinstall_command():
     command = Path(__file__).with_name('appinstall')
     if command.is_file():
         return command
-    return Path.home()/'.local/bin/appinstall'
+    return Path.home()/'.local/bin/abood-appinstall'
 
 
 class BatchItem:
@@ -1419,7 +1419,7 @@ class ManagerWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('AppInstall — My Applications')
-        self.setWindowIcon(QIcon.fromTheme('appinstall'))
+        self.setWindowIcon(QIcon.fromTheme('io.github.aboodmohd.AppInstall'))
         self.setMinimumWidth(760)
         self.resize(1000, 640)
         self.inventory = []
@@ -1942,7 +1942,7 @@ class ManagerWindow(QMainWindow):
                 self._show_update_details('AppInstall update did not complete', output)
                 return
             self.update_status.setText(f'AppInstall {tag} installed. Reopen AppInstall to use it.')
-            notes_path = Path('/usr/share/appinstall/RELEASE_NOTES.md')
+            notes_path = Path('/usr/share/abood-appinstall/RELEASE_NOTES.md')
             try:
                 notes = notes_path.read_text(encoding='utf-8')
             except (OSError, UnicodeError):
@@ -1992,9 +1992,9 @@ class ManagerWindow(QMainWindow):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv[:1])
-    app.setDesktopFileName("appinstall")
+    app.setDesktopFileName("io.github.aboodmohd.AppInstall")
     ui_style.maybe_dark(app)
-    app.setWindowIcon(QIcon.fromTheme('appinstall'))
+    app.setWindowIcon(QIcon.fromTheme('io.github.aboodmohd.AppInstall'))
     window = ManagerWindow()
     window.show()
     shot = None

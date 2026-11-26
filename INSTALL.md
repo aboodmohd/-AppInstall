@@ -1,5 +1,7 @@
 # AppInstall Installation Guide
 
+The new package and launcher identity is `abood-appinstall`. For existing installations, see [migration and rollback](UPGRADE.md#migration-from-the-legacy-appinstall-package). Do not install the unrelated `appinstall` from the AUR.
+
 ## One-command installation
 
 Run the installer as your regular desktop user:
@@ -25,7 +27,7 @@ Use `--dry-run` to inspect the package selection and `--uninstall` to remove
 AppInstall. Use `--set-defaults` to opt into changing per-user file handlers
 or `--no-defaults` to keep them. Previous defaults are backed up.
 
-## Portable source route for other Linux distributions (v1.9.0)
+## Portable source route for other Linux distributions (v1.9.1)
 
 **Use this route if the native one-command installer rejects your host.**
 It is suitable for Linux desktop systems capable of running Python 3, Bash,
@@ -33,38 +35,38 @@ freedesktop xdg-utils and PySide6/Qt Quick. It does not need root for
 AppInstall itself and does not attempt to run foreign package managers.
 Not all distributions or desktop sessions are tested.
 
-The **published** v1.9.0 release includes the portable archive and a matching
+The **published** v1.9.1 release includes the portable archive and a matching
 SHA256SUMS manifest. Download both from the
-[v1.9.0 release page](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.9.0),
+[v1.9.1 release page](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.9.1),
 verify the archive's hash, then install as your regular desktop user:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf appinstall-1.9.0-portable.tar.gz
-cd appinstall-1.9.0
+tar -xzf appinstall-1.9.1-portable.tar.gz
+cd appinstall-1.9.1
 bash ./install-user.sh
-~/.local/bin/appinstall --version
-~/.local/bin/appinstall --manage
+~/.local/bin/abood-appinstall --version
+~/.local/bin/abood-appinstall --manage
 ```
 
 On a distribution where `git` is available, an equivalent source workflow
-can be used with the **published v1.9.0 tag**:
+can be used with the **published v1.9.1 tag**:
 
 ```bash
-git clone --depth 1 --branch v1.9.0 https://github.com/aboodmohd/-AppInstall.git
+git clone --depth 1 --branch v1.9.1 https://github.com/aboodmohd/-AppInstall.git
 cd -- -AppInstall
 bash ./install-user.sh
 ```
 
 The portable route is user-local. Uninstall it using
-`~/.local/bin/appinstall-uninstall`, not `sudo dnf/pacman/apt remove`.
+`~/.local/bin/abood-appinstall-uninstall`, not `sudo dnf/pacman/apt remove`.
 It warns and requests interactive permission if a native AppInstall is
 installed by pacman, dpkg or RPM. If the PySide6/Qt Quick dependency is
 absent, Discover Apps cannot open; KDialog/Zenity CLI fallback may still
 work for some operations. Install graphical dependencies through your
 distribution's repository, not a guessed native AppInstall package.
 
-The v1.9.0 native CI targets remain **Arch/CachyOS, Debian 13,
+The v1.9.1 native CI targets remain **Arch/CachyOS, Debian 13,
 Ubuntu 24.04/26.04, Linux Mint 22 and Fedora 44**, on x86_64.
 Other distributions require independent compatibility checks; this
 portable option is not a guarantee that every application will work.
@@ -73,7 +75,7 @@ See `RELEASE_NOTES.md`.
 ## Native Fedora 44 RPM (introduced in v1.6.0)
 
 Fedora 44 (x86_64) uses DNF and the native
-`appinstall-1.9.0-1.noarch.rpm` package. The one-command installer
+`abood-appinstall-1.9.1-1.noarch.rpm` package. The one-command installer
 fetches it only from a published stable release alongside `SHA256SUMS`,
 validates the package checksum and RPM name/version/architecture and
 obtains user consent before installing via DNF.
@@ -86,7 +88,7 @@ bash tools/build_rpm.sh dist
 ```
 
 Verify the generated RPM and install the locally built package explicitly with
-`sudo dnf install ./dist/appinstall-1.9.0-1.noarch.rpm`. The rpm
+`sudo dnf install ./dist/abood-appinstall-1.9.1-1.noarch.rpm`. The rpm
 builder is not a substitute for a release checksum. Use the
 release's verified downloadable RPM for normal installation; CI tests are
 not live desktop acceptance.
@@ -105,27 +107,27 @@ not live desktop acceptance.
 
 ## Install from package (Arch/CachyOS)
 
-Download from [the v1.9.0 release](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.9.0):
+Download from [the v1.9.1 release](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.9.1):
 
 ```sh
-curl -fLO https://github.com/aboodmohd/-AppInstall/releases/download/v1.9.0/appinstall-1.9.0-1-any.pkg.tar.zst
-curl -fLO https://github.com/aboodmohd/-AppInstall/releases/download/v1.9.0/SHA256SUMS
+curl -fLO https://github.com/aboodmohd/-AppInstall/releases/download/v1.9.1/abood-appinstall-1.9.1-1-any.pkg.tar.zst
+curl -fLO https://github.com/aboodmohd/-AppInstall/releases/download/v1.9.1/SHA256SUMS
 sha256sum --ignore-missing -c SHA256SUMS
-sudo pacman -U ./appinstall-1.9.0-1-any.pkg.tar.zst
+sudo pacman -U ./abood-appinstall-1.9.1-1-any.pkg.tar.zst
 ```
 
 For the published release, check that the output includes
-`appinstall-1.9.0-1-any.pkg.tar.zst: OK` before installing.
+`abood-appinstall-1.9.1-1-any.pkg.tar.zst: OK` before installing.
 
 The one-command installer performs download + verification +
 installation automatically.
 
-The package installs `appinstall` to `/usr/bin/appinstall` and registers `/usr/share/applications/appinstall.desktop` as an *available* file handler. It does **not** change your existing default file associations. For a file that opens in another application, right-click it in Dolphin and select **Open With → AppInstall**, then choose AppInstall as the default only if you want to. Some file managers may prefer executable AppImage handling over a MIME default.
+The new package installs `/usr/bin/abood-appinstall` and registers `/usr/share/applications/io.github.aboodmohd.AppInstall.desktop` as an *available* file handler. It does **not** change your existing default file associations. For a file that opens in another application, right-click it in Dolphin and select **Open With → AppInstall**, then choose AppInstall as the default only if you want to. Some file managers may prefer executable AppImage handling over a MIME default.
 
 To open the Installed Applications Manager:
 
 ```sh
-appinstall --manage
+abood-appinstall --manage
 ```
 
 ## Install from source
@@ -138,10 +140,10 @@ cd appinstall
 
 ## What install-user.sh does
 
-- Registers `appinstall.desktop` as the default handler for supported MIME types
+- Registers `io.github.aboodmohd.AppInstall.desktop` as the default handler for supported MIME types
 - Copies AppInstall modules to `~/.local/share/appinstall/`
-- Copies the `appinstall` executable to `~/.local/bin/`
-- Creates `~/.local/bin/appinstall-uninstall`
+- Copies the launcher to `~/.local/bin/abood-appinstall`
+- Creates `~/.local/bin/abood-appinstall-uninstall`
 - Migrates existing launchers via `launch_monitor.synchronize()`
 
 ## Uninstall
@@ -149,17 +151,17 @@ cd appinstall
 For a source/user installation:
 
 ```sh
-~/.local/bin/appinstall-uninstall
+~/.local/bin/abood-appinstall-uninstall
 ```
 
-This restores previous MIME associations that AppInstall still owns and removes the user-level registration. For a pacman-managed system package, run `sudo pacman -R appinstall` instead. Do not run the source uninstaller as a substitute for removing the system package. Managed applications and their data are kept.
+This restores previous MIME associations that AppInstall still owns and removes the user-level registration. For a pacman-managed system package, run `install.sh --uninstall` instead. Do not run the source uninstaller as a substitute for removing the system package. Managed applications and their data are kept.
 
 ## Avoid mixed installations
 
-A previous source installation in `~/.local/bin/appinstall` can take precedence over the packaged `/usr/bin/appinstall` depending on your `PATH`. After installing or upgrading, check:
+A previous source installation in `~/.local/bin/abood-appinstall` can take precedence over the packaged `/usr/bin/abood-appinstall` depending on your `PATH`. After installing or upgrading, check:
 
 ```sh
-type -a appinstall
+type -a abood-appinstall
 command -v appinstall
 ```
 
@@ -175,10 +177,10 @@ After explicitly selecting AppInstall as the default handler, double-click a sup
 
 Or run from the command line:
 ```sh
-appinstall FILE.AppImage
-appinstall --manage          # Installed Applications Manager
-appinstall --diagnostics     # Application Diagnostics
-appinstall --list            # List managed applications
-appinstall --remove NAME     # Remove a managed application
-appinstall --install-url https://example.com/releases/application.AppImage
+abood-appinstall FILE.AppImage
+abood-appinstall --manage          # Installed Applications Manager
+abood-appinstall --diagnostics     # Application Diagnostics
+abood-appinstall --list            # List managed applications
+abood-appinstall --remove NAME     # Remove a managed application
+abood-appinstall --install-url https://example.com/releases/application.AppImage
 ```

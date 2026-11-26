@@ -150,3 +150,71 @@ Managed application data is stored under:
 
 Do not delete these directories unless you intend to remove AppInstall
 completely.
+# Migration from the legacy `appinstall` package
+
+AppInstall now uses the native package and command `abood-appinstall` on
+Arch/CachyOS, Debian/Ubuntu and Fedora. Its desktop ID is
+`io.github.aboodmohd.AppInstall.desktop`; the application menu still says
+**AppInstall**. The new package deliberately does not provide, conflict with,
+replace, or obsolete `appinstall`: that name also belongs to an unrelated AUR
+project. No installer or uninstaller should remove it by name alone.
+
+On CachyOS, an AUR update through Yay offered an unrelated `appinstall`
+2.0.8-1 as an upgrade to the official v1.9.0 package because both used the
+same package name. The v1.9.1 identity separates those packages. If the
+collision already happened, leave the unrelated package alone and install
+`abood-appinstall` alongside it.
+
+1. Close AppInstall, and back up `$XDG_DATA_HOME/appinstall`,
+   `$XDG_STATE_HOME/appinstall` (defaulting to `~/.local/share` and
+   `~/.local/state` respectively), and `mimeapps.list`. Leave managed apps,
+   Flatpak installations and Distrobox storage in place.
+2. For a **legacy native** install, use the [published one-command installer](INSTALL.md#one-command-installation)
+   or install the checksum-verified native package alongside the legacy
+   package (`pacman -U` for Arch/CachyOS, `apt install` for Debian/Ubuntu,
+   `dnf install` for Fedora). Run `abood-appinstall --version` and open
+   `abood-appinstall --manage` to verify that your records are present.
+
+   To switch all nine defaults with the published installer, pass
+   `--set-defaults` to it. That option queries the published release feed;
+   for an unpublished CI build or a local package install, set and verify
+   the defaults directly as your desktop user:
+
+   ```bash
+   (
+     set -euo pipefail
+     id=io.github.aboodmohd.AppInstall.desktop
+     entry=/usr/share/applications/$id
+     test -r "$entry"
+     mapfile -t mimes < <(sed -n 's/^MimeType=//p' "$entry" | tr ';' '\n' | grep .)
+     test "${#mimes[@]}" -eq 9
+     for mime in "${mimes[@]}"; do
+       xdg-mime default "$id" "$mime"
+       test "$(xdg-mime query default "$mime")" = "$id"
+     done
+   )
+   ```
+
+   Retire the legacy package only after checking that it owns the old
+   launcher and that its upstream is `https://github.com/aboodmohd/-AppInstall`.
+   On Arch/CachyOS, use `pacman -Qo /usr/bin/appinstall` and `pacman -Qi appinstall`
+   to verify both before running `sudo pacman -R -- appinstall`. On other
+   systems, use the corresponding native ownership and metadata queries.
+   If any check is inconclusive, or identifies the unrelated AppInstaller,
+   leave it untouched. Do not use recursive removal or purge.
+3. For a **legacy portable** install, verify the existing source uninstaller
+   belongs to this project, then run it **before** running `install-user.sh`
+   from the new verified portable bundle. The uninstaller removes legacy
+   launcher/registration files, not managed apps or records. If it cannot
+   be verified, stop and inspect the install rather than running it. The new
+   user commands are `~/.local/bin/abood-appinstall` and
+   `~/.local/bin/abood-appinstall-uninstall`.
+4. To roll back, remove only `abood-appinstall` using its installer or portable
+   uninstaller, then reinstall a checksum-verified official artifact and
+   restore your saved associations. Only roll back to the legacy native name
+   if the unrelated package does not occupy that name and you explicitly
+   exclude `appinstall` from AUR upgrades while using it.
+
+The application data directories and container registry are not renamed.
+The pre-migration desktop updater cannot perform this identity change;
+use the verified package or bundle directly for the first migration.

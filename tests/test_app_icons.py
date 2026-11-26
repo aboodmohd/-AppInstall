@@ -3,7 +3,7 @@
 The official artwork (blue folder, white download arrow, green checkmark) is
 shipped as flat, makepkg-compatible PNG sources at repo root
 (`appinstall-16.png` ... `appinstall-512.png`) and installed to the
-freedesktop hicolor theme as `appinstall.png` in each size directory.
+freedesktop hicolor theme as `io.github.aboodmohd.AppInstall.png` in each size directory.
 """
 import hashlib
 import re
@@ -22,7 +22,7 @@ def source_path(size):
 
 def installed_path(size):
     # Installed destination (what package() / integration.py produce).
-    return ROOT / 'icons' / 'hicolor' / f'{size}x{size}' / 'apps' / 'appinstall.png'
+    return ROOT / 'icons' / 'hicolor' / f'{size}x{size}' / 'apps' / 'io.github.aboodmohd.AppInstall.png'
 
 
 def read_png_header(path):
@@ -69,11 +69,11 @@ class AppIconTests(unittest.TestCase):
         self.assertFalse(any(ROOT.glob('**/*.svg')), 'no SVG source should be invented')
 
     def test_desktop_launchers_reference_appinstall_icon(self):
-        for desktop in ('appinstall.desktop', 'appinstall-appimage-review.desktop'):
+        for desktop in ('io.github.aboodmohd.AppInstall.desktop', 'io.github.aboodmohd.AppInstall.AppImageReview.desktop'):
             with self.subTest(desktop=desktop):
                 text = (ROOT / desktop).read_text(encoding='utf-8')
-                self.assertIn('Icon=appinstall', text,
-                              f'{desktop}: missing Icon=appinstall')
+                self.assertIn('Icon=io.github.aboodmohd.AppInstall', text,
+                              f'{desktop}: missing Icon=io.github.aboodmohd.AppInstall')
                 self.assertNotIn('Icon=package-x-generic', text,
                                  f'{desktop}: still uses generic third-party icon')
 
@@ -87,10 +87,10 @@ class AppIconTests(unittest.TestCase):
                 self.assertTrue(source_path(size).is_file(),
                                 f'PKGBUILD source missing on disk: {src}')
         # package() installs every size to the hicolor theme via a size loop,
-        # keeping the installed name appinstall.png in each size directory.
+        # keeping the installed name io.github.aboodmohd.AppInstall.png in each size directory.
         self.assertIn('for size in 16 24 32 48 64 128 256 512; do', script,
                       'package() missing icon install size loop')
-        self.assertIn('${size}x${size}/apps/appinstall.png', script,
+        self.assertIn('${size}x${size}/apps/io.github.aboodmohd.AppInstall.png', script,
                       'package() missing hicolor installed destination pattern')
         self.assertIn('$srcdir/appinstall-${size}.png', script,
                       'package() missing flat icon source reference')

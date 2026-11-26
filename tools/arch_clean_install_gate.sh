@@ -19,7 +19,7 @@ fi
 package=$1
 expected=$2
 [[ -f "$package" ]] || { echo "Built package missing" >&2; exit 2; }
-if pacman -Qq appinstall >/dev/null 2>&1; then
+if pacman -Qq abood-appinstall >/dev/null 2>&1; then
   echo "Refusing: AppInstall should not be installed before the clean-install gate" >&2
   exit 2
 fi
@@ -75,32 +75,62 @@ verify_user_data() {
 
 # Package path must be owned by pacman. Source registration must not run.
 pacman -U --noconfirm "$package"
-pacman -Qq appinstall >/dev/null
-[[ "$(appinstall --version)" == "appinstall $expected" ]]
-[[ -f /usr/share/applications/appinstall.desktop ]]
-[[ -f /usr/share/licenses/appinstall/LICENSE ]]
-cmp -s LICENSE /usr/share/licenses/appinstall/LICENSE
-[[ -f /usr/bin/manager.py && -f /usr/bin/manager_qml.py && -f /usr/bin/diagnostics_ui.py ]]
-[[ ! -e "$data/applications/appinstall.desktop" ]]
-[[ ! -e "$home/.local/bin/appinstall" ]]
+pacman -Qq abood-appinstall >/dev/null
+[[ "$(abood-appinstall --version)" == "appinstall $expected" ]]
+[[ -f /usr/share/applications/io.github.aboodmohd.AppInstall.desktop ]]
+[[ -f /usr/share/licenses/abood-appinstall/LICENSE ]]
+cmp -s LICENSE /usr/share/licenses/abood-appinstall/LICENSE
+for module in manager.py manager_qml.py diagnostics_ui.py; do
+  [[ -f "/usr/lib/abood-appinstall/$module" ]]
+done
+[[ ! -e "$data/applications/io.github.aboodmohd.AppInstall.desktop" ]]
+[[ ! -e "$home/.local/bin/abood-appinstall" ]]
 [[ ! -e "$data/appinstall/associations.json" ]]
 runuser -u "$username" -- env \
   HOME="$home" XDG_CONFIG_HOME="$config" XDG_DATA_HOME="$data" \
-  QT_QPA_PLATFORM=offscreen appinstall --version | grep -Fx "appinstall $expected"
+  QT_QPA_PLATFORM=offscreen abood-appinstall --version | grep -Fx "appinstall $expected"
 runuser -u "$username" -- env \
   HOME="$home" XDG_CONFIG_HOME="$config" XDG_DATA_HOME="$data" \
-  QT_QPA_PLATFORM=offscreen appinstall --list >/dev/null
+  QT_QPA_PLATFORM=offscreen abood-appinstall --list >/dev/null
 verify_user_data
 echo "PASS: clean package installation left user defaults and data unchanged"
 
 # Remove the system package, not the user source registration or applications.
-pacman -R --noconfirm appinstall
-if pacman -Qq appinstall >/dev/null 2>&1; then
+pacman -R --noconfirm abood-appinstall
+if pacman -Qq abood-appinstall >/dev/null 2>&1; then
   echo "Pacman still reports AppInstall installed after removal" >&2
   exit 1
 fi
-[[ ! -e /usr/bin/appinstall ]]
-[[ ! -e /usr/share/applications/appinstall.desktop ]]
-[[ ! -e /usr/share/licenses/appinstall/LICENSE ]]
+[[ ! -e /usr/bin/abood-appinstall ]]
+[[ ! -e /usr/share/applications/io.github.aboodmohd.AppInstall.desktop ]]
+[[ ! -e /usr/share/licenses/abood-appinstall/LICENSE ]]
 verify_user_data
 echo "PASS: package uninstall left MIME defaults, managed records and user files unchanged"
+
+# Model the AUR package's actual identity and launcher ownership without
+# downloading or executing third-party code.
+! pacman -Qq appinstall
+fixture=$(mktemp -d)
+trap 'rm -rf -- "$fixture"' EXIT
+mkdir -p "$fixture/usr/bin"
+cat >"$fixture/.PKGINFO" <<'EOF'
+pkgname = appinstall
+pkgver = 2.0.8-1
+pkgdesc = Unrelated AppInstaller collision fixture
+url = https://github.com/LukasYTTT/appinstaller
+arch = any
+EOF
+printf 'unrelated launcher fixture\n' >"$fixture/usr/bin/appinstall"
+foreign="$fixture/appinstall-2.0.8-1-any.pkg.tar.zst"
+bsdtar -caf "$foreign" -C "$fixture" .PKGINFO usr
+pacman -U --noconfirm "$foreign"
+pacman -U --noconfirm "$package"
+[[ "$(pacman -Q appinstall)" == 'appinstall 2.0.8-1' ]]
+[[ "$(pacman -Qoq /usr/bin/appinstall)" == appinstall ]]
+[[ "$(pacman -Qoq /usr/bin/abood-appinstall)" == abood-appinstall ]]
+[[ "$(bash -c 'source ./install.sh; installed_version arch')" == "$expected-1" ]]
+pacman -R --noconfirm abood-appinstall
+[[ "$(pacman -Q appinstall)" == 'appinstall 2.0.8-1' ]]
+[[ -z "$(bash -c 'source ./install.sh; installed_version arch')" ]]
+verify_user_data
+echo "PASS: legacy name collision did not affect install, version detection or removal"

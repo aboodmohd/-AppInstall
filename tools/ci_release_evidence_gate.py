@@ -35,7 +35,7 @@ REPORT_ROW = re.compile(r"^- \*\*(.+?)\*\*: captured (\d+) bytes(?:\s.*)?$")
 # The eight official AppInstall application icons are the ONLY PNG files
 # permitted as PKGBUILD sources or inside the installable package. Sources use
 # distinct, makepkg-compatible basenames; installed destinations keep the
-# freedesktop hicolor name appinstall.png in each size directory. Any other PNG
+# freedesktop hicolor name io.github.aboodmohd.AppInstall.png in each size directory. Any other PNG
 # (evidence/phase4 screenshots, unrelated images) is strictly rejected.
 APP_INSTALL_ICON_SOURCES = {
     'appinstall-16.png': 16,
@@ -49,7 +49,7 @@ APP_INSTALL_ICON_SOURCES = {
 }
 APP_INSTALL_ICON_SIZES = (16, 24, 32, 48, 64, 128, 256, 512)
 APP_INSTALL_ICON_INSTALLED = {
-    f"usr/share/icons/hicolor/{size}x{size}/apps/appinstall.png": size
+    f"usr/share/icons/hicolor/{size}x{size}/apps/io.github.aboodmohd.AppInstall.png": size
     for size in APP_INSTALL_ICON_SIZES
 }
 
@@ -144,7 +144,7 @@ def verify_package(package):
                          ", ".join(sorted(unexpected_png)))
     if set(packaged_png) != set(APP_INSTALL_ICON_INSTALLED):
         raise ValueError("Packaged AppInstall icon inventory incomplete or unexpected")
-    license_path = "usr/share/licenses/appinstall/LICENSE"
+    license_path = "usr/share/licenses/abood-appinstall/LICENSE"
     if license_path not in normalized:
         raise ValueError("Installable package is missing its MIT license copy")
     license_data = subprocess.run(

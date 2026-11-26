@@ -185,21 +185,21 @@ def register_isolated_appimage_mime(isolated, env):
 def configure_handler(isolated, env):
     desktopdir = isolated / "data/applications"
     desktopdir.mkdir(parents=True)
-    desktop = ROOT.joinpath("appinstall.desktop").read_text()
+    desktop = ROOT.joinpath("io.github.aboodmohd.AppInstall.desktop").read_text()
     original = "Exec=appinstall %F"
     if desktop.count(original) != 1:
         raise RuntimeError("AppInstall desktop Exec entry changed unexpectedly")
     replacement = f'Exec=/usr/bin/bash "{INSTALLER}" %F'
-    (desktopdir / "appinstall.desktop").write_text(
+    (desktopdir / "io.github.aboodmohd.AppInstall.desktop").write_text(
         desktop.replace(original, replacement)
     )
     # Use only an isolated, temporary XDG config, never runner user defaults.
     config = isolated / "config"
     config.mkdir()
     for mime in MIMES:
-        run(["xdg-mime", "default", "appinstall.desktop", mime], env)
+        run(["xdg-mime", "default", "io.github.aboodmohd.AppInstall.desktop", mime], env)
         actual = run(["xdg-mime", "query", "default", mime], env).stdout.strip()
-        if actual != "appinstall.desktop":
+        if actual != "io.github.aboodmohd.AppInstall.desktop":
             raise RuntimeError(f"MIME default for {mime}: {actual!r}")
     print("PASS: isolated KDE MIME defaults point to AppInstall", flush=True)
     for command in ("kbuildsycoca5", "kbuildsycoca6"):

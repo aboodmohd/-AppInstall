@@ -9,5 +9,5 @@ X-AppInstall-Managed=true
 
 [Desktop Action ReviewWithAppInstall]
 Name=Review with AppInstall…
-Icon=appinstall
+Icon=io.github.aboodmohd.AppInstall
 Exec=appinstall %f
