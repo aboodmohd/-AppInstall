@@ -71,6 +71,17 @@ class ContainerTests(unittest.TestCase):
         c.validate_apt_sources('# http://snapshot.debian.org/archive/example\nURIs: http://deb.debian.org/debian')
         with self.assertRaises(RuntimeError):
             c.validate_apt_sources('URIs: https://untrusted.example/repo')
+
+    def test_apt_transaction_ignores_vendor_source_fragments(self):
+        engine = self.engine()
+        info = self.inspect(deb())
+        with patch.object(engine, 'ensure'), patch.object(engine, 'enter') as enter:
+            enter.side_effect = [b'URIs: https://deb.debian.org/debian\n', b'', b'preview']
+            self.assertEqual(engine.transaction(info), 'preview')
+            for call in enter.call_args_list[1:]:
+                args = call.args[1]
+                self.assertIn('Dir::Etc::sourceparts=-', args)
+                self.assertIn('DPkg::Lock::Timeout=30', args)
     def test_theme_icon_metadata(self):
         info=self.inspect(deb(files={'./usr/share/applications/example.desktop':b'[Desktop Entry]\nName=Example\nIcon=accessories-character-map\n'}))
         self.assertEqual(info['icon_name'],'accessories-character-map')
@@ -108,6 +119,8 @@ class ContainerTests(unittest.TestCase):
     def test_install_and_duplicate(self):
         engine=self.engine(); info=self.inspect(deb())
         def enter(info,args):
+            if args[0]=='cat' and args[1].endswith('debian.sources'):
+                return b'URIs: https://deb.debian.org/debian\n'
             if args[0]=='dpkg-query': return b'/usr/share/applications/example.desktop\n'
             return b''
         with patch.object(engine,'enter',side_effect=enter),patch.object(engine,'export',return_value=[{'path':'example.desktop','sha256':'hash'}]):

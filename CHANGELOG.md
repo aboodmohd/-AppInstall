@@ -1,5 +1,9 @@
 # AppInstall Changelog
 
+## 1.9.2 — Reliability maintenance (candidate)
+
+- Repair local DEB repository handling, launcher lifecycle, AppImage staging and identity, and URL diagnostics. See [the audit](docs/V1_9_2_RELIABILITY_AUDIT.md).
+
 ## 1.9.1 — Package identity maintenance
 
 - Fix the collision where Yay offered unrelated AUR `appinstall` 2.0.8-1 as an upgrade to official AppInstall 1.9.0-1.

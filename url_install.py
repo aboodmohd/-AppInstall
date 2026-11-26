@@ -38,6 +38,7 @@ untrusted source as the download is never automatically trusted.
 
 from __future__ import annotations
 
+import errno
 import functools
 import hashlib
 import ipaddress
@@ -51,7 +52,7 @@ import sys
 import tempfile
 import threading
 import time
-from http.client import HTTPSConnection
+from http.client import HTTPException, HTTPSConnection
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -88,6 +89,27 @@ class DownloadSizeExceeded(DownloadError):
 
 class ChecksumMismatch(DownloadError):
     """The computed SHA-256 did not match the caller-supplied expected digest."""
+
+
+def installation_failure(result):
+    """Keep bounded, redacted backend output and show the log location."""
+    from launch_monitor import SafeLog, private_values, state_root
+    message = f'Installation backend failed (exit code {result.returncode}).'
+    try:
+        directory = state_root() / 'url-install'
+        directory.mkdir(mode=0o700, parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(dir=directory, prefix='failure-', suffix='.log',
+                                         delete=False) as handle:
+            path = Path(handle.name)
+        log = SafeLog(path, private_values())
+        log.add(message)
+        output = (result.stderr or '')[-65536:] + '\n' + (result.stdout or '')[-65536:]
+        log.add(re.sub(r"""https?://[^\s<>"']+""", '<redacted URL>', output,
+                       flags=re.IGNORECASE))
+        log.flush()
+        return message + f' See {path} for details.'
+    except OSError:
+        return message + ' The diagnostic log could not be written.'
 
 
 class DownloadResult:
@@ -391,18 +413,17 @@ def download_url(url, expected_checksum=None, max_size=MAX_DOWNLOAD_SIZE,
     try:
         response = opener.open(request, timeout=CONNECT_TIMEOUT)
     except HTTPError as error:
-        raise DownloadError("HTTP " + str(error.code) + " " + error.reason +
-                            " for " + parsed.hostname)
+        raise DownloadError(f"HTTP {error.code} for {parsed.hostname}. Check the download link or access permissions.") from None
     except DownloadError:
         raise
     except URLError as error:
         reason = getattr(error, "reason", error)
         if isinstance(reason, ssl.SSLError):
             raise DownloadError("TLS certificate verification failed for " +
-                                parsed.hostname + ": " + str(reason))
-        raise DownloadError("Could not connect to " + parsed.hostname + ": " + str(reason))
-    except Exception as error:  # noqa: BLE001 - network failures are fatal here
-        raise DownloadError("Could not connect to " + parsed.hostname + ": " + str(error))
+                                parsed.hostname + ". Check the certificate or network.") from error
+        raise DownloadError("Could not connect to " + parsed.hostname + ". Check your connection and retry.") from error
+    except (OSError, HTTPException) as error:
+        raise DownloadError("Could not connect to " + parsed.hostname + ". Check your connection and retry.") from error
 
     # Everything after the connection is cleanup-protected: any failure (web
     # page instead of a package, unsupported format, rename error, checksum
@@ -430,7 +451,10 @@ def download_url(url, expected_checksum=None, max_size=MAX_DOWNLOAD_SIZE,
             while True:
                 if cancel is not None and cancel.is_set():
                     raise DownloadCancelled()
-                chunk = response.read(CHUNK)
+                try:
+                    chunk = response.read(CHUNK)
+                except (HTTPException, OSError) as error:
+                    raise DownloadError(f"Download interrupted while reading from {parsed.hostname}. Retry the download.") from error
                 if not chunk:
                     break
                 downloaded += len(chunk)
@@ -449,6 +473,8 @@ def download_url(url, expected_checksum=None, max_size=MAX_DOWNLOAD_SIZE,
                         "percent": percent,
                         "bytes_per_second": downloaded / elapsed,
                     })
+        if total_size is not None and downloaded != total_size:
+            raise DownloadError(f"Incomplete download: received {downloaded} of {total_size} bytes. Retry the download.")
         digest = sha.hexdigest()
 
         detected = detect_format(target, url_hint=url)
@@ -466,6 +492,11 @@ def download_url(url, expected_checksum=None, max_size=MAX_DOWNLOAD_SIZE,
         return DownloadResult(target, final_name, downloaded, digest, content_type,
                               detected, final_url,
                               checksum_verified=(True if expected_checksum is not None else None))
+    except OSError as error:
+        _remove_tree(temp_dir)
+        if error.errno in (errno.ENOSPC, errno.EDQUOT):
+            raise DownloadError("Not enough temporary storage to download the package. Free disk space or change TMPDIR.") from error
+        raise DownloadError(f"Could not store the download: {error.strerror or 'filesystem error'}. Check temporary-directory permissions.") from error
     except BaseException:
         _remove_tree(temp_dir)
         raise
@@ -718,8 +749,7 @@ def run_cli(argv):
     if rc.returncode == 0:
         print("Installation completed successfully.")
         return 0
-    print("Installation finished with an error (exit code " + str(rc.returncode) + ").",
-          file=sys.stderr)
+    print(installation_failure(rc), file=sys.stderr)
     return rc.returncode
 
 
@@ -728,9 +758,11 @@ def _locate_sibling(name):
     candidate = here / name
     if candidate.is_file():
         return candidate
-    deployed = Path("/usr/bin") / name
-    if deployed.is_file():
-        return deployed
+    from launch_monitor import data_root
+    if name == 'appinstall' and here == data_root().resolve():
+        portable = Path.home() / '.local/bin/abood-appinstall'
+        if portable.is_file() and not portable.is_symlink():
+            return portable
     return None
 
 
@@ -743,4 +775,3 @@ def main(argv=None):
 
 if __name__ == "__main__":
     main()
-

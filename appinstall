@@ -10,7 +10,7 @@
 set -u
 IFS=$'\n\t'
 
-VERSION="1.9.1"
+VERSION="1.9.2"
 INSTALL_DIR="${APPINSTALL_APPIMAGES:-$HOME/Applications}"
 APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/pixmaps"
@@ -200,16 +200,6 @@ refresh_flatpak_menu() {
     # Expose Flatpak's maintained launcher even in sessions missing its export path.
     if [ ! -e "$APPS_DIR/$appid.desktop" ] && [ ! -L "$APPS_DIR/$appid.desktop" ]; then
       ln -s -- "$entry" "$APPS_DIR/$appid.desktop"
-    fi
-  fi
-  # Some packages advertise activation without exporting an activation service.
-  if [ -f "$entry" ] && grep -q '^DBusActivatable=true' "$entry" &&
-     [ ! -f "$exports/dbus-1/services/$appid.service" ]; then
-    if [ -L "$APPS_DIR/$appid.desktop" ] && [ "$(readlink -- "$APPS_DIR/$appid.desktop")" = "$entry" ]; then
-      local fixed
-      fixed=$(mktemp "$APPS_DIR/.appinstall-desktop.XXXXXX") || return 1
-      sed 's/^DBusActivatable=true/DBusActivatable=false/' "$entry" > "$fixed"
-      mv -f -- "$fixed" "$APPS_DIR/$appid.desktop"
     fi
   fi
   local icon dest size
@@ -402,13 +392,24 @@ do_list() {
 
 do_remove() { # names...
   local name slug f b target removed=0
+  local -a matches
   for name in "$@"; do
     slug=$(slugify "$name")
+    matches=()
     for f in "$APPS_DIR"/*.desktop; do
       [ -f "$f" ] || continue
       [ -n "$(desktop_key "$f" X-AppInstall-Exec)" ] || continue
       b=$(basename -- "$f" .desktop); b=${b#appinstall-}
-      if [ "$b" = "$slug" ] || [ "$(desktop_key "$f" Name)" = "$name" ]; then
+      if [ "$b" = "$slug" ] || [ "${f##*/}" = "$name" ] || [ "$(desktop_key "$f" Name)" = "$name" ]; then
+        matches+=("$f")
+      fi
+    done
+    if [ "${#matches[@]}" -gt 1 ]; then
+      printf 'Multiple managed apps match %s. Use an exact launcher ID:\n' "$name" >&2
+      printf '  %s\n' "${matches[@]##*/}" >&2
+      return 1
+    fi
+    for f in "${matches[@]}"; do
         local manifest generation
         manifest=$(desktop_key "$f" X-AppInstall-Manifest)
         if [ -n "$manifest" ]; then
@@ -439,7 +440,6 @@ REMOVE
         echo "Removed: $name"
         removed=1
         break
-      fi
     done
   done
   [ "$removed" = 1 ] || { echo "No AppInstall-managed app matches: $*" >&2; return 1; }

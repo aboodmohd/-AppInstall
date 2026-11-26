@@ -64,7 +64,7 @@ SUPPORTED_IDS="arch cachyos fedora"
 # Optional backends offered after core installation (pacman package names).
 OPTIONAL_PKGS=(flatpak podman distrobox squashfs-tools fuse2 kdialog zenity libnotify)
 
-INSTALLER_VERSION="1.9.1"
+INSTALLER_VERSION="1.9.2"
 
 # ---------------------------------------------------------------------------
 # Flags / state. Defaults respect pre-existing environment values so the test
@@ -839,6 +839,8 @@ uninstall_flow() {
   if [[ -z "$(installed_version "$family")" ]]; then
     info "AppInstall does not appear to be installed through the native package manager; nothing to remove."
   else
+    python3 /usr/lib/abood-appinstall/launch_monitor.py --detach-launchers ||
+      die 5 "Could not detach managed launchers safely. AppInstall was not removed."
     if [[ "$family" == fedora ]]; then
       local dnf_flags=()
       [[ $ASSUME_YES -eq 1 ]] && dnf_flags+=(-y)

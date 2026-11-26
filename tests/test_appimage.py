@@ -34,6 +34,47 @@ def fixture_appimage():
 
 
 class AppImageTests(unittest.TestCase):
+    def test_same_visible_name_preserves_each_payload(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            env = {'XDG_DATA_HOME': str(root/'data'), 'XDG_STATE_HOME': str(root/'state')}
+            with patch.dict(os.environ, env), patch.object(
+                    backend, 'preview_contents', side_effect=backend.PreviewUnavailable('fixture')):
+                installed = []
+                for contents in (b'publisher A, version 1', b'publisher A, version 2',
+                                 b'publisher B, version 1'):
+                    source = root/'Same Name.AppImage'
+                    source.write_bytes(contents)
+                    entry = backend.install(source, root/'Applications')
+                    manifest = Path(backend.desktop(entry)['X-AppInstall-Manifest'])
+                    target = Path(json.loads(manifest.read_text())['target'])
+                    installed.append((entry, target, contents))
+                self.assertEqual(len({entry for entry, _, _ in installed}), 3)
+                for entry, target, contents in installed:
+                    self.assertTrue(entry.is_file())
+                    self.assertEqual(target.read_bytes(), contents)
+
+    def test_preview_timeout_does_not_block_normal_install(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root/'large.AppImage'
+            source.write_bytes(fixture_appimage())
+            with patch.dict(os.environ, XDG_DATA_HOME=str(root/'data'), XDG_STATE_HOME=str(root/'state')), \
+                 patch.object(backend, 'preview_contents',
+                              side_effect=subprocess.TimeoutExpired('unsquashfs', 180)):
+                self.assertTrue(backend.install(source, root/'Applications').is_file())
+
+    def test_full_destination_fails_before_staging(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root/'large.AppImage'
+            source.write_bytes(fixture_appimage())
+            dest = root/'Applications'
+            with patch.dict(os.environ, XDG_DATA_HOME=str(root/'data'), XDG_STATE_HOME=str(root/'state')), \
+                 patch.object(backend.shutil, 'disk_usage', return_value=type('Disk', (), {'free': 0})()):
+                with self.assertRaisesRegex(OSError, 'Not enough free space'):
+                    backend.install(source, dest)
+            self.assertFalse(list(dest.iterdir()))
 
     def test_squashfs_offset_skips_false_magic_in_runtime(self):
         """Mizuki/AnymeX runtimes: false magic at 194183; actual header at 944632."""
@@ -69,7 +110,7 @@ class AppImageTests(unittest.TestCase):
             self.assertIsNone(backend.squashfs_offset(path))
 
 
-    def test_install_replace_and_failure(self):
+    def test_install_coexistence_and_failure(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             source = root/'download.AppImage'
@@ -102,20 +143,13 @@ class AppImageTests(unittest.TestCase):
                 self.assertEqual(themed_icon.read_bytes(),
                                  b'existing user-owned themed icon')
                 self.assertTrue(source.exists())
-                self.assertEqual(entry.name, 'app.desktop')
-                # Simulate the app rewriting its own desktop entry on launch.
-                entry.write_text('[Desktop Entry]\nType=Application\nName=Example App\nTryExec='+info['target']+'\nExec='+info['target']+'\nIcon=icon\n')
-                # A legacy AppInstall entry must be retired at the next install.
-                legacy = entry.parent/'appinstall-legacy.desktop'
-                legacy.write_text('[Desktop Entry]\nType=Application\nName=Example App\n')
+                self.assertTrue(entry.name.startswith('appinstall-'))
                 first = Path(info['generation'])
                 result = backend.install(source,destination,True)
-                self.assertFalse(first.exists())
-                self.assertIsInstance(result, Path)
-                self.assertEqual(result, entry)
-                self.assertEqual(len(list((root/'data/applications').glob('*.desktop'))),1)
-                self.assertIsNotNone(result)
-                self.assertTrue(entry.is_file())
+                self.assertTrue(first.exists())
+                self.assertNotEqual(result, entry)
+                self.assertEqual(len(list(entry.parent.glob('*.desktop'))), 2)
+                entry = result
                 manifest = Path(backend.desktop(entry)['X-AppInstall-Manifest'])
                 self.assertTrue(manifest.is_file())
                 current = json.loads(manifest.read_text())
@@ -127,7 +161,7 @@ class AppImageTests(unittest.TestCase):
                 # old manifest, launcher and payload must survive together.
                 real_replace = Path.replace
                 def fail_launcher(path, target):
-                    if path == entry.with_suffix('.new'):
+                    if path.parent == entry.parent and path.suffix == '.new':
                         raise OSError(errno.ENOSPC, 'simulated full filesystem')
                     return real_replace(path, target)
                 with patch.object(Path, 'replace', fail_launcher):
@@ -236,7 +270,7 @@ exit "$result"
             self.assertTrue(Path(json.loads(manifest.read_text())['target']).is_file())
             self.assertIn('Installed Example App', (root / 'notice').read_text())
 
-    def test_retires_legacy_shortcut_but_never_deletes_legacy_appimage(self):
+    def test_preserves_unrelated_launcher_and_appimage(self):
         """Existing AppImageLauncher payload belongs to the user, not AppInstall."""
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -269,10 +303,10 @@ exit "$result"
                               lambda name: '/usr/bin/unsquashfs' if name == 'unsquashfs' else None), \
                  patch.object(backend.subprocess, 'run', side_effect=extract):
                 backend.install(source, destination)
-            self.assertFalse(legacy.exists())
+            self.assertTrue(legacy.exists())
             self.assertEqual(old_payload.read_bytes(), b'important previous version')
             backup = root/'data/appinstall/launcher-backups'/legacy.name
-            self.assertTrue(backup.exists())
+            self.assertFalse(backup.exists())
 
     def test_categories_and_identity(self):
         self.assertEqual(backend.categories('Development;IDE;'), 'Development;IDE;')

@@ -9,9 +9,9 @@ if [[ "$GITHUB_ACTIONS" != true || "$CI" != true ||
 fi
 case "$FAMILY" in arch|debian|fedora) ;; *) exit 2 ;; esac
 root="$PWD"
-test "$(sed -n 's/^pkgver=//p' PKGBUILD)" = 1.9.1
+test "$(sed -n 's/^pkgver=//p' PKGBUILD)" = 1.9.2
 test "$(sed -n 's/^pkgrel=//p' PKGBUILD)" = 1
-grep -Fx 'VERSION="1.9.1"' appinstall >/dev/null
+grep -Fx 'VERSION="1.9.2"' appinstall >/dev/null
 work="$(mktemp -d)"
 trap 'rm -rf -- "$work"' EXIT
 mkdir -p "$work"/{old,new}
@@ -19,14 +19,14 @@ mkdir -p "$work"/{old,new}
 case "$FAMILY" in
 arch)
  old=appinstall-1.9.0-1-any.pkg.tar.zst
- new=abood-appinstall-1.9.1-1-any.pkg.tar.zst
+ new=abood-appinstall-1.9.2-1-any.pkg.tar.zst
  pkgmeta() { test "$(pacman -Q appinstall)" = "appinstall $1"; }
  native_install() { pacman -U --noconfirm "$1"; }
  remove_new() { pacman -R --noconfirm abood-appinstall; }
  ;;
 debian)
  old=appinstall_1.9.0-1_all.deb
- new=abood-appinstall_1.9.1-1_all.deb
+ new=abood-appinstall_1.9.2-1_all.deb
  pkgmeta() {
    fmt="$(printf '$%s' '{Version}')"
    test "$(dpkg-query -W -f="$fmt" appinstall)" = "$1"
@@ -36,7 +36,7 @@ debian)
  ;;
 fedora)
  old=appinstall-1.9.0-1.noarch.rpm
- new=abood-appinstall-1.9.1-1.noarch.rpm
+ new=abood-appinstall-1.9.2-1.noarch.rpm
  pkgmeta() { test "$(rpm -q --qf '%{VERSION}-%{RELEASE}' appinstall)" = "$1"; }
  native_install() { dnf -y install "$1"; }
  remove_new() { dnf -y remove --no-autoremove abood-appinstall; }
@@ -130,8 +130,8 @@ check_data
 
 native_install "$work/new/$new"
 pkgmeta 1.9.0-1
-test "$(abood-appinstall --version)" = 'appinstall 1.9.1'
-test "$(bash -c 'source ./install.sh; installed_version "$1"' _ "$FAMILY")" = 1.9.1-1
+test "$(abood-appinstall --version)" = 'appinstall 1.9.2'
+test "$(bash -c 'source ./install.sh; installed_version "$1"' _ "$FAMILY")" = 1.9.2-1
 test -f "$installed_helper"
 test -f "$smoke"
 check_data
@@ -140,7 +140,7 @@ runuser -u appinstall-acceptance -- env HOME="$user_home" \
  XDG_CONFIG_HOME="$user_home/.config" \
  QT_QPA_PLATFORM=offscreen APPINSTALL_DISABLE_UPDATE_TIMER=1 \
  python3 "$smoke" --smoke
-echo "PASS: v1.9.0 legacy -> v1.9.1 $FAMILY identity migration preserved both packages"
+echo "PASS: v1.9.0 legacy -> v1.9.2 $FAMILY identity migration preserved both packages"
 
 remove_new
 pkgmeta 1.9.0-1
@@ -148,4 +148,4 @@ test "$(appinstall --version)" = 'appinstall 1.9.0'
 test ! -e "$installed_helper"
 check_data
 grep -Fx 'text/plain=preserved-editor.desktop;' "$mime_file"
-echo "PASS: v1.9.1 -> v1.9.0 $FAMILY migration rollback with preserved settings and MIME"
+echo "PASS: v1.9.2 -> v1.9.0 $FAMILY migration rollback with preserved settings and MIME"

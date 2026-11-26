@@ -120,6 +120,10 @@ with SourceTransaction(state, destinations) as transaction:
     changes = {}
 
     if uninstalling:
+        import launch_monitor
+        detached = launch_monitor.restore_launchers(preserve_records=True)
+        if detached['skipped_modified']:
+            raise SystemExit('Some managed launchers were edited; review them before uninstalling.')
         for mime, previous in old.items():
             if defaults.get(mime) == 'io.github.aboodmohd.AppInstall.desktop;':
                 if previous is None:
@@ -213,7 +217,7 @@ if not uninstalling:
     for entry in apps.glob('*.desktop'):
         try:
             meta = launch_monitor.desktop_values(entry.read_text())
-            if meta.get('X-Flatpak') and not meta.get('X-AppInstall-LaunchID'):
+            if meta.get('X-Flatpak'):
                 launch_monitor.adopt_flatpak(meta['X-Flatpak'])
         except (OSError, ValueError, RuntimeError, configparser.Error):
             pass

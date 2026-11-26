@@ -1,3 +1,23 @@
+# AppInstall v1.9.2 — Reliability maintenance candidate
+
+Unpublished. See [the reliability audit](docs/V1_9_2_RELIABILITY_AUDIT.md) for findings and remaining checks.
+
+- Isolate local DEB package transactions from vendor-added APT source fragments without disabling them globally or clearing package locks.
+- Preserve AppImage, Flatpak and container launch commands when using the supported uninstallers.
+- Keep native Flatpak export symlinks live instead of replacing them with cached copies.
+- Install AppImages using a single staged copy and independent identities; same-name images coexist.
+- Improve URL download and backend errors with redacted diagnostic output.
+- Retain the AppInstall product name, `abood-appinstall` identity, and the existing Premium UI.
+
+## Candidate artifacts
+
+- `abood-appinstall-1.9.2-1-any.pkg.tar.zst`
+- `abood-appinstall_1.9.2-1_all.deb`
+- `abood-appinstall-1.9.2-1.noarch.rpm`
+- `appinstall-1.9.2-portable.tar.gz`
+
+## Previous release notes
+
 # AppInstall v1.9.1 — Package identity maintenance
 
 On CachyOS, Yay offered unrelated AUR `appinstall` 2.0.8-1 as an upgrade to official AppInstall 1.9.0-1 because both used the same package name. v1.9.1 gives AppInstall its own package identity without replacing or removing unrelated packages.

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Transactional AppImage integration and menu launch support."""
 import configparser
-import hashlib
+import errno
 import json
 import os
 import re
@@ -12,6 +12,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 
 
@@ -185,163 +186,105 @@ def install(source, destination, fallback=False):
     destination.mkdir(parents=True, exist_ok=True)
     apps.mkdir(parents=True, exist_ok=True)
     state.mkdir(parents=True, exist_ok=True)
-    # Extraction runs only after the caller's trust confirmation.
-    with tempfile.TemporaryDirectory(prefix='appinstall-') as scratch:
-        scratch = Path(scratch)
-        executable = scratch/'application.AppImage'
-        shutil.copyfile(source, executable)
-        executable.chmod(0o755)
+    if source.stat().st_size > shutil.disk_usage(destination).free:
+        raise OSError(errno.ENOSPC, 'Not enough free space for the AppImage', str(destination))
+    # Stage one copy on the destination filesystem, not a second full copy in /tmp.
+    generation = Path(tempfile.mkdtemp(prefix='.appinstall-', dir=destination))
+    ident = uuid.uuid4().hex
+    entry = apps/f'appinstall-{ident}.desktop'
+    manifest = state/f'{ident}.json'
+    try:
+        target = generation/source.name
+        shutil.copyfile(source, target)
+        target.chmod(0o755)
+        scratch = generation/'.preview'
+        scratch.mkdir()
         if fallback and not shutil.which('unsquashfs'):
-            raise RuntimeError('Extracted launches require unsquashfs (squashfs-tools). '
-                               'Install squashfs-tools, or launch the image with FUSE2 (fuse2 package).')
+            raise RuntimeError('Extracted launches require unsquashfs (squashfs-tools).')
         try:
-            root = preview_contents(executable, scratch)
-            hint = ''
-        except (PreviewUnavailable, RuntimeError) as limitation:
-            # The image is never executed for preview; stage it with generic
-            # identity so the launcher still works normally at run time.
+            root = preview_contents(target, scratch)
+        except (RuntimeError, subprocess.TimeoutExpired) as limitation:
             root = None
-            hint = 'Detailed preview unavailable: '+str(limitation)
-            print(hint, file=sys.stderr)
+            print('Detailed preview unavailable: '+str(limitation), file=sys.stderr)
         entries = safe_desktop_files(root) if root else []
         original = next((p for p in entries if desktop(p).get('Type') == 'Application'), None)
         meta = desktop(original) if original else {}
         name = app_name(desktop_text(meta.get('Name', source.stem)))
-        ident = hashlib.sha256(name.encode()).hexdigest()[:16]
-        entry = apps/f'appinstall-{ident}.desktop'
-        # Reuse the application's desktop ID: self-registration then updates the
-        # same menu item instead of creating a second launcher.
-        if original:
-            candidate = apps/original.name
-            use_candidate = not candidate.exists()
-            if candidate.exists():
-                try:
-                    existing = desktop(candidate)
-                    target_hint = existing.get('TryExec', existing.get('X-AppInstall-Exec', ''))
-                    if not target_hint:
-                        command = shlex.split(existing.get('Exec', ''))
-                        target_hint = command[0] if command else ''
-                    hint = Path(target_hint)
-                    use_candidate = (app_name(existing.get('Name', '')) == name and
-                                     (existing.get('X-AppInstall-Manifest') or
-                                      hint.is_relative_to(destination)))
-                except (OSError, KeyError, ValueError, configparser.Error):
-                    pass
-            if use_candidate:
-                entry = candidate
-        manifest = state/f'{ident}.json'
-        previous = json.loads(manifest.read_text()) if manifest.exists() else None
-        # Each generation has its own directory. The old version stays usable until commit.
-        generation = Path(tempfile.mkdtemp(prefix='.appinstall-', dir=destination))
-        try:
-            target = generation/source.name
-            shutil.copyfile(source, target)
-            target.chmod(0o755)
-            icon = 'package-x-generic'
-            iconname = meta.get('Icon', '')
-            if root is None:
-                candidates = []
-            elif iconname:
-                candidates = [root/'.DirIcon'] + list(root.rglob(Path(iconname).name + '.*'))
-            else:
-                candidates = [root/'.DirIcon']
-            for candidate in candidates:
-                try:
-                    resolved = candidate.resolve(strict=True)
-                    if not resolved.is_relative_to(root.resolve()) or not resolved.is_file():
-                        continue
-                    suffix = resolved.suffix.lower()
-                    if suffix not in ('.png', '.svg', '.xpm'):
-                        continue
-                    installed_icon = generation/('icon' + suffix)
-                    shutil.copyfile(resolved, installed_icon)
-                    icon = str(installed_icon)
-                    # Self-registering apps often restore Icon=<themed name>.
-                    # Publish the icon there as well as keeping our absolute path.
-                    if re.fullmatch(r'[A-Za-z0-9_.-]+', iconname):
-                        themed = data/'icons/hicolor'/('scalable' if suffix == '.svg' else '256x256')/'apps'
-                        themed.mkdir(parents=True, exist_ok=True)
-                        themed_icon = themed/(iconname+suffix)
-                        # The themed namespace is shared with other apps.
-                        # Never overwrite a pre-existing user icon or follow
-                        # its symlink; our desktop launcher already uses the
-                        # generation-owned absolute icon path.
-                        if not themed_icon.exists() and not themed_icon.is_symlink():
-                            shutil.copyfile(installed_icon, themed_icon)
-                    break
-                except OSError:
+        icon = 'package-x-generic'
+        iconname = meta.get('Icon', '')
+        if root is None:
+            candidates = []
+        elif iconname:
+            candidates = [root/'.DirIcon'] + list(root.rglob(Path(iconname).name + '.*'))
+        else:
+            candidates = [root/'.DirIcon']
+        for candidate in candidates:
+            try:
+                resolved = candidate.resolve(strict=True)
+                if not resolved.is_relative_to(root.resolve()) or not resolved.is_file():
                     continue
-            extracted = ''
-            if fallback:
-                if root is None:
-                    raise RuntimeError('Extracted launches require the image contents; unsquashfs could not read this AppImage.')
-                extracted = str(generation/'appdir')
-                shutil.move(str(root), extracted)
-                if not (Path(extracted)/'AppRun').exists():
-                    raise RuntimeError('Extracted AppImage has no AppRun launcher.')
-            info = dict(target=str(target), desktop_exec=meta.get('Exec','AppRun'), working_directory=meta.get('Path',''), desktop_args=shlex.split(meta.get('Exec','AppRun'))[1:], args=arguments(meta.get('Exec','AppRun')), fallback=extracted, generation=str(generation))
-            helper = Path(__file__).resolve()
-            comment = desktop_text(meta.get('Comment', 'AppImage application' if root else 'AppImage application. Detailed preview unavailable; the image was not executed.'))
-            lines = ['[Desktop Entry]', 'Type=Application', 'Name='+name,
-                     'Comment='+comment,
-                     'Icon='+icon, 'Terminal=false', 'Categories='+categories(meta.get('Categories', '')),
-                     'Exec='+quote(sys.executable)+' '+quote(helper)+' --run '+quote(manifest)+' %U',
-                     'X-AppInstall-Exec='+str(target), 'X-AppInstall-Manifest='+str(manifest)]
-            startup_wm_class = meta.get('StartupWMClass', '')
-            if startup_wm_class:
-                lines.append('StartupWMClass='+desktop_text(startup_wm_class))
-            lines.append('TryExec='+str(target))
-            text = '\n'.join(lines)+'\n'
-            # Only validated, fully staged artifacts are made visible.
-            staged_manifest = manifest.with_suffix('.new')
-            staged_manifest.write_text(json.dumps(info))
-            staged_entry = entry.with_suffix('.new')
-            staged_entry.write_text(text)
-            old_manifest = manifest.read_bytes() if manifest.exists() else None
-            staged_manifest.replace(manifest)
-            try:
-                staged_entry.replace(entry)
-            except Exception:
-                if old_manifest is None:
-                    manifest.unlink(missing_ok=True)
-                else:
-                    manifest.write_bytes(old_manifest)
-                raise
+                suffix = resolved.suffix.lower()
+                if suffix not in ('.png', '.svg', '.xpm'):
+                    continue
+                installed_icon = generation/('icon' + suffix)
+                shutil.copyfile(resolved, installed_icon)
+                icon = str(installed_icon)
+                # Self-registering apps often restore Icon=<themed name>.
+                # Publish the icon there as well as keeping our absolute path.
+                if re.fullmatch(r'[A-Za-z0-9_.-]+', iconname):
+                    themed = data/'icons/hicolor'/('scalable' if suffix == '.svg' else '256x256')/'apps'
+                    themed.mkdir(parents=True, exist_ok=True)
+                    themed_icon = themed/(iconname+suffix)
+                    # The themed namespace is shared with other apps.
+                    # Never overwrite a pre-existing user icon or follow
+                    # its symlink; our desktop launcher already uses the
+                    # generation-owned absolute icon path.
+                    if not themed_icon.exists() and not themed_icon.is_symlink():
+                        shutil.copyfile(installed_icon, themed_icon)
+                break
+            except OSError:
+                continue
+        extracted = ''
+        if fallback:
+            if root is None:
+                raise RuntimeError('Extracted launches require the image contents; unsquashfs could not read this AppImage.')
+            extracted = str(generation/'appdir')
+            shutil.move(str(root), extracted)
+            if not (Path(extracted)/'AppRun').exists():
+                raise RuntimeError('Extracted AppImage has no AppRun launcher.')
+        shutil.rmtree(scratch)
+        info = dict(target=str(target), desktop_exec=meta.get('Exec','AppRun'), working_directory=meta.get('Path',''), desktop_args=shlex.split(meta.get('Exec','AppRun'))[1:], args=arguments(meta.get('Exec','AppRun')), fallback=extracted, generation=str(generation))
+        helper = Path(__file__).resolve()
+        comment = desktop_text(meta.get('Comment', 'AppImage application' if root else 'AppImage application. Detailed preview unavailable; the image was not executed.'))
+        lines = ['[Desktop Entry]', 'Type=Application', 'Name='+name,
+                 'Comment='+comment,
+                 'Icon='+icon, 'Terminal=false', 'Categories='+categories(meta.get('Categories', '')),
+                 'Exec='+quote(sys.executable)+' '+quote(helper)+' --run '+quote(manifest)+' %U',
+                 'X-AppInstall-Exec='+str(target), 'X-AppInstall-Manifest='+str(manifest)]
+        startup_wm_class = meta.get('StartupWMClass', '')
+        if startup_wm_class:
+            lines.append('StartupWMClass='+desktop_text(startup_wm_class))
+        lines.append('TryExec='+str(target))
+        text = '\n'.join(lines)+'\n'
+        # Only validated, fully staged artifacts are made visible.
+        staged_manifest = manifest.with_suffix('.new')
+        staged_manifest.write_text(json.dumps(info))
+        staged_entry = entry.with_suffix('.new')
+        staged_entry.write_text(text)
+        staged_manifest.replace(manifest)
+        try:
+            staged_entry.replace(entry)
         except Exception:
-            shutil.rmtree(generation, ignore_errors=True)
+            manifest.unlink(missing_ok=True)
             raise
-        import launch_monitor
-        launch_monitor.wrap_appimage(entry,manifest)
-        # Remove obsolete AppInstall shortcuts for the same application, not third-party entries.
-        for old in apps.glob('appinstall-*.desktop'):
-            if old != entry:
-                try:
-                    if app_name(desktop(old).get('Name', '')) == name:
-                        old.unlink()
-                except (OSError, KeyError, configparser.Error):
-                    pass
-        # Retire a matching AppImageLauncher entry after our replacement is committed.
-        # Keep both its launcher backup and its payload for recovery.
-        for old in apps.glob('appimagekit_*.desktop'):
-            try:
-                oldmeta = desktop(old)
-                oldname = oldmeta.get('Name', '')
-                oldtarget = Path(oldmeta.get('TryExec', ''))
-                if app_name(oldname) == name and oldtarget.parent == destination:
-                    backup = state/'launcher-backups'
-                    backup.mkdir(exist_ok=True)
-                    shutil.copy2(old, backup/old.name)
-                    old.unlink()
-                    # Never delete another installer's payload. The matching
-                    # AppImageLauncher shortcut is backed up, but its source
-                    # AppImage remains available for manual recovery.
-            except (OSError, KeyError, configparser.Error):
-                pass
-        if previous:
-            old = Path(previous.get('generation',''))
-            if old.parent == destination and old.name.startswith('.appinstall-'):
-                shutil.rmtree(old, ignore_errors=True)
-        return entry
+    except Exception:
+        shutil.rmtree(generation, ignore_errors=True)
+        manifest.with_suffix('.new').unlink(missing_ok=True)
+        entry.with_suffix('.new').unlink(missing_ok=True)
+        raise
+    import launch_monitor
+    launch_monitor.wrap_appimage(entry, manifest)
+    return entry
 
 if __name__ == '__main__':
     try:

@@ -235,13 +235,12 @@ class Engine:
             ownership.write_text(json.dumps(dict(image=info['image'])))
         # Initialize Distrobox without a host root prompt.
         self.enter(info,['true'])
-        if info['kind']=='deb':
-            paths = self.enter(info,['find','/etc/apt','-maxdepth','2','-type','f']).decode().splitlines()
+        if info['kind'] == 'deb' and info.get('install_method') == 'repository':
+            paths = self.enter(info, ['find', '/etc/apt', '-maxdepth', '2', '-type', 'f']).decode().splitlines()
             for path in paths:
-                if path.endswith(('.list','.sources')):
-                    sources = self.enter(info,['cat',path]).decode()
-                    validate_apt_sources(sources)
-        else:
+                if path.endswith(('.list', '.sources')):
+                    validate_apt_sources(self.enter(info, ['cat', path]).decode())
+        elif info['kind'] != 'deb':
             repos = self.enter(info,['dnf','repolist','--enabled']).decode()
             ids = [line.split()[0] for line in repos.splitlines() if line.strip() and not line.lower().startswith(('repo id','updating','repositories'))]
             if any(repo not in ('fedora','updates','fedora-cisco-openh264') for repo in ids):
@@ -250,11 +249,36 @@ class Engine:
     def key(self, info):
         return info['kind']+':'+info['name']
 
+    def apt_sources(self, info):
+        for path in ('/etc/apt/sources.list.d/debian.sources', '/etc/apt/sources.list'):
+            try:
+                source = self.enter(info, ['cat', path]).decode()
+            except RuntimeError:
+                continue
+            if source.strip():
+                validate_apt_sources(source)
+                return ['-o', 'Dir::Etc::sourceparts=-',
+                        '-o', 'Dir::Etc::sourcelist='+path,
+                        '-o', 'DPkg::Lock::Timeout=30']
+        raise RuntimeError('No Debian APT source file found in the container. Restore its Debian repositories before installing.')
+
+    def apt(self, info, options, *args):
+        try:
+            return self.enter(info, ['sudo', 'env', 'DEBIAN_FRONTEND=noninteractive',
+                                     'apt-get', *options, *args])
+        except RuntimeError as error:
+            if 'dpkg was interrupted' in str(error).lower():
+                raise RuntimeError(str(error) + '\nReview and complete dpkg configuration inside '
+                                   + info['container'] + ' before retrying. Do not delete lock files.') from error
+            raise
+
     def transaction(self, info):
         self.ensure(info)
         if info['kind'] == 'deb':
-            self.enter(info,['sudo','apt-get','update'])
-            return self.enter(info,['sudo','apt-get','--simulate','--no-remove','--reinstall','install',info['file']]).decode()
+            options = self.apt_sources(info)
+            self.apt(info, options, 'update')
+            return self.apt(info, options, '--simulate', '--no-remove', '--reinstall',
+                            'install', info['file']).decode()
         previous = self.registry.get(self.key(info),{})
         operation = 'reinstall' if previous.get('version') == info['version'] else 'install'
         result = subprocess.run(['distrobox','enter','--name',info['container'],'--no-tty','--','sudo','dnf','--assumeno',operation,info['file']],env=ENV,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
@@ -272,7 +296,8 @@ class Engine:
         self.save()
         try:
             if info['kind'] == 'deb':
-                self.enter(info,['sudo','env','DEBIAN_FRONTEND=noninteractive','apt-get','--assume-yes','--no-remove','--reinstall','install',info['file']])
+                self.apt(info, self.apt_sources(info), '--assume-yes', '--no-remove',
+                         '--reinstall', 'install', info['file'])
                 files = self.enter(info,['dpkg-query','-L',info['name']]).decode().splitlines()
             else:
                 self.enter(info,['sudo','dnf','--assumeyes','reinstall' if previous and previous.get('version') == info['version'] else 'install',info['file']])

@@ -118,7 +118,7 @@ automatic host-native package manager changes are made by Discover.
 `My Applications` and the accepted View/Tools/Settings/Help layout remain
 unchanged.
 
-v1.7.0, v1.8.0 and v1.9.0 are published stable releases. See
+v1.7.0, v1.8.0, v1.9.0 and v1.9.1 are published stable releases. v1.9.2 is an unpublished reliability candidate. See
 [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release history and the current
 supported scope.
 
@@ -306,7 +306,7 @@ abood-appinstall --detect FILE
 
 `--yes` bypasses confirmation and disables the Open prompt. `--nolaunch` suppresses the Open prompt. `APPINSTALL_APPIMAGES` sets the default AppImage directory. Application menu and icon directories respect `XDG_DATA_HOME`; association settings respect `XDG_CONFIG_HOME`.
 
-AppImages with the same embedded application name replace the previous AppInstall-managed version. Extraction and staging must finish before replacement. Launchers preserve embedded application arguments and disable AppImageLauncher interception. Matching old AppImageLauncher shortcuts are backed up before retirement; their payloads are retained.
+Each AppImage receives an independent launcher and payload identity, so images with the same embedded name coexist. Extraction and staging must finish before publication. Launchers preserve embedded application arguments and remain executable after AppInstall is uninstalled. Native Flatpak exports stay live rather than being copied. Unrelated file-manager launchers and payloads are never retired.
 
 ## Uninstall and recovery
 
