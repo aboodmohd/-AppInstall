@@ -13,6 +13,7 @@ Run with:  python3 manager_qml.py
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -45,6 +46,36 @@ import appimage_updates
 
 QML_DIR = Path(__file__).resolve().with_name('manager_ui')
 
+
+def update_process_command(helper, args):
+    """Run helper in its own process group on POSIX so timeout can kill children."""
+    helper = Path(helper)
+    if os.name == 'posix' and shutil.which('setsid'):
+        setsid = shutil.which('setsid')
+        if helper.suffix == '.py':
+            return setsid, [sys.executable, str(helper), *args]
+        return setsid, ['/usr/bin/bash', str(helper), *args]
+    if helper.suffix == '.py':
+        return sys.executable, [str(helper), *args]
+    return '/usr/bin/bash', [str(helper), *args]
+
+
+def terminate_update_tree(process):
+    """Kill the helper and its descendants, never the desktop process group."""
+    pid = getattr(process, 'processId', lambda: 0)()
+    if os.name == 'posix' and pid:
+        try:
+            pgid = os.getpgid(pid)
+            if pgid and pgid != os.getpgrp():
+                os.killpg(pgid, signal.SIGKILL)
+                return
+        except (OSError, AttributeError):
+            pass
+    process.kill()
+
+
+def classify_self_update_error(output):
+    return update_engine.classify_update_failure(output)
 
 def find_update_helper():
     """Locate the AppInstall self-updater for this kind of checkout.
@@ -873,6 +904,10 @@ class Bridge(QtCore.QObject):
         self._update_process = QtCore.QProcess(self)
         self._update_process.setProcessChannelMode(QtCore.QProcess.ProcessChannelMode.MergedChannels)
         self._update_process.finished.connect(self._update_finished)
+        self._update_timeout = QtCore.QTimer(self)
+        self._update_timeout.setSingleShot(True)
+        self._update_timeout.setInterval(150000)
+        self._update_timeout.timeout.connect(self._update_timed_out)
         self._update_helper = find_update_helper()
         self._update_manual = False
         # Same cadence as the widgets window: a check ~1.2s after launch,
@@ -2262,11 +2297,11 @@ class Bridge(QtCore.QObject):
         self.updateStatusChanged.emit(self._update_status)
         self._update_action_visible = False
         self.updateActionVisibleChanged.emit(False)
-        executable = (sys.executable if self._update_helper.suffix == '.py'
-                      else '/usr/bin/bash')
-        self._update_process.start(
-            executable, [str(self._update_helper), '--desktop-check'])
+        executable, argv = update_process_command(
+            self._update_helper, ['--desktop-check'])
+        self._update_process.start(executable, argv)
         self._update_process.closeWriteChannel()
+        self._update_timeout.start()
 
     @QtCore.Slot()
     def installUpdate(self):
@@ -2290,14 +2325,28 @@ class Bridge(QtCore.QObject):
         self._update_operation = 'install'
         self._update_status = 'Installing AppInstall ' + self._update_tag + '…'
         self.updateStatusChanged.emit(self._update_status)
-        executable = (sys.executable if self._update_helper.suffix == '.py'
-                      else '/usr/bin/bash')
-        self._update_process.start(executable, [
-            str(self._update_helper), '--desktop-update', self._update_tag,
-        ])
+        executable, argv = update_process_command(
+            self._update_helper, ['--desktop-update', self._update_tag])
+        self._update_process.start(executable, argv)
         self._update_process.closeWriteChannel()
 
+    def _update_timed_out(self):
+        if self._update_operation != 'check':
+            return
+        self._update_operation = ''
+        self._update_action_visible = True
+        self.updateActionVisibleChanged.emit(True)
+        terminate_update_tree(self._update_process)
+        self._update_status = 'Update check failed: timeout'
+        self.updateStatusChanged.emit(self._update_status)
+        if self._update_manual:
+            self._show_update_details(
+                'Update check timed out',
+                'The AppInstall update check did not finish within 150 seconds. '
+                'Check your network or GitHub status, then try again.')
+
     def _update_finished(self, exit_code, exit_status):
+        self._update_timeout.stop()
         operation, self._update_operation = self._update_operation, ''
         output = bytes(self._update_process.readAll()).decode(errors='replace')
         self._update_action_visible = True
@@ -2327,10 +2376,12 @@ class Bridge(QtCore.QObject):
                 self._update_status = 'AppInstall is up to date'
                 self.updateStatusChanged.emit(self._update_status)
             else:
-                self._update_status = 'Could not check for updates'
+                category, title, action = classify_self_update_error(output)
+                self._update_status = 'Update check failed: ' + category
                 self.updateStatusChanged.emit(self._update_status)
                 if self._update_manual:
-                    self._show_update_details('Update check failed', output)
+                    self._show_update_details(
+                        title, action + '\n\nDiagnostic output:\n' + output[-8000:])
         elif operation == 'install':
             tag = self._update_tag
             if not ok or ('APPINSTALL_UPDATED=' + tag) not in output.splitlines():
@@ -2410,7 +2461,8 @@ class Bridge(QtCore.QObject):
             self._set_status('AppInstall is updating. Closing is blocked until it finishes.')
             return False
         if self._update_operation == 'check':
-            self._update_process.kill()
+            self._update_manual = False
+            terminate_update_tree(self._update_process)
             self._update_process.waitForFinished(1000)
         return True
 

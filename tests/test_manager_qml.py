@@ -18,7 +18,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 from PySide6 import QtCore, QtGui, QtQml, QtQuick, QtTest
 
@@ -1026,7 +1026,9 @@ class BridgeUpdateTests(QmlManagerBase):
     def test_check_runs_the_desktop_helper(self):
         self.bridge.checkUpdates(True)
         args = self.process.start.call_args[0]
-        self.assertEqual(args[1], [str(self.bridge._update_helper), '--desktop-check'])
+        self.assertEqual(args[1][-3:],
+                         ['/usr/bin/bash', str(self.bridge._update_helper),
+                          '--desktop-check'])
         self.assertEqual(self.bridge._update_status, 'Checking for updates…')
 
     def test_portable_update_check_runs_python_not_bash(self):
@@ -1034,8 +1036,9 @@ class BridgeUpdateTests(QmlManagerBase):
         self.bridge._update_helper.write_text('# test portable updater\n')
         self.bridge.checkUpdates(True)
         args = self.process.start.call_args.args
-        self.assertEqual(args[0], sys.executable)
-        self.assertEqual(args[1], [str(self.bridge._update_helper), '--desktop-check'])
+        self.assertIn(sys.executable, args[1])
+        self.assertIn(str(self.bridge._update_helper), args[1])
+        self.assertEqual(args[1][-1], '--desktop-check')
 
     def test_portable_update_requires_explicit_confirmation(self):
         self.bridge._update_helper = self.root / 'portable_update.py'
@@ -1051,9 +1054,9 @@ class BridgeUpdateTests(QmlManagerBase):
                           return_value=QtWidgets.QMessageBox.StandardButton.Yes):
             self.bridge.installUpdate()
         args = self.process.start.call_args.args
-        self.assertEqual(args[0], sys.executable)
-        self.assertEqual(args[1], [str(self.bridge._update_helper),
-                                   '--desktop-update', 'v1.8.1'])
+        self.assertIn(sys.executable, args[1])
+        self.assertEqual(args[1][-3:], [str(self.bridge._update_helper),
+                                        '--desktop-update', 'v1.8.1'])
 
     def test_available_tag_is_surfaced(self):
         self.process.readAll.return_value = QtCore.QByteArray(
@@ -1074,8 +1077,8 @@ class BridgeUpdateTests(QmlManagerBase):
             b'APPINSTALL_UPDATED=v1.4.1\n')
         self.bridge.installUpdate()
         args = self.process.start.call_args[0]
-        self.assertEqual(args[1], [str(self.bridge._update_helper),
-                                   '--desktop-update', 'v1.4.1'])
+        self.assertEqual(args[1][-3:], [str(self.bridge._update_helper),
+                                        '--desktop-update', 'v1.4.1'])
         with patch.object(QtWidgets, 'QMessageBox'):
             self.bridge._update_finished(0, QtCore.QProcess.ExitStatus.NormalExit)
         self.assertIn('installed', self.bridge._update_status)
@@ -1189,12 +1192,45 @@ class BridgeUpdateTests(QmlManagerBase):
         detailed = box.return_value.setDetailedText.call_args[0][0]
         self.assertIn('releases/tag/v1.4.1', detailed)
 
+    def test_self_update_network_failure_is_actionable(self):
+        self.process.readAll.return_value = QtCore.QByteArray(
+            b'==> Resolving the latest stable release...\n'
+            b'APPINSTALL_UPDATE_ERROR=network: Could not reach GitHub.\n'
+            b'curl: (7) proxy refused\n')
+        self.bridge.checkUpdates(True)
+        with patch.object(QtWidgets, 'QMessageBox') as box:
+            self.bridge._update_finished(4, QtCore.QProcess.ExitStatus.NormalExit)
+        self.assertEqual(self.bridge._update_status, 'Update check failed: network')
+        detailed = box.return_value.setDetailedText.call_args[0][0]
+        self.assertIn('Check your internet connection', detailed)
+        self.assertIn('internet', detailed.lower())
+        self.assertIn('curl: (7)', detailed)
+
+    def test_timeout_kills_the_helper_process_group(self):
+        fake = MagicMock()
+        fake.processId.return_value = 4242
+        with patch.object(manager_qml.os, 'getpgid', return_value=9001), \
+             patch.object(manager_qml.os, 'getpgrp', return_value=100), \
+             patch.object(manager_qml.os, 'killpg') as killpg:
+            manager_qml.terminate_update_tree(fake)
+        killpg.assert_called_once_with(9001, manager_qml.signal.SIGKILL)
+        fake.kill.assert_not_called()
+
+    def test_self_update_timeout_terminates_helper(self):
+        self.bridge.checkUpdates(True)
+        self.process.kill = Mock()
+        with patch.object(self.bridge, '_show_update_details'):
+            self.bridge._update_timed_out()
+        self.assertEqual(self.bridge._update_status, 'Update check failed: timeout')
+        self.process.kill.assert_called_once_with()
+        self.assertEqual(self.bridge._update_operation, '')
+
     def test_manual_check_failure_shows_details(self):
         self.process.readAll.return_value = QtCore.QByteArray(b'boom\n')
         self.bridge.checkUpdates(True)
         with patch.object(QtWidgets, 'QMessageBox') as box:
             self.bridge._update_finished(1, QtCore.QProcess.ExitStatus.CrashExit)
-        self.assertEqual(self.bridge._update_status, 'Could not check for updates')
+        self.assertEqual(self.bridge._update_status, 'Update check failed: backend')
         self.assertIn('boom', box.return_value.setDetailedText.call_args[0][0])
 
 

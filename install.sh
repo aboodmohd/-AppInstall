@@ -64,7 +64,7 @@ SUPPORTED_IDS="arch cachyos fedora"
 # Optional backends offered after core installation (pacman package names).
 OPTIONAL_PKGS=(flatpak podman distrobox squashfs-tools fuse2 kdialog zenity libnotify)
 
-INSTALLER_VERSION="1.9.3"
+INSTALLER_VERSION="1.9.4"
 
 # ---------------------------------------------------------------------------
 # Flags / state. Defaults respect pre-existing environment values so the test
@@ -296,6 +296,7 @@ run_root() {
 # ---------------------------------------------------------------------------
 api_get() { # path -> stdout
   local token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+  local out rc=0
   if [[ -n "$TEST_RELEASES_JSON" ]]; then
     cat -- "$TEST_RELEASES_JSON"
     return 0
@@ -304,10 +305,23 @@ api_get() { # path -> stdout
     # GitHub token formats may include punctuation. Reject header injection,
     # and pass the header over stdin so it never appears in curl arguments.
     [[ "$token" != *$'\n'* && "$token" != *$'\r'* ]] || return 4
-    printf 'Authorization: Bearer %s\n' "$token" | curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 120 -H @- -H "Accept: application/vnd.github+json" "${API_BASE}$1"
+    out="$(printf 'Authorization: Bearer %s\n' "$token" |
+      curl -q -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 15 --max-time 120 -H @- -H "Accept: application/vnd.github+json" "${API_BASE}$1" 2>/dev/null)" || rc=$?
   else
-    curl -q -fsSL --proto "=https" --proto-redir "=https" --connect-timeout 15 --max-time 120 -H "Accept: application/vnd.github+json" "${API_BASE}$1"
+    out="$(curl -q -fsSL --proto "=https" --proto-redir "=https" --connect-timeout 15 --max-time 120 -H "Accept: application/vnd.github+json" "${API_BASE}$1" 2>/dev/null)" || rc=$?
   fi
+  if ((rc)); then
+    case "$rc" in
+      6)  printf 'APPINSTALL_UPDATE_ERROR=network: Could not resolve api.github.com. Check DNS and your connection.\n' >&2 ;;
+      7)  printf 'APPINSTALL_UPDATE_ERROR=network: Could not reach GitHub. Check your connection, firewall or proxy.\n' >&2 ;;
+      28) printf 'APPINSTALL_UPDATE_ERROR=timeout: The GitHub release request timed out. Try again shortly.\n' >&2 ;;
+      22) printf 'APPINSTALL_UPDATE_ERROR=http: GitHub rejected the release request. Check API rate limits and retry.\n' >&2 ;;
+      35|51|60) printf 'APPINSTALL_UPDATE_ERROR=tls: TLS verification for api.github.com failed. Check certificates and system time.\n' >&2 ;;
+      *)  printf 'APPINSTALL_UPDATE_ERROR=network: GitHub release request failed (curl exit %s).\n' "$rc" >&2 ;;
+    esac
+    return 4
+  fi
+  printf '%s\n' "$out"
 }
 
 # resolve_release -> "tag|pkg_url|sums_url|pkg_name"
@@ -315,8 +329,7 @@ resolve_release() {
   local json
   local family="${1:-arch}"
   if [[ $DESKTOP_CHECK -eq 1 || -n "$DESKTOP_UPDATE" ]]; then
-    json="$(curl -q -fsS --proto '=https' --connect-timeout 8 --max-time 20 \
-      "https://api.github.com/repos/${REPO_SLUG}/releases/latest")" || return 4
+    json="$(api_get "/repos/${REPO_SLUG}/releases/latest")" || return 4
   else
     json="$(api_get "/repos/${REPO_SLUG}/releases/latest")" || return 4
   fi

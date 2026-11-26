@@ -1,5 +1,11 @@
 # AppInstall Changelog
 
+## 1.9.4 — Update check reliability (candidate)
+
+- Classify AppInstall self-update failures (network, timeout, HTTP/rate-limit, TLS, dependency, backend) and show actionable messages.
+- Add a self-update check timeout so the Premium UI never waits indefinitely.
+- Isolate application update providers so one failing backend cannot stop the scan; broaden error handling to every provider exception.
+
 ## 1.9.3 — Compatibility and migration (candidate)
 
 - Migrate legacy monitored Flatpak launchers to live native exports without overwriting user edits.

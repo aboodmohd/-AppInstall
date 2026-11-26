@@ -55,6 +55,16 @@ def write_os_release(tmp, content):
     return str(f)
 
 
+class UpdateErrorMarkerTests(unittest.TestCase):
+    def test_api_get_emits_actionable_network_marker(self):
+        rc, out, err = run_sourced("""
+            curl() { return 7; }
+            api_get /releases/latest
+        """)
+        self.assertEqual(rc, 4)
+        self.assertIn('APPINSTALL_UPDATE_ERROR=network:', err)
+        self.assertIn('proxy', err.lower())
+
 class UninstallCompatibilityTests(unittest.TestCase):
     def test_uninstall_continues_with_older_helper(self):
         rc, out, err = run_sourced("""
