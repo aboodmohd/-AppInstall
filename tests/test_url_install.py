@@ -349,6 +349,22 @@ class FormatDetectionTests(unittest.TestCase):
 # ── Download ───────────────────────────────────────────────────────────
 
 class DownloadTests(unittest.TestCase):
+    def test_backend_log_redacts_sensitive_urls(self):
+        with tempfile.TemporaryDirectory() as temp, patch.dict(os.environ, XDG_STATE_HOME=temp):
+            reply = subprocess.CompletedProcess([], 42, 'backend context',
+                                                'failed https://user:password@example.org/path?opaque=secret#private Authorization: Basic dXNlcjpwYXNz example.org/reset?key=s3cr3t')
+            message = u.installation_failure(reply)
+            logs = list(Path(temp).rglob('failure-*.log'))
+            self.assertEqual(len(logs), 1)
+            text = logs[0].read_text()
+            self.assertIn('backend context', text)
+            self.assertNotIn('opaque', text)
+            self.assertNotIn('password', text)
+            self.assertNotIn('private', text)
+            self.assertNotIn('dXNlcjpwYXNz', text)
+            self.assertNotIn('key=s3cr3t', text)
+            self.assertIn(str(logs[0]), message)
+
     # Arbitrary payloads detect as "flatpak" via the (only) extension hint,
     # so these tests exercise download mechanics rather than detection.
     DOWNLOAD_URL = "https://example.com/file.flatpak"

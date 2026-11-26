@@ -138,6 +138,8 @@ class UrlDialogTests(_DialogTestBase, unittest.TestCase):
         self.dialog.installed.connect(lambda: emitted.append(True))
         fake_rc = MagicMock()
         fake_rc.returncode = 0
+        fake_rc.stdout = ''
+        fake_rc.stderr = ''
         with patch.object(url_dialog.subprocess, "run", return_value=fake_rc), \
              patch.object(url_dialog.QMessageBox, "information", return_value=0), \
              patch.object(url_dialog.QMessageBox, "warning", return_value=0):
@@ -210,6 +212,8 @@ class DownloadCleanupTests(_DialogTestBase, unittest.TestCase):
     def _review_with_returncode(self, code):
         fake_rc = MagicMock()
         fake_rc.returncode = code
+        fake_rc.stdout = ''
+        fake_rc.stderr = ''
         with patch.object(url_dialog.subprocess, "run", return_value=fake_rc), \
              patch.object(url_dialog.QMessageBox, "warning", return_value=0) as warn, \
              patch.object(url_dialog.QMessageBox, "information", return_value=0):
@@ -372,7 +376,10 @@ class DownloadCleanupTests(_DialogTestBase, unittest.TestCase):
         result = self._complete_download(kind="deb")
         def backend(*args, **kwargs):
             self.assertTrue(result.path.exists())
-            return MagicMock(returncode=1)
+            result = MagicMock(returncode=1)
+            result.stdout = ''
+            result.stderr = ''
+            return result
         with patch.object(url_dialog.subprocess, "run", side_effect=backend), \
              patch.object(url_dialog.QMessageBox, "warning", return_value=0):
             self.dialog._review_and_install()

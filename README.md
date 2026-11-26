@@ -118,7 +118,7 @@ automatic host-native package manager changes are made by Discover.
 `My Applications` and the accepted View/Tools/Settings/Help layout remain
 unchanged.
 
-v1.7.0, v1.8.0 and v1.9.0 are published stable releases. See
+v1.7.0, v1.8.0, v1.9.0, v1.9.1 and v1.9.2 are published stable releases. See
 [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release history and the current
 supported scope.
 
@@ -137,13 +137,13 @@ unverified distribution.
 
 If your distro is not in the native list, AppInstall also has a
 **distribution-neutral, non-root source route**, not a falsely renamed
-DEB/RPM. Use the verified, published `appinstall-1.9.1-portable.tar.gz`
+DEB/RPM. Use the verified, published `appinstall-1.9.2-portable.tar.gz`
 archive for the current stable portable install:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf appinstall-1.9.1-portable.tar.gz
-cd appinstall-1.9.1
+tar -xzf appinstall-1.9.2-portable.tar.gz
+cd appinstall-1.9.2
 bash ./install-user.sh
 ~/.local/bin/abood-appinstall --manage
 ```
@@ -306,7 +306,7 @@ abood-appinstall --detect FILE
 
 `--yes` bypasses confirmation and disables the Open prompt. `--nolaunch` suppresses the Open prompt. `APPINSTALL_APPIMAGES` sets the default AppImage directory. Application menu and icon directories respect `XDG_DATA_HOME`; association settings respect `XDG_CONFIG_HOME`.
 
-AppImages with the same embedded application name replace the previous AppInstall-managed version. Extraction and staging must finish before replacement. Launchers preserve embedded application arguments and disable AppImageLauncher interception. Matching old AppImageLauncher shortcuts are backed up before retirement; their payloads are retained.
+Each AppImage receives an independent launcher and payload identity, so images with the same embedded name coexist. Extraction and staging must finish before publication. Launchers preserve embedded application arguments and remain executable after AppInstall is uninstalled. Native Flatpak exports stay live rather than being copied. Unrelated file-manager launchers and payloads are never retired.
 
 ## Uninstall and recovery
 
@@ -388,7 +388,7 @@ Host desktop export conflict recovery restores overwritten launcher content.
 
 Real integration testing on CachyOS KDE now passes for Debian Galculator and
 Fedora Character Map: Dolphin double-click, confirmation, dependency resolution,
-export, visible GUI launch, reinstall without duplicate launchers, and uninstall.
+export, visible GUI launch, reinstall as a new independent record, and uninstall.
 The published beta release was qualified with 121 passing automated tests and 10 live acceptance tests on CachyOS KDE. Existing Seanime AppImage and Stremio
 Flatpak windows were also visually verified. See [INTEGRATION_TESTING.md](INTEGRATION_TESTING.md)
 for exact evidence, tested scope, storage and limitations.

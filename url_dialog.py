@@ -426,20 +426,11 @@ class UrlInstallDialog(QDialog):
             self.accept()
         else:
             QMessageBox.warning(self, "AppInstall",
-                                "Installation finished with an error. See the terminal output "
-                                "for details.")
+                                url_install.installation_failure(rc))
 
     @staticmethod
     def _locate(name):
-        """Find a sibling AppInstall module (dev tree or deployed /usr/bin)."""
-        here = Path(__file__).resolve().parent
-        candidate = here / name
-        if candidate.is_file():
-            return candidate
-        deployed = Path("/usr/bin") / name
-        if deployed.is_file():
-            return deployed
-        return None
+        return url_install._locate_sibling(name)
 
     # ── temporary download lifecycle ──────────────────────────────────
 

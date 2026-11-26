@@ -1,3 +1,34 @@
+# AppInstall v1.9.2 — Reliability & Stability (published 2026-11-26)
+
+This is the latest stable release. It keeps the AppInstall public name, Premium UI, and the unique `abood-appinstall` package identity from v1.9.1.
+
+## Fixed issues
+
+1. **DEB installation blockage (confirmed):** vendor-added APT fragments could block later local DEB installs. Local DEB transactions now stage only authenticated source stanzas inside the container.
+2. **Uninstall could break managed apps (partially confirmed):** supported uninstallers now detach AppImage monitoring, preserve native Flatpak exports, and keep DEB/RPM launch commands. Records, payloads, containers and Flatpaks are retained.
+3. **Frozen Flatpak launchers (confirmed):** new adoptions keep Flatpak's maintained export symlink live instead of copying it.
+4. **Large AppImage failures (partially confirmed):** installation uses one streamed copy on the destination filesystem, checks free space, and treats preview timeouts as non-fatal.
+5. **AppImage name collisions (confirmed):** each AppImage gets an independent launcher and payload identity; identical names coexist and can be updated or removed independently.
+6. **URL installation errors (partially confirmed):** backend output is captured to a bounded, redacted diagnostic log; HTTP, network, format, checksum, size and storage failures produce actionable messages.
+
+The previously reported Arch filesystem-layout issue was already resolved in v1.9.1: only `/usr/bin/abood-appinstall` is in `usr/bin`; modules live under `/usr/lib/abood-appinstall`. Additional hardening in this release covers APT prefix/keyring validation and malformed container-registry records during uninstall. See [the full audit](docs/V1_9_2_RELIABILITY_AUDIT.md).
+
+## Upgrade and migration
+
+Existing v1.9.1 users can upgrade normally through the one-command installer or a verified native package. No user data, records, launchers or container configuration paths are renamed. See [UPGRADE.md](UPGRADE.md#v191-to-v192-reliability-upgrade).
+
+Live CachyOS acceptance verified the Premium UI, seven managed application records, settings, databases, nine MIME associations, launchers, Flatpaks, AppImages and Distrobox containers. Disposable acceptance covered official Chrome, VS Code, Edge and Brave DEBs, 512 MiB/1 GiB/2 GiB AppImages, and native/portable uninstall.
+
+## Release assets
+
+- Arch Linux / CachyOS: `abood-appinstall-1.9.2-1-any.pkg.tar.zst`
+- Debian / Ubuntu: `abood-appinstall_1.9.2-1_all.deb`
+- Fedora: `abood-appinstall-1.9.2-1.noarch.rpm`
+- Portable: `appinstall-1.9.2-portable.tar.gz`
+- `SHA256SUMS`
+
+## Previous release notes
+
 # AppInstall v1.9.1 — Package identity maintenance
 
 On CachyOS, Yay offered unrelated AUR `appinstall` 2.0.8-1 as an upgrade to official AppInstall 1.9.0-1 because both used the same package name. v1.9.1 gives AppInstall its own package identity without replacing or removing unrelated packages.

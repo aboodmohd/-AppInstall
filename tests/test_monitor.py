@@ -15,6 +15,51 @@ import diagnostics_core as core
 import runtime_probe as probe
 
 class MonitorTests(unittest.TestCase):
+    def test_flatpak_adoption_tracks_replacement_export(self):
+        appid = 'org.example.App'
+        apps = self.root/'data/applications'
+        export = self.root/'data/flatpak/exports/share/applications'/f'{appid}.desktop'
+        export.parent.mkdir(parents=True)
+        apps.mkdir()
+        path = apps/export.name
+        export.write_text(f'[Desktop Entry]\nName=Example\nExec=flatpak run {appid}\n')
+        path.symlink_to(export)
+        m.adopt_flatpak(appid)
+        new = export.with_suffix('.new')
+        new.write_text(f'[Desktop Entry]\nName=Updated\nExec=flatpak run {appid}\n')
+        new.replace(export)
+        self.assertTrue(path.is_symlink())
+        self.assertEqual(m.desktop_values(path.read_text())['Name'], 'Updated')
+
+    def test_uninstall_does_not_rewrite_unrelated_export_hashes(self):
+        first = self.spec(key='test:first')
+        unrelated_path = self.root/'unrelated.desktop'
+        unrelated_path.write_text('[Desktop Entry]\nName=Unrelated\nExec=true\n')
+        containers = self.root/'data/appinstall/containers'
+        containers.mkdir(parents=True, exist_ok=True)
+        import hashlib as _h
+        registry = {'deb:one': {'exports': [
+            {'path': first['desktop'], 'sha256': _h.sha256(Path(first['desktop']).read_bytes()).hexdigest()},
+            {'path': str(unrelated_path), 'sha256': _h.sha256(unrelated_path.read_bytes()).hexdigest()},
+        ]}}
+        (containers/'registry.json').write_text(json.dumps(registry))
+        second_hash = registry['deb:one']['exports'][1]['sha256']
+        m.restore_launchers(preserve_records=True)
+        after = json.loads((containers/'registry.json').read_text())
+        self.assertEqual(after['deb:one']['exports'][1]['sha256'], second_hash)
+
+    def test_uninstall_detaches_appimage_but_preserves_registry(self):
+        target = self.root/'app.AppImage'
+        target.write_text('#!/bin/sh\nexit 0\n')
+        target.chmod(0o755)
+        path = self.root/'app.desktop'
+        path.write_text('[Desktop Entry]\nName=Example\nExec=python3 /removed/helper.py\n')
+        m.wrap_desktop('appimage:example', path, 'appimage', command_override=m.desktop_quote(target))
+        self.assertEqual(m.restore_launchers(preserve_records=True)['restored'], ['Example'])
+        self.assertEqual(m.desktop_values(path.read_text())['Exec'], m.desktop_quote(target))
+        self.assertIn('appimage:example', m.registry())
+        subprocess.run([target], check=True)
+
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory();self.root=Path(self.temp.name)
         self.environment=patch.dict(os.environ,{'XDG_DATA_HOME':str(self.root/'data'),'XDG_STATE_HOME':str(self.root/'state')})

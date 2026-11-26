@@ -174,6 +174,7 @@ def wrap_desktop(key, path, format, **extra):
             actions[section[15:]] = parser.get(section,'Exec')
     override=extra.pop('command_override',None)
     cwd_override=extra.pop('cwd_override',None)
+    native = extra.get('native_flatpak', False)
     spec = dict(key=key, name=meta.get('Name',key), format=format, desktop=str(path),
                 original_text=original, command=meta.get('Exec',''), cwd=decode_value(meta.get('Path','')),
                 icon=meta.get('Icon',''), terminal=meta.get('Terminal','false').lower()=='true', actions=actions, **extra)
@@ -186,8 +187,11 @@ def wrap_desktop(key, path, format, **extra):
         fd = os.open(backup, os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
         with os.fdopen(fd,'w') as file: file.write(original)
     spec['backup'] = str(backup)
-    update_registry(key,spec)
-    rewrite_launcher(spec)
+    if native:
+        update_registry(key, spec)
+    else:
+        update_registry(key,spec)
+        rewrite_launcher(spec)
     return registry()[key]
 
 
@@ -412,7 +416,11 @@ def monitor(spec, files=(), action=None, notify=True, startup=STARTUP_SECONDS):
         if spec.get('launch_error'):return fail(spec['launch_error'])
         if not Path(spec['desktop']).is_file() and relocated_desktop_launcher(spec) is None:
             return fail(failure('launcher','The managed desktop entry is missing.'))
-        value=spec.get('actions',{}).get(action) if action else spec['command']
+        if spec.get('native_flatpak'):
+            section = 'Desktop Action '+action if action else 'Desktop Entry'
+            value = desktop_values(Path(spec['desktop']).read_text(), section).get('Exec')
+        else:
+            value=spec.get('actions',{}).get(action) if action else spec['command']
         if value is None: raise ValueError('The requested desktop action does not exist.')
         argv=expand_exec(value,files,spec,action)
         # Container records retain the Distrobox-exported command. The wrapper
@@ -553,7 +561,7 @@ def synchronize():
     return errors
 
 
-def restore_launchers():
+def restore_launchers(preserve_records=False):
     """Explicit rollback: restore only files still matching our managed hash."""
     restored=[];skipped=[]
     container_file=data_root()/'containers/registry.json'
@@ -563,42 +571,94 @@ def restore_launchers():
             lock=(container_file.parent/'operation.lock').open('a')
             fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
         containers=json.loads(container_file.read_text()) if container_file.exists() else {}
+        changed_container_exports = False
         for key,spec in registry().items():
-            path=Path(spec['desktop'])
+            if not isinstance(spec, dict):
+                continue
+            path=Path(spec.get('desktop',''))
+            if preserve_records and not path.exists():
+                path = relocated_desktop_launcher(spec) or path
+            if spec.get('native_flatpak') or not path.is_file() or path.is_symlink():
+                continue
             if path.exists() and hashlib.sha256(path.read_bytes()).hexdigest()!=spec.get('desktop_hash'):
                 skipped.append(spec['name']);continue
+            text = spec['original_text']
+            if preserve_records and spec['format'] == 'appimage':
+                text = re.sub(r'^Exec=.*$', lambda _: 'Exec='+spec['command'], text,
+                              flags=re.MULTILINE)
+                cwd = spec.get('cwd', '')
+                if cwd and not any(char in cwd for char in '\r\n'):
+                    text = text.replace('[Desktop Entry]\n',
+                                        '[Desktop Entry]\nPath='+cwd.replace('\\', '\\\\')+'\n', 1)
+            if preserve_records and spec['format'] == 'flatpak':
+                appid = spec.get('appid', '')
+                from package_meta import APPID_PATTERN
+                export = data_root().parent/'flatpak/exports/share/applications'/path.name
+                if (APPID_PATTERN.fullmatch(appid) and path.name == appid+'.desktop'
+                        and export.is_file()):
+                    temp = path.with_name('.'+path.name+'.'+uuid.uuid4().hex+'.tmp')
+                    temp.symlink_to(export)
+                    temp.replace(path)
+                    restored.append(spec['name'])
+                    continue
             path.parent.mkdir(parents=True,exist_ok=True)
             temp=path.with_name('.'+path.name+'.'+uuid.uuid4().hex+'.tmp')
-            temp.write_text(spec['original_text']);temp.replace(path)
+            temp.write_text(text);temp.replace(path)
             for record in containers.values():
+                if not isinstance(record, dict):
+                    continue
                 for entry in record.get('exports',[]):
-                    if entry['path']==str(path):entry['sha256']=hashlib.sha256(path.read_bytes()).hexdigest()
-            update_registry(key,None);restored.append(spec['name'])
-        if container_file.exists():atomic_json(container_file,containers)
+                    if isinstance(entry, dict) and entry.get('path')==str(path):
+                        entry['sha256']=hashlib.sha256(path.read_bytes()).hexdigest()
+                        changed_container_exports = True
+            if not preserve_records:
+                update_registry(key,None)
+            restored.append(spec['name'])
+        if changed_container_exports:
+            atomic_json(container_file, containers)
     finally:
         if lock:lock.close()
     return dict(restored=restored,skipped_modified=skipped)
 
 
 def adopt_flatpak(appid):
+    from package_meta import APPID_PATTERN
+    if not APPID_PATTERN.fullmatch(appid):
+        raise ValueError('Invalid Flatpak application ID.')
     apps=data_root().parent/'applications'
     path=apps/(appid+'.desktop')
     if not path.exists(): return
+    key = 'flatpak:'+appid
     meta=desktop_values(path.read_text())
-    if meta.get('X-AppInstall-LaunchID'): return
+    if meta.get('X-AppInstall-LaunchID'):
+        spec = registry().get(key)
+        export = data_root().parent/'flatpak/exports/share/applications'/path.name
+        if (not spec or path.is_symlink() or not export.is_file() or
+                hashlib.sha256(path.read_bytes()).hexdigest() != spec.get('desktop_hash')):
+            return
+        meta = desktop_values(export.read_text())
+    else:
+        export = None
     argv=shlex.split(decode_value(meta.get('Exec','')))
     if not argv or Path(argv[0]).name!='flatpak' or appid not in argv:
         raise RuntimeError('The existing launcher is not the expected Flatpak entry.')
-    if path.is_symlink():
-        text=path.read_text();path.unlink();path.write_text(text)
-    wrap_desktop('flatpak:'+appid,path,'flatpak',appid=appid)
+    if export is not None:
+        temporary = path.with_name('.'+path.name+'.'+uuid.uuid4().hex+'.tmp')
+        temporary.symlink_to(export)
+        temporary.replace(path)
+    wrap_desktop(key,path,'flatpak',appid=appid,native_flatpak=True)
 
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
     parser.add_argument('--restore-launchers',action='store_true');parser.add_argument('--forget');parser.add_argument('--launch');parser.add_argument('--action');parser.add_argument('--adopt-flatpak')
+    parser.add_argument('--detach-launchers', action='store_true')
     parser.add_argument('files',nargs='*');args=parser.parse_args()
-    if args.restore_launchers:
+    if args.detach_launchers:
+        result = restore_launchers(preserve_records=True)
+        if result['skipped_modified']:
+            raise SystemExit('Some managed launchers were edited; review them before uninstalling.')
+    elif args.restore_launchers:
         if not sys.stdin.isatty() or input('Restore AppInstall-managed launchers to their original commands? [y/N] ').lower()!='y':raise SystemExit('No launchers were changed.')
         print(json.dumps(restore_launchers(),indent=2))
     elif args.forget:update_registry(args.forget,None)

@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+from urllib.parse import urlparse
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 
 from package_meta import require_backend_tools
@@ -235,13 +236,12 @@ class Engine:
             ownership.write_text(json.dumps(dict(image=info['image'])))
         # Initialize Distrobox without a host root prompt.
         self.enter(info,['true'])
-        if info['kind']=='deb':
-            paths = self.enter(info,['find','/etc/apt','-maxdepth','2','-type','f']).decode().splitlines()
+        if info['kind'] == 'deb' and info.get('install_method') == 'repository':
+            paths = self.enter(info, ['find', '/etc/apt', '-maxdepth', '2', '-type', 'f']).decode().splitlines()
             for path in paths:
-                if path.endswith(('.list','.sources')):
-                    sources = self.enter(info,['cat',path]).decode()
-                    validate_apt_sources(sources)
-        else:
+                if path.endswith(('.list', '.sources')):
+                    validate_apt_sources(self.enter(info, ['cat', path]).decode())
+        elif info['kind'] != 'deb':
             repos = self.enter(info,['dnf','repolist','--enabled']).decode()
             ids = [line.split()[0] for line in repos.splitlines() if line.strip() and not line.lower().startswith(('repo id','updating','repositories'))]
             if any(repo not in ('fedora','updates','fedora-cisco-openh264') for repo in ids):
@@ -250,11 +250,139 @@ class Engine:
     def key(self, info):
         return info['kind']+':'+info['name']
 
+    def write_container_file(self, info, path, content):
+        """Write a private file inside the Distrobox container via tee."""
+        result = subprocess.run(
+            ['distrobox', 'enter', '--name', info['container'], '--no-tty',
+             '--', 'tee', path],
+            input=content.encode(), env=ENV, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, timeout=60)
+        if result.returncode:
+            raise RuntimeError('Could not stage APT sources in container: ' +
+                               result.stdout.decode(errors='replace')[-1200:])
+
+    def apt_sources(self, info):
+        """Build a private APT source tree inside the container.
+
+        Only authenticated sources are copied. Vendor packages may add their
+        own signed repositories; those remain usable for dependency resolution,
+        while unsigned or malformed fragments cannot break local transactions.
+        Host APT configuration is never disabled.
+        """
+        trusted = self.enter(
+            info, ['mktemp', '-d', '/tmp/appinstall-apt-sources.XXXXXX']).decode().strip()
+        if not trusted.startswith('/tmp/appinstall-apt-sources.'):
+            raise RuntimeError('Could not create a private APT source directory.')
+        candidates = [Path('/etc/apt/sources.list'),
+                      Path('/etc/apt/sources.list.d/debian.sources'),
+                      Path('/etc/apt/sources.list.d/ubuntu.sources')]
+        candidates += sorted(Path('/etc/apt/sources.list.d').glob('*.list'))
+        candidates += sorted(Path('/etc/apt/sources.list.d').glob('*.sources'))
+        candidates = list(dict.fromkeys(candidates))
+        written = 0
+        for path in candidates:
+            try:
+                text = self.enter(info, ['cat', str(path)]).decode()
+            except RuntimeError:
+                continue
+            safe = self.safe_apt_source(info, text)
+            if not safe:
+                continue
+            name = path.name if written == 0 else f'{path.stem}-{written}{path.suffix}'
+            self.write_container_file(info, trusted+'/'+name, safe)
+            written += 1
+        if not written:
+            raise RuntimeError('No authenticated APT source found in the container. Restore its package repositories before installing.')
+        return (['-o', 'Dir::Etc::sourceparts='+trusted,
+                 '-o', 'Dir::Etc::sourcelist=-',
+                 '-o', 'DPkg::Lock::Timeout=30'], trusted)
+
+    def safe_apt_source(self, info, text):
+        """Return source stanzas that are signed or from official Debian mirrors."""
+        def official_debian(uri):
+            parsed = urlparse(uri)
+            allowed_paths = ('/debian', '/debian-security')
+            return (parsed.hostname in ('deb.debian.org', 'security.debian.org')
+                    and parsed.scheme in ('http', 'https')
+                    and (parsed.path in allowed_paths
+                         or parsed.path.startswith('/debian/')))
+
+        def trusted_uri(uri):
+            return urlparse(uri).scheme == 'https' or official_debian(uri)
+
+        def has_keyring(value):
+            value = '\n'.join(line for line in value.splitlines()
+                              if not line.lstrip().startswith('#'))
+            match = re.search(r'(?:Signed-By|signed-by)\s*[:=]\s*([^\s,\]]+)', value)
+            if not match:
+                return False
+            path = match.group(1).strip().strip('"\'')
+            if not path.startswith('/') or not re.search(r'(keyring|\.(gpg|asc)$)', path):
+                return False
+            try:
+                self.enter(info, ['test', '-r', path])
+                return True
+            except RuntimeError:
+                return False
+
+        def uri_values(block):
+            values, collecting = [], False
+            for line in block.splitlines():
+                match = re.match(r'^\s*URIs?:\s*(.*)$', line)
+                if match:
+                    values.extend(match.group(1).split())
+                    collecting = True
+                    continue
+                if collecting and line[:1].isspace() and not re.match(r'^\s*\w+:', line):
+                    values.extend(line.split())
+                    continue
+                collecting = False
+            if not values and re.search(r'(?m)^\s*deb(?:\s|\[)', block):
+                values = re.findall(r'https?://\S+', block)
+            return values
+
+        def trust(block):
+            if not any(line.strip() and not line.lstrip().startswith('#')
+                       for line in block):
+                return False
+            if re.search(r'(?im)^\s*Trusted:\s*(yes|true)\s*$', block) or \
+                    re.search(r'\[[^\]]*\btrusted\s*=\s*(yes|true)\b', block):
+                return False
+            uris = uri_values(block)
+            if not uris or not all(trusted_uri(uri) for uri in uris):
+                return False
+            return has_keyring(block) or all(official_debian(uri) for uri in uris)
+
+        if '\n\n' in text or re.search(r'(?m)^\s*(Types|URIs|Suites|Components):', text):
+            blocks = re.split(r'\n\s*\n', text)
+            kept = '\n\n'.join(block for block in blocks if trust(block)).strip()
+            return kept+'\n' if kept else ''
+        kept = [line for line in text.splitlines()
+                if line.lstrip().startswith('#') or trust(line)]
+        if not any(line.strip() and not line.lstrip().startswith('#') for line in kept):
+            return ''
+        return '\n'.join(kept)+'\n'
+
+    def apt(self, info, options, *args, source_dir=None):
+        try:
+            return self.enter(info, ['sudo', 'env', 'DEBIAN_FRONTEND=noninteractive',
+                                     'apt-get', *options, *args])
+        except RuntimeError as error:
+            if 'dpkg was interrupted' in str(error).lower():
+                raise RuntimeError(str(error) + '\nReview and complete dpkg configuration inside '
+                                   + info['container'] + ' before retrying. Do not delete lock files.') from error
+            raise
+
     def transaction(self, info):
         self.ensure(info)
         if info['kind'] == 'deb':
-            self.enter(info,['sudo','apt-get','update'])
-            return self.enter(info,['sudo','apt-get','--simulate','--no-remove','--reinstall','install',info['file']]).decode()
+            options, source_dir = self.apt_sources(info)
+            try:
+                self.apt(info, options, 'update')
+                return self.apt(info, options, '--simulate', '--no-remove', '--reinstall',
+                                'install', info['file']).decode()
+            finally:
+                self.enter(info, ['rm', '-rf', '--', source_dir])
         previous = self.registry.get(self.key(info),{})
         operation = 'reinstall' if previous.get('version') == info['version'] else 'install'
         result = subprocess.run(['distrobox','enter','--name',info['container'],'--no-tty','--','sudo','dnf','--assumeno',operation,info['file']],env=ENV,stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
@@ -272,7 +400,12 @@ class Engine:
         self.save()
         try:
             if info['kind'] == 'deb':
-                self.enter(info,['sudo','env','DEBIAN_FRONTEND=noninteractive','apt-get','--assume-yes','--no-remove','--reinstall','install',info['file']])
+                options, source_dir = self.apt_sources(info)
+                try:
+                    self.apt(info, options, '--assume-yes', '--no-remove',
+                             '--reinstall', 'install', info['file'])
+                finally:
+                    self.enter(info, ['rm', '-rf', '--', source_dir])
                 files = self.enter(info,['dpkg-query','-L',info['name']]).decode().splitlines()
             else:
                 self.enter(info,['sudo','dnf','--assumeyes','reinstall' if previous and previous.get('version') == info['version'] else 'install',info['file']])
