@@ -31,16 +31,13 @@ source "$root/PKGBUILD"
 package
 
 # Match the tested Debian layout: appinstall's helpers live beside it,
-# /usr/bin/appinstall is a relative link to the packaged executable.
-install -d "$pkgdir/usr/lib/appinstall"
-mv "$pkgdir"/usr/bin/* "$pkgdir/usr/lib/appinstall/"
-ln -s ../lib/appinstall/appinstall "$pkgdir/usr/bin/appinstall"
-test -x "$pkgdir/usr/lib/appinstall/appinstall"
-test -L "$pkgdir/usr/bin/appinstall"
-test -f "$pkgdir/usr/lib/appinstall/manager_ui/main.qml"
-test -f "$pkgdir/usr/share/licenses/appinstall/LICENSE"
-grep -Fxq 'Exec=/usr/bin/appinstall %F' \
-    "$pkgdir/usr/share/applications/appinstall.desktop"
+# /usr/bin/abood-appinstall is a relative link to the packaged executable.
+test -x "$pkgdir/usr/lib/abood-appinstall/appinstall"
+test -L "$pkgdir/usr/bin/abood-appinstall"
+test -f "$pkgdir/usr/lib/abood-appinstall/manager_ui/main.qml"
+test -f "$pkgdir/usr/share/licenses/abood-appinstall/LICENSE"
+grep -Fxq 'Exec=/usr/bin/abood-appinstall %F' \
+    "$pkgdir/usr/share/applications/io.github.aboodmohd.AppInstall.desktop"
 
 sed -e "s/@VERSION@/$pkgver/g" -e "s/@RELEASE@/$pkgrel/g" \
     "$root/packaging/appinstall.spec.in" > "$work/top/SPECS/appinstall.spec"
@@ -51,7 +48,7 @@ tar -czf "$work/top/SOURCES/appinstall-${pkgver}.tar.gz" -C "$pkgdir" usr
 rpmbuild -bb --define "_topdir $work/top" \
     "$work/top/SPECS/appinstall.spec"
 
-rpm_file="$work/top/RPMS/noarch/appinstall-${pkgver}-${pkgrel}.noarch.rpm"
+rpm_file="$work/top/RPMS/noarch/abood-appinstall-${pkgver}-${pkgrel}.noarch.rpm"
 test -s "$rpm_file"
 cp -- "$rpm_file" "$out/"
 

@@ -30,12 +30,12 @@ jobs:
           pkgver="$(sed -n 's/^pkgver=//p' PKGBUILD)"
           pkgrel="$(sed -n 's/^pkgrel=//p' PKGBUILD)"
           mkdir -p dist
-          mv -- "appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst" dist/
-          test -s "dist/appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst"
+          mv -- "abood-appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst" dist/
+          test -s "dist/abood-appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst"
       - uses: actions/upload-artifact@v4
         with:
           name: release-candidate-arch
-          path: dist/appinstall-*.pkg.tar.zst
+          path: dist/abood-appinstall-*.pkg.tar.zst
           if-no-files-found: error
 
   deb:
@@ -53,11 +53,11 @@ jobs:
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends bash coreutils dpkg-dev sed
           bash tools/build_deb.sh dist
-          test -n "$(find dist -maxdepth 1 -name 'appinstall_*_all.deb' -print -quit)"
+          test -n "$(find dist -maxdepth 1 -name 'abood-appinstall_*_all.deb' -print -quit)"
       - uses: actions/upload-artifact@v4
         with:
           name: release-candidate-deb
-          path: dist/appinstall_*_all.deb
+          path: dist/abood-appinstall_*_all.deb
           if-no-files-found: error
 
   rpm:
@@ -76,11 +76,11 @@ jobs:
           useradd -m -s /bin/bash appbuilder
           chown -R appbuilder:appbuilder "$GITHUB_WORKSPACE"
           runuser -u appbuilder -- bash -c 'cd "$1" && bash tools/build_rpm.sh dist' _ "$GITHUB_WORKSPACE"
-          test -n "$(find dist -maxdepth 1 -name 'appinstall-*.noarch.rpm' -print -quit)"
+          test -n "$(find dist -maxdepth 1 -name 'abood-appinstall-*.noarch.rpm' -print -quit)"
       - uses: actions/upload-artifact@v4
         with:
           name: release-candidate-rpm
-          path: dist/appinstall-*.noarch.rpm
+          path: dist/abood-appinstall-*.noarch.rpm
           if-no-files-found: error
 
   portable:
@@ -120,9 +120,9 @@ jobs:
           pkgver="$(sed -n 's/^pkgver=//p' PKGBUILD)"
           pkgrel="$(sed -n 's/^pkgrel=//p' PKGBUILD)"
           expected=(
-            "appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst"
-            "appinstall_${pkgver}-${pkgrel}_all.deb"
-            "appinstall-${pkgver}-${pkgrel}.noarch.rpm"
+            "abood-appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst"
+            "abood-appinstall_${pkgver}-${pkgrel}_all.deb"
+            "abood-appinstall-${pkgver}-${pkgrel}.noarch.rpm"
             "appinstall-${pkgver}-portable.tar.gz"
           )
           for name in "${expected[@]}"; do

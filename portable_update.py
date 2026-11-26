@@ -147,9 +147,9 @@ def installed_version(launcher):
 def native_package_present():
     """Do not create a shadow update over an existing native installation."""
     checks = (
-        ("pacman", ("pacman", "-Qq", "appinstall")),
-        ("dpkg-query", ("dpkg-query", "-W", "-f=" + chr(36) + "{Status}", "appinstall")),
-        ("rpm", ("rpm", "-q", "appinstall")),
+        ("pacman", ("pacman", "-Qq", "abood-appinstall")),
+        ("dpkg-query", ("dpkg-query", "-W", "-f=" + chr(36) + "{Status}", "abood-appinstall")),
+        ("rpm", ("rpm", "-q", "abood-appinstall")),
     )
     for binary, args in checks:
         if not shutil.which(binary):
@@ -175,7 +175,7 @@ def require_user_install(state=None, home=None):
         raise PortableUpdateError("Portable updates are available only for an installed user-source copy.")
     if actual.is_symlink() or not (actual / "integration.py").is_file() or (actual / "integration.py").is_symlink():
         raise PortableUpdateError("No intact portable source installation was found.")
-    launcher = home / ".local/bin/appinstall"
+    launcher = home / ".local/bin/abood-appinstall"
     version = installed_version(launcher)
     if native_package_present():
         raise PortableUpdateError("Native AppInstall package detected; use the distro's package update instead.")
@@ -241,7 +241,7 @@ def unpack_archive(archive, directory, version):
         raise PortableUpdateError("Could not unpack the verified portable archive: " + str(error)) from error
     required = ("appinstall", "integration.py", "source_transaction.py",
                 "portable_update.py", "manager_qml.py", "manager_ui/main.qml",
-                "appinstall.desktop", "appinstall-appimage-review.desktop")
+                "io.github.aboodmohd.AppInstall.desktop", "io.github.aboodmohd.AppInstall.AppImageReview.desktop")
     if any(not (folder / name).is_file() for name in required):
         raise PortableUpdateError("Portable archive lacks required installation files.")
     if installed_version(folder / "appinstall") != version:

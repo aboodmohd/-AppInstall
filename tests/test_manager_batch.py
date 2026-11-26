@@ -1,7 +1,7 @@
 """Batch drag-and-drop install tests.
 
 Covers the package MIME classification (validated against the MimeType list
-in appinstall.desktop), the Qt-free BatchQueue state machine, and the
+in io.github.aboodmohd.AppInstall.desktop), the Qt-free BatchQueue state machine, and the
 BatchQueueDialog running the real per-file review process one file at a
 time — with a stubbed appinstall CLI, offscreen Qt, and no network access.
 """
@@ -25,7 +25,7 @@ from qt_compat import QtWidgets
 
 
 def desktop_mime_list():
-    text = (ROOT / 'appinstall.desktop').read_text()
+    text = (ROOT / 'io.github.aboodmohd.AppInstall.desktop').read_text()
     for line in text.splitlines():
         if line.startswith('MimeType='):
             return [entry for entry in line[len('MimeType='):].split(';')
@@ -43,7 +43,7 @@ class PackageMimeTests(unittest.TestCase):
 
     def test_every_mapped_mime_is_declared_in_the_desktop_entry(self):
         declared = set(desktop_mime_list())
-        self.assertTrue(declared, 'appinstall.desktop MimeType= not found')
+        self.assertTrue(declared, 'io.github.aboodmohd.AppInstall.desktop MimeType= not found')
         self.assertLessEqual(set(manager.PACKAGE_MIMES.values()), declared)
 
     def test_declared_package_mimes_have_an_extension_mapping(self):

@@ -40,8 +40,8 @@ def archive_bytes(version, extra=None):
         "portable_update.py": b"# test updater\n",
         "manager_qml.py": b"# test manager\n",
         "manager_ui/main.qml": b"// test qml\n",
-        "appinstall.desktop": b"[Desktop Entry]\n",
-        "appinstall-appimage-review.desktop": b"[Desktop Entry]\n",
+        "io.github.aboodmohd.AppInstall.desktop": b"[Desktop Entry]\n",
+        "io.github.aboodmohd.AppInstall.AppImageReview.desktop": b"[Desktop Entry]\n",
     }
     required.update(extra or {})
     stream = io.BytesIO()
@@ -103,7 +103,7 @@ class PortableInstallTests(unittest.TestCase):
         self.state.mkdir(parents=True)
         self.bin.mkdir(parents=True)
         (self.state / "integration.py").write_text("# user installed\n")
-        (self.bin / "appinstall").write_bytes(launcher("1.8.0"))
+        (self.bin / "abood-appinstall").write_bytes(launcher("1.8.0"))
         self.homePatch = patch.object(portable.Path, "home", return_value=self.home)
         self.homePatch.start()
         self.addCleanup(self.homePatch.stop)
@@ -120,11 +120,11 @@ class PortableInstallTests(unittest.TestCase):
     def test_installed_source_is_verified_read_only(self):
         self.assertEqual(portable.require_user_install(
             state=self.state, home=self.home)[0], "1.8.0")
-        self.assertEqual(portable.installed_version(self.bin / "appinstall"), "1.8.0")
+        self.assertEqual(portable.installed_version(self.bin / "abood-appinstall"), "1.8.0")
         with self.assertRaises(portable.PortableUpdateError):
             portable.require_user_install(state=self.home, home=self.home)
-        (self.bin / "appinstall").unlink()
-        (self.bin / "appinstall").symlink_to(self.state / "integration.py")
+        (self.bin / "abood-appinstall").unlink()
+        (self.bin / "abood-appinstall").symlink_to(self.state / "integration.py")
         with self.assertRaises(portable.PortableUpdateError):
             portable.require_user_install(state=self.state, home=self.home)
 
@@ -180,16 +180,16 @@ class PortableInstallTests(unittest.TestCase):
         def run(cmd, **kwargs):
             self.assertEqual(Path(cmd[1]).name, "integration.py")
             self.assertEqual(Path(cmd[1]).parent, Path(kwargs["cwd"]))
-            (self.bin / "appinstall").write_bytes(launcher("1.8.1"))
+            (self.bin / "abood-appinstall").write_bytes(launcher("1.8.1"))
             return type("Result", (), {"returncode": 0, "stdout": "ok", "stderr": ""})()
 
-        current = ("1.8.0", self.bin / "appinstall", self.state)
+        current = ("1.8.0", self.bin / "abood-appinstall", self.state)
         with patch.object(portable, "require_user_install", return_value=current), \
              patch.object(portable.subprocess, "run", side_effect=run):
             self.assertEqual(portable.apply_update("v1.8.1", current, release, downloader),
                              "v1.8.1")
         self.assertEqual(len(calls), 2)
-        self.assertEqual(portable.installed_version(self.bin / "appinstall"), "1.8.1")
+        self.assertEqual(portable.installed_version(self.bin / "abood-appinstall"), "1.8.1")
 
     def test_bad_digest_or_tag_cannot_call_install(self):
         release = portable.parse_release(stable())
@@ -202,7 +202,7 @@ class PortableInstallTests(unittest.TestCase):
                 return manifest, "", len(manifest)
             destination.write_bytes(archive)
             return None, hashlib.sha256(archive).hexdigest(), len(archive)
-        installation = ("1.8.0", self.bin / "appinstall", self.state)
+        installation = ("1.8.0", self.bin / "abood-appinstall", self.state)
         with patch.object(portable.subprocess, "run") as runner:
             with self.assertRaises(portable.PortableUpdateError):
                 portable.apply_update("v1.8.1", installation, release, downloader)
@@ -214,12 +214,12 @@ class PortableInstallTests(unittest.TestCase):
         fake = stable("1.8.1")
         response = portable.parse_release(fake)
         with patch.object(portable, "require_user_install",
-                          return_value=("1.8.0", self.bin / "appinstall", self.state)), \
+                          return_value=("1.8.0", self.bin / "abood-appinstall", self.state)), \
              patch.object(portable, "current_release", return_value=response), \
              patch.object(portable, "apply_update") as installer:
             self.assertEqual(portable.main(["--desktop-check"]), 0)
             installer.assert_not_called()
-        self.assertEqual(portable.installed_version(self.bin / "appinstall"), "1.8.0")
+        self.assertEqual(portable.installed_version(self.bin / "abood-appinstall"), "1.8.0")
 
 
 if __name__ == "__main__":

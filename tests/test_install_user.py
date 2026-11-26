@@ -18,7 +18,7 @@ class SourceInstallerConflictTests(unittest.TestCase):
             pacman = bindir / "pacman"
             pacman.write_text(
                 "#!/bin/sh\n"
-                "if [ \"$1\" = \"-Qq\" ] && [ \"$2\" = \"appinstall\" ]; then\n"
+                "if [ \"$1\" = \"-Qq\" ] && [ \"$2\" = \"abood-appinstall\" ]; then\n"
                 f"  exit {0 if package_installed else 1}\n"
                 "fi\nexit 1\n"
             )
@@ -58,13 +58,13 @@ class SourceInstallerConflictTests(unittest.TestCase):
             # registration when a system AppInstall copy exists.
             if command == 'dpkg-query':
                 script = ('#!/bin/sh\n'
-                          'if [ "$1" = "-W" ] && [ "$3" = "appinstall" ]; then\n'
+                          'if [ "$1" = "-W" ] && [ "$3" = "abood-appinstall" ]; then\n'
                           f'  [ {1 if installed else 0} -eq 1 ] || exit 1\n'
                           '  printf "install ok installed\\n"; exit 0\n'
                           'fi\nexit 1\n')
             else:
                 script = ('#!/bin/sh\n'
-                          'if [ "$1" = "-q" ] && [ "$2" = "appinstall" ]; then\n'
+                          'if [ "$1" = "-q" ] && [ "$2" = "abood-appinstall" ]; then\n'
                           f'  exit {0 if installed else 1}\n'
                           'fi\nexit 1\n')
             native = bindir / command

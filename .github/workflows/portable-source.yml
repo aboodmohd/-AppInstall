@@ -91,16 +91,16 @@ jobs:
               set -e
               cd /tmp/appinstall-portable-check/appinstall-'"$version"'
               bash ./install-user.sh
-              test -x "$HOME/.local/bin/appinstall"
-              test "$("$HOME/.local/bin/appinstall" --version)" = "appinstall '"$version"'"
+              test -x "$HOME/.local/bin/abood-appinstall"
+              test "$("$HOME/.local/bin/abood-appinstall" --version)" = "appinstall '"$version"'"
               test -f "$HOME/.local/share/appinstall/manager_ui/main.qml"
               test -f "$HOME/.local/share/appinstall/repository_catalog.py"
               test -f "$HOME/.local/share/appinstall/portable_update.py"
               python3 ../ci_portable_upgrade.py "$PWD"
-              "$HOME/.local/bin/appinstall-uninstall"
-              test ! -e "$HOME/.local/bin/appinstall"
+              "$HOME/.local/bin/abood-appinstall-uninstall"
+              test ! -e "$HOME/.local/bin/abood-appinstall"
             '
-          test ! -e /usr/bin/appinstall
+          test ! -e /usr/bin/abood-appinstall
 
       - name: Upload portable source candidate and checksum
         if: matrix.family == 'debian'

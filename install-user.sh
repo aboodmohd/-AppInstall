@@ -11,19 +11,19 @@ fi
 # Portable source installation is intentionally distro-neutral. Never silently
 # shadow a system copy installed by pacman, APT/dpkg or DNF/RPM.
 installed_by=""
-if command -v pacman >/dev/null 2>&1 && pacman -Qq appinstall >/dev/null 2>&1; then
+if command -v pacman >/dev/null 2>&1 && pacman -Qq abood-appinstall >/dev/null 2>&1; then
   installed_by="pacman"
 elif command -v dpkg-query >/dev/null 2>&1 && \
-     dpkg-query -W -f='${Status}' appinstall 2>/dev/null | grep -qx 'install ok installed'; then
+     dpkg-query -W -f='${Status}' abood-appinstall 2>/dev/null | grep -qx 'install ok installed'; then
   installed_by="dpkg"
-elif command -v rpm >/dev/null 2>&1 && rpm -q appinstall >/dev/null 2>&1; then
+elif command -v rpm >/dev/null 2>&1 && rpm -q abood-appinstall >/dev/null 2>&1; then
   installed_by="rpm"
 fi
 
 if [ -n "$installed_by" ]; then
   printf 'AppInstall is already installed through %s.\n' "$installed_by" >&2
-  printf '%s\n' 'A source installation in ~/.local/bin may shadow /usr/bin/appinstall.' >&2
-  printf '%s\n' 'Check with: type -a appinstall. No existing installation will be deleted.' >&2
+  printf '%s\n' 'A source installation in ~/.local/bin may shadow /usr/bin/abood-appinstall.' >&2
+  printf '%s\n' 'Check with: type -a abood-appinstall. No existing installation will be deleted.' >&2
   if [ ! -t 0 ]; then
     printf '%s\n' 'Refusing an additional user installation without interactive confirmation.' >&2
     exit 2

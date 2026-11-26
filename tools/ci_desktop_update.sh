@@ -20,7 +20,7 @@ build_package() {
     printf '# AppInstall %s\n\nDesktop updater CI fixture.\n' "$version" > RELEASE_NOTES.md
     if [[ "$FAMILY" == arch ]]; then
         runuser -u appinstall-ci -- bash -c 'makepkg --noconfirm --skipinteg'
-        mv "appinstall-$version-1-any.pkg.tar.zst" "$fixture/feed/"
+        mv "abood-appinstall-$version-1-any.pkg.tar.zst" "$fixture/feed/"
     else
         bash tools/build_deb.sh "$fixture/feed"
     fi
@@ -30,15 +30,15 @@ build_package 1.2.2
 build_package 1.2.3
 cd "$fixture/feed"
 if [[ "$FAMILY" == arch ]]; then
-    pacman -U --noconfirm ./appinstall-1.2.2-1-any.pkg.tar.zst
-    old='appinstall-1.2.2-1-any.pkg.tar.zst'
-    new='appinstall-1.2.3-1-any.pkg.tar.zst'
-    installer=/usr/bin/appinstall-installer
+    pacman -U --noconfirm ./abood-appinstall-1.2.2-1-any.pkg.tar.zst
+    old='abood-appinstall-1.2.2-1-any.pkg.tar.zst'
+    new='abood-appinstall-1.2.3-1-any.pkg.tar.zst'
+    installer=/usr/lib/abood-appinstall/appinstall-installer
 else
-    apt-get install -y --no-install-recommends ./appinstall_1.2.2-1_all.deb
-    old='appinstall_1.2.2-1_all.deb'
-    new='appinstall_1.2.3-1_all.deb'
-    installer=/usr/lib/appinstall/appinstall-installer
+    apt-get install -y --no-install-recommends ./abood-appinstall_1.2.2-1_all.deb
+    old='abood-appinstall_1.2.2-1_all.deb'
+    new='abood-appinstall_1.2.3-1_all.deb'
+    installer=/usr/lib/abood-appinstall/appinstall-installer
 fi
 rm -- "$old"
 sha256sum "$new" > SHA256SUMS
@@ -71,7 +71,7 @@ case "${args[-1]}" in
     https://github.com/aboodmohd/-AppInstall/releases/download/v1.2.3/*)
         name="${args[-1]##*/}"
         case "$name" in
-            SHA256SUMS|appinstall-1.2.3-1-any.pkg.tar.zst|appinstall_1.2.3-1_all.deb)
+            SHA256SUMS|abood-appinstall-1.2.3-1-any.pkg.tar.zst|abood-appinstall_1.2.3-1_all.deb)
                 cp "$APPINSTALL_FIXTURE/$name" "$output" ;;
             *) exit 22 ;;
         esac ;;
@@ -104,18 +104,18 @@ run_update() {
 
 run_update deny --desktop-check | grep -Fx 'APPINSTALL_UPDATE=v1.2.3'
 if run_update deny --desktop-update v1.2.3; then exit 1; fi
-test "$(appinstall --version)" = 'appinstall 1.2.2'
+test "$(abood-appinstall --version)" = 'appinstall 1.2.2'
 
 printf '%064d  %s\n' 0 "$new" > SHA256SUMS
 status=0
 run_update allow --desktop-update v1.2.3 || status=$?
 test "$status" -eq 3
-test "$(appinstall --version)" = 'appinstall 1.2.2'
+test "$(abood-appinstall --version)" = 'appinstall 1.2.2'
 mv correct-sums SHA256SUMS
 
 output="$(run_update allow --desktop-update v1.2.3)" || { printf "%s\n" "$output"; exit 1; }
 printf "%s\n" "$output" | grep -Fx 'APPINSTALL_UPDATED=v1.2.3'
-test "$(appinstall --version)" = 'appinstall 1.2.3'
-grep -Fx '# AppInstall 1.2.3' /usr/share/appinstall/RELEASE_NOTES.md
+test "$(abood-appinstall --version)" = 'appinstall 1.2.3'
+grep -Fx '# AppInstall 1.2.3' /usr/share/abood-appinstall/RELEASE_NOTES.md
 output="$(run_update deny --desktop-check)"
 ! grep -q '^APPINSTALL_UPDATE=' <<<"$output"

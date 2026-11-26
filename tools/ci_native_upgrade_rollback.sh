@@ -19,38 +19,31 @@ mkdir -p "$work"/{old,new}
 case "$FAMILY" in
 arch)
  old=appinstall-1.8.0-1-any.pkg.tar.zst
- new=appinstall-1.9.0-1-any.pkg.tar.zst
+ new=abood-appinstall-1.9.0-1-any.pkg.tar.zst
  pkgmeta() { test "$(pacman -Q appinstall)" = "appinstall $1"; }
  native_install() { pacman -U --noconfirm "$1"; }
- installed_helper=/usr/bin/portable_update.py
- smoke=/usr/bin/manager_qml.py
+ remove_new() { pacman -R --noconfirm abood-appinstall; }
  ;;
 debian)
  old=appinstall_1.8.0-1_all.deb
- new=appinstall_1.9.0-1_all.deb
+ new=abood-appinstall_1.9.0-1_all.deb
  pkgmeta() {
    fmt="$(printf '$%s' '{Version}')"
    test "$(dpkg-query -W -f="$fmt" appinstall)" = "$1"
  }
  native_install() { apt-get install -y --no-install-recommends --allow-downgrades "$1"; }
- installed_helper=/usr/lib/appinstall/portable_update.py
- smoke=/usr/lib/appinstall/manager_qml.py
+ remove_new() { apt-get remove -y abood-appinstall; }
  ;;
 fedora)
  old=appinstall-1.8.0-1.noarch.rpm
- new=appinstall-1.9.0-1.noarch.rpm
+ new=abood-appinstall-1.9.0-1.noarch.rpm
  pkgmeta() { test "$(rpm -q --qf '%{VERSION}-%{RELEASE}' appinstall)" = "$1"; }
- native_install() {
-   if rpm -q appinstall >/dev/null 2>&1; then
-     installed="$(rpm -q --qf '%{VERSION}' appinstall)"
-     if [[ "$installed" == 1.9.0 ]]; then dnf -y downgrade "$1";
-     else dnf -y upgrade "$1"; fi
-   else dnf -y install "$1"; fi
- }
- installed_helper=/usr/lib/appinstall/portable_update.py
- smoke=/usr/lib/appinstall/manager_qml.py
+ native_install() { dnf -y install "$1"; }
+ remove_new() { dnf -y --no-autoremove remove abood-appinstall; }
  ;;
 esac
+installed_helper=/usr/lib/abood-appinstall/portable_update.py
+smoke=/usr/lib/abood-appinstall/manager_qml.py
 
 case "$FAMILY" in
 arch)
@@ -136,8 +129,9 @@ PYTHON
 check_data
 
 native_install "$work/new/$new"
-pkgmeta 1.9.0-1
-test "$(appinstall --version)" = 'appinstall 1.9.0'
+pkgmeta 1.8.0-1
+test "$(abood-appinstall --version)" = 'appinstall 1.9.0'
+test "$(bash -c 'source ./install.sh; installed_version "$1"' _ "$FAMILY")" = 1.9.0-1
 test -f "$installed_helper"
 test -f "$smoke"
 check_data
@@ -146,12 +140,12 @@ runuser -u appinstall-acceptance -- env HOME="$user_home" \
  XDG_CONFIG_HOME="$user_home/.config" \
  QT_QPA_PLATFORM=offscreen APPINSTALL_DISABLE_UPDATE_TIMER=1 \
  python3 "$smoke" --smoke
-echo "PASS: v1.8.0 -> v1.9.0 $FAMILY native upgrade"
+echo "PASS: v1.8.0 legacy -> v1.9.0 $FAMILY identity migration preserved both packages"
 
-native_install "$work/old/$old"
+remove_new
 pkgmeta 1.8.0-1
 test "$(appinstall --version)" = 'appinstall 1.8.0'
-test -f "$installed_helper"
+test ! -e "$installed_helper"
 check_data
 grep -Fx 'text/plain=preserved-editor.desktop;' "$mime_file"
-echo "PASS: v1.9.0 -> v1.8.0 $FAMILY native downgrade with preserved settings and MIME"
+echo "PASS: v1.9.0 -> v1.8.0 $FAMILY migration rollback with preserved settings and MIME"

@@ -12,15 +12,12 @@ trap 'rm -rf -- "$pkgdir"' EXIT
 source "$srcdir/PKGBUILD"
 package
 
-install -d "$pkgdir/usr/lib/appinstall"
-mv "$pkgdir"/usr/bin/* "$pkgdir/usr/lib/appinstall/"
-ln -s ../lib/appinstall/appinstall "$pkgdir/usr/bin/appinstall"
-install -m0644 "$srcdir/LICENSE" "$pkgdir/usr/share/doc/appinstall/copyright"
+install -m0644 "$srcdir/LICENSE" "$pkgdir/usr/share/doc/abood-appinstall/copyright"
 rm -r -- "$pkgdir/usr/share/licenses"
 
 install -d "$pkgdir/DEBIAN"
 cat > "$pkgdir/DEBIAN/control" <<CONTROL
-Package: appinstall
+Package: $pkgname
 Version: $pkgver-$pkgrel
 Architecture: all
 Section: utils

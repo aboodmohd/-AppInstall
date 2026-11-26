@@ -1,5 +1,5 @@
 # Maintainer: Abood <abood@localhost>
-pkgname=appinstall
+pkgname=abood-appinstall
 pkgver=1.9.0
 pkgrel=1
 pkgdesc="Double-click installer for AppImage, Flatpak, DEB, and RPM files on Linux desktops"
@@ -13,8 +13,8 @@ backup=()
 
 source=('install.sh'
         'appinstall'
-        'appinstall.desktop'
-        'appinstall-appimage-review.desktop'
+        'io.github.aboodmohd.AppInstall.desktop'
+        'io.github.aboodmohd.AppInstall.AppImageReview.desktop'
         'confirm.py'
         'manager.py'
         'manager_qml.py'
@@ -83,31 +83,31 @@ source=('install.sh'
         'appinstall-512.png'
 )
 b2sums=(
-        'd2be54d05d338fcfde64b0e118111d7478db8de6fda44150541608a405432c4bdb5d50ae22f5aa95cd19a19e6f101782606861a0fbdfa387a85bd19f753b9f8b'
+        'd4e912b0d66404afa2f85bf2077afbca9533fed0e76b9515cb985d338bed5b39781a77a4b5fe2204a39407d986a3685b5e302e4825cd56a8523094b1c8577b58'
         '60cd25644d3cf7cf4950b771f781535c1e6a86c08487629df4908929f260fb231edccb7ab27aabd6a66b454a9c3967bf5dd99402625d9d7f1cf1fc14ad405e48'
-        'f8da2822ad2a5638b9f7932728727fc624fae695db8cc30470783e1f7e26e719d1fa8624e0533ebcfd1713f99935d7752d0b8b3c46d90c06f2ff034f8b307d59'
-        '5a0a824810d4c4d7a8f7f2603f3c4623874eef4de55ee4b360ab0321ecfae8edf42a9443c134e10272fba0b96f89f74cd45473e6ac09c6493595c9ad0cf9c0e5'
-        'aa2943ff6d844443cb68654103a1aadadea9c3b000dffe66ef0601999f12e9a6e5cd3b8ab0b7aa7f5c60bebb1fe872ff51aebec12722cce31f98b04194b39cc8'
-        '779595561ead38af4f2ba30ee029c2551f26496a82e44fcc1a3d780397f1831fe69a7767f32f1f0337aa3d9775fc7f48752bdb962987c909e4a2fb11e104afde'
-        '30176675a246ec97663cd0babbf3550af93978c1f4d55bc00f01035f1c54dfeba4e201557bd971f1cff38545c313b5c23967cf2c491bfe0467b4e63cce934894'
+        'e9c70963450a6d407b94498d3f13afe5bacd0e15631f43a4eb6131636b077cd90e3d9b1055817b24d5143a40864fde7a5d3d0f64e5203e8851a047854fda1d4c'
+        'fc142c2b03f263a36ab1d024beaecebccf29af32e15f7ec78b27b21ccdc81675a812b54dba6015601c6b4d57fb4ba00a54f19f5bad4a97e864b4e450a06375a4'
+        'fd08e33dc161ee0d125c83354a59e84586081f21274a4a49f683c474864952b26da8f4671e45b665d267dc41bb4826dbf4a765b2ac1531d304816a8b719a571f'
+        'f4447a2cd50bf2b77bc0569009051c6461790d6ee3ec8912a0cba096873f25db2803f53f3577f6263dfe39a1afb1cd3fb04deafc9aa32b275a0c61a58c95107e'
+        '89a6138310e6e12dcb14ff4f54dcbe0d0670963d0e851ff98f36aa55d960f1e1e9a0eaefac13cda36fce62aefadd55e69c43b249c83371360630b7ad5ce48c44'
         '45989cba16c5c75e2350ec185e4a0e86ed4f7646e8a612f6e1d1ef15c9a46a7048e1f47508440f549a2c1f154cdee45d30664de5a92acadae724e58995f0fa32'
         'fc297826f880bcbf84243020009d5b8bdd224d1cd6a6cd4ad15c4124738211fe24a35020f366204b2575f7b758d6ca09e5a4dc99b0739432a94f397dc9c28fe7'
         '6c28640acd705f0b4297f53d057ccae7646b1bcc4cf12d1984590f9f9dd99a3a2462a3604d70dc3c58a8e06997ad4a903a59fdb1c66acc2a3b0a265756dbbf8c'
         '1e64cd014a7212a9d5e8b9311852193789b20dbafb6cb7558a0e40149e048e202194e0c1bc359758efeb06a9f656fa0a5946743bd1fc6272effe961577eaea27'
-        '2e05cd589ad5fe269caf53e4f15585792cf0be6fdd18068609e903164d5b976eb4a9bccd789e2fbd13efa9a23fa8ddce50cde9c73bfe1a109620102379d7a7a4'
+        '4335b56f8ab40656a9eb98e55fc17d74b683dda0ceff0b815dc7e3c8b33cb2219b52ff60ac1a4350c2b7d2520a794815a4f7a1b6b17a3300a6b289e7da9383be'
         'ed13786f49c5f7bda53e4a0abf93c8b0cc21eeb1b43509e4a91929b08fb58baaf2fc8922e0554fca4ec0642c3a0f3f08a7118d6b3f5b5064bd10251289c7f5b7'
         'ecb167e735b2eb0756fa05ff729caa8494ca1a1d886fe15402f0d2da31087a2e42ec54c1a6b18baca25c66322e5d9ee09fc65e662152604f857f3a0eea58bd83'
-        'aacf8a872f49e60a7185c7a0146f61faead1c4cb4800c9b91c76d587d03474c99cff6a857d1d5db6ee6051b1c2ac4d15026667e17ecc4f210adc312efee77872'
+        '70860dff7f45ec53052553484d0ef0f1a9265fefb6a4fa925db78cec603a6b21ae45932302d59135b6c7d91a7c0cea282a607060aa286993d970a747bcc5863d'
         '95dee6e7a69029c69fbd7136f3f650141380b84c4b8dc18bde982e0804e467186af82ee2dc20057acbf55f7086745df3e1927e1b75a6a701c1e762be780237c2'
         '523924a6aa9549689445302ed19c330e388c7ca2b6c69fbbab52a9d5d4149e52f2e068d62aabe9a6149df73eb13f99649a4986deae4a08ccb1e7cf283db7f809'
         'e4c07e449b37899e8640f62605cb2f768f81d24dcc1517de2be3c2e1320d9ca5269d596c98daeb37287642f39c9e9d2c2ead798f605330b569b20cc5d29bde04'
         '8e9b705959fc0b9d21b76a8d7b4aaf2294d13cf7bb84afbc8af114ef072ed4f1d592936d64afc824da3c9ff7786ef2601c8130d375ec342942adcde59e5fc85f'
         'd32c5266538594d94fe2a4e7246d1643511ea3a31ea426f2f45307ae8c16be75429409f28a113f9e5b7374c08f1f4e488ed4acdca4c7337026b550fe8ec8bd1d'
-        'b3a22465dffbaa5e03515a9408d0e03580fb8cd3e8b1e93a0030e7f8189c4f113b6b66b4c2c971481fa1b4727f2e9ec51ca8aed3852d5c22f3ce773a59c04206'
+        'd5d0a4657227c2031f5584be1e8e46e51d55be7b03254db8e4c981478fd7bfd84e378c7050e7382632800d1e1767eadf71a409f0e26e66c144876e9bd87a4811'
         '62d82779ae17fdd66dda9b269b68fd3913108e13003b666d8d83904bdd0cb43d9c51541b0c8c8c44e68a9d4cf174f37904acbc42bfa69149568362fb5b5fac89'
         'f4b39e8d3c36c643ecac3286b3f1208ea6761cad29a3fa53940881dbab212b0627162ca76731b06c1a97935e0276be3e1bd9cc4c3b5dd01b7c550d6e45c4233c'
         'a2af8af058c82f05ed82fe2bb76740edb19f54c058ad47036ad9025b68474cd2025a8faaaa72653848025f4f0c75c5eca9d8ba649dad9591fe73fbd7df28503b'
-        '91e72a7e9bed260673d1f7fbeb7f7f8f80128e2acbe4b863ef22a39216d640939dac2e8353e6ec93e2bb50febfa157d4100466b148f7ffe234deb9d0b779a1ca'
+        '62c79aced81fd4014de22694c96c021694c293731cb6c7766f1d1bb6412ceb43fc48556f2f2dea2db621d8f1ef64894441fd46354912b7269ce04c2b749acc78'
         '40312bd4605b692791c1910d2126108ea84f34400131c4e03f00ae257c8d773523da493f687046d3c38a85d7231133bbb789a6f88d8f484e26d17bd5a8226307'
         'bb3f9b8d6a3916a3cb249ca5201489c1e3259fbf5f579b6a70b6f23400f45c91fc1d46cace131c4a825392f728b6ec731d5803ce8c9f36c99e1b405a77e3ff2a'
         '2dc7bd3fadb20d198c508e62aa37788488c2e2691d419daf729a77078963fb337dfee91981401b136045428503670159a7601097ac2c8c3247d067149935b8e4'
@@ -117,19 +117,19 @@ b2sums=(
         '0e2d5052d3db14a91f92af09defd75206a2a247697377e6ea0a002ffe559924abc953bb6335b9641c527576222a3b6cad8599cad2bade9636ab061cb3adfaf14'
         '45ced99cd139525dde0f2b8a1a83f8406ee66b2cd98ed5ba9cd7900cd006bb4e6d8fa5d9d8e4e3489320caef0d202f831f18bca43308b380001c2bfc57975d76'
         '53f5d4bd0510d6d52ecca621e30e57b382e566521b8084446faf9c0b34925353c806d32de96b1302616231d906c9bf58340e871c427c99b546747dea50e0c83f'
-        '0c7a02dfe78f6bcbdeda9327280651e426b1747795302f935d162512cb25ff34d2290c19d103ac0907e8c71936c59ce36a67b8777b4c97913b40460a1c00f3aa'
-        '635cce12dcc85d8c069f6149f63a5eec97091614d2054775b42686b42fc771343e4b0128b0c55689936a3e114e9aec7b8a9db3b6ae19f99e4423ca720cc0edfa'
+        '3ced14ded4482e77cf482362cb2f3c5bf7a9d6ac994e03de910a12c3d94e4d5e53fe6e695c0c2122cab6c50c76aa63a80293fafeb94e08b79912c1e34f2a5d88'
+        '4590d72c274b84c5c29919db015d3e58ec55897ee205c013567f1ddd1511c8f5eb60374086dcaf98fb52596b75bad4019fdf69e4082f3ed84658a193a2263a23'
         'fb989f8ee11448944229f9268b47ac9c645191f1cf58943837b3215dd596decf989bd023d8bf7b1444f5d3be36aa58059e86e8693d192c606d6c3fe43ec47c77'
         'aa57bc6a30118876bba2d2360383e2bb13b43738dc8d87296f7cfa53df1c19c3b2348dd1a4ffb00199a8a06a0f0dbf285edd7e33edffad02e98a9f07c29fb72d'
         'eb7caf4bc1e66f0db898e56dd98926b96b7afbf5b1a561aff75f06e93bbe0ad45f169230f0938c76d9770ce82b4895295a7c47e94b1fbd1b7a70c455dbd0ad4a'
         'f1fab9ef608d3b217b9f68eaad4af8a873b6e635eca3a0cb14840d084fd70bdfe9cb68ae9d7ef00e321f3b22d00bc7b50af89cd332aac1fa607f083c59ef9df2'
         '8894f650a7f357c95765457d350d0ab7f014f5d855f3d7b1545b48693b5e5a0d04dc09e56e99955b0cead43da6920d7ebdb25636b5a512b732f21234ad77ddd5'
-        '5e460710ef3163fc9eb2b7c5f54bb5931d3f9bf7d3610fb200e68c103acf48c0c0e19722eb731d627407c0d59dfda63f4619e1320e75c12ee7657f88b0f58b88'
-        'f7879680815d68cca33767982b8ee8ba6d1e9122d220ff15d4f6f57356272f6d70fa2ebd34111fa17f82ac36c1059a11cfca7fb1c5c96f1f7e5f515e727307a7'
+        'e89770729fa1c8ae72dfff5305b53461c50d4148651d72e1785f59d967750b164f7ecfde76d9282b748d49f2a64fc50d83811960417b1eb10d638aad411e907a'
+        'e19c1d7f578fe512edb8a505d517ba6a64f75118268cd95b2aaad39ad5ddec11ab1524216e58b14b13a2e5f762222118b3e18c784b011bd17a308c5df223d370'
         '67c9854c3ac526386d32a47382ea6092469c29ae56921fd939035e06bd3a2db4060ab6e0d7a0066b75211a97846b1e7f938031f1e17e2703b258d7f89346a24b'
         '0d31afab667717c0a490af8da91675455a5178c6607c5aa3953b9bec0c6a7adb915f028da0793a155f1f3443ad528a22c8558dd72c763c788764728e7131aab6'
         'c8e7bf349ffb0716c5e05b52f1c5b691b41fa2dced18655f181a08e40208fe556d722d2bf9dcfefcaf70bd5ae27bcfe738af6306d86db931e2ecc2658022d1d7'
-        'a757c36fecb71e477215786080d61001aa43a2b1a80e6e90bad601352a8b8e031e78a9c109409704846af9fe8e9f3c6524bb7efacdfc45ec800ac9153465a178'
+        'd8cfc03deaf3b7ff65813b14de6b2427d67e0b2241420dffe7b27de122b4ed3bbbf6e39681d4eb38ad72b6cf883eca7a3646bbdc827b79cf8d39c605f23eafb8'
         '7685cb1496c71d074dccff047286242c2a28b9e1fe52a8ea33758414a8f2ab49c6591318f5983207f9bc3f5a3f7333e2e07c66974fa0bd4c35e3a52d1ad2eb66'
         'ad9c11820ca12ef1062f4a995edc015ce8ab902fee1f0c04a3c8666caca8770f4d8bb7352df10c4768b958d0ccdf50d8167c08e0aa8a560857c09c9e8bca10e5'
         '2f17356411c62bfe54df87a45e3c98a54a29dc5707fb587876d7f3df241c6d601dd013e090fd9960db19d113ef7b433f95843592221bde58c9027afbd99ed07f'
@@ -145,47 +145,49 @@ b2sums=(
         '52d35713d301522f310302200c6dc53d2b79f683002814cc39fcc0667bb1957b27f28d50d0311c07e8a558a02f617a20858d49d7cd4275d7943a69f60bb9601a'
 )
 package() {
-    install -Dm0644 "$srcdir/RELEASE_NOTES.md" "$pkgdir/usr/share/appinstall/RELEASE_NOTES.md"
-    install -Dm0755 "$srcdir/install.sh" "$pkgdir/usr/bin/appinstall-installer"
+    install -Dm0644 "$srcdir/RELEASE_NOTES.md" "$pkgdir/usr/share/abood-appinstall/RELEASE_NOTES.md"
+    install -Dm0755 "$srcdir/install.sh" "$pkgdir/usr/lib/$pkgname/appinstall-installer"
     for helper in container_backend.py container_ui.py launch_monitor.py manager.py manager_qml.py result_ui.py runtime_probe.py diagnostics_core.py diagnostics_ui.py url_install.py url_dialog.py flathub_catalog.py catalog_metadata.py catalog_artwork.py catalog_browse.py repository_catalog.py update_engine.py repository_upgrades.py portable_update.py; do
-        install -Dm0644 "$srcdir/$helper" "$pkgdir/usr/bin/$helper"
+        install -Dm0644 "$srcdir/$helper" "$pkgdir/usr/lib/$pkgname/$helper"
     done
     # QML prototype of the My Applications screen (manager_qml.py loads it
     # from the directory next to the other helpers).
-    install -Dm0644 "$srcdir/manager-ui-qmldir" "$pkgdir/usr/bin/manager_ui/qmldir"
-    install -Dm0644 "$srcdir/manager-ui-Theme.qml" "$pkgdir/usr/bin/manager_ui/Theme.qml"
-    install -Dm0644 "$srcdir/manager-ui-main.qml" "$pkgdir/usr/bin/manager_ui/main.qml"
-    install -Dm0644 "$srcdir/manager-ui-AppCard.qml" "$pkgdir/usr/bin/manager_ui/AppCard.qml"
-    install -Dm0644 "$srcdir/native_backend.py" "$pkgdir/usr/bin/native_backend.py"
-    install -Dm0644 "$srcdir/appimage_backend.py" "$pkgdir/usr/bin/appimage_backend.py"
-    install -Dm0644 "$srcdir/appimage_updates.py" "$pkgdir/usr/bin/appimage_updates.py"
-    install -Dm0644 "$srcdir/confirm.py" "$pkgdir/usr/bin/confirm.py"
-    install -Dm0644 "$srcdir/package_meta.py" "$pkgdir/usr/bin/package_meta.py"
-    install -Dm0644 "$srcdir/qt_compat.py" "$pkgdir/usr/bin/qt_compat.py"
-    install -Dm0644 "$srcdir/ui_style.py" "$pkgdir/usr/bin/ui_style.py"
-    install -Dm0644 "$srcdir/settings.py" "$pkgdir/usr/bin/settings.py"
+    install -Dm0644 "$srcdir/manager-ui-qmldir" "$pkgdir/usr/lib/$pkgname/manager_ui/qmldir"
+    install -Dm0644 "$srcdir/manager-ui-Theme.qml" "$pkgdir/usr/lib/$pkgname/manager_ui/Theme.qml"
+    install -Dm0644 "$srcdir/manager-ui-main.qml" "$pkgdir/usr/lib/$pkgname/manager_ui/main.qml"
+    install -Dm0644 "$srcdir/manager-ui-AppCard.qml" "$pkgdir/usr/lib/$pkgname/manager_ui/AppCard.qml"
+    install -Dm0644 "$srcdir/native_backend.py" "$pkgdir/usr/lib/$pkgname/native_backend.py"
+    install -Dm0644 "$srcdir/appimage_backend.py" "$pkgdir/usr/lib/$pkgname/appimage_backend.py"
+    install -Dm0644 "$srcdir/appimage_updates.py" "$pkgdir/usr/lib/$pkgname/appimage_updates.py"
+    install -Dm0644 "$srcdir/confirm.py" "$pkgdir/usr/lib/$pkgname/confirm.py"
+    install -Dm0644 "$srcdir/package_meta.py" "$pkgdir/usr/lib/$pkgname/package_meta.py"
+    install -Dm0644 "$srcdir/qt_compat.py" "$pkgdir/usr/lib/$pkgname/qt_compat.py"
+    install -Dm0644 "$srcdir/ui_style.py" "$pkgdir/usr/lib/$pkgname/ui_style.py"
+    install -Dm0644 "$srcdir/settings.py" "$pkgdir/usr/lib/$pkgname/settings.py"
     install -Dm0755 "$srcdir/appinstall" \
-        "$pkgdir/usr/bin/$pkgname"
-    install -Dm0644 "$srcdir/appinstall.desktop" \
-        "$pkgdir/usr/share/applications/$pkgname.desktop"
+        "$pkgdir/usr/lib/$pkgname/appinstall"
+    install -d "$pkgdir/usr/bin"
+    ln -s "../lib/$pkgname/appinstall" "$pkgdir/usr/bin/$pkgname"
+    install -Dm0644 "$srcdir/io.github.aboodmohd.AppInstall.desktop" \
+        "$pkgdir/usr/share/applications/io.github.aboodmohd.AppInstall.desktop"
     # Pin the system launcher to the pacman-owned executable. A separate
     # source/user install may place an older appinstall first in PATH.
     # integration.py still rewrites its user-level launcher independently.
-    sed -i 's|^Exec=appinstall %F$|Exec=/usr/bin/appinstall %F|' \
-        "$pkgdir/usr/share/applications/$pkgname.desktop"
-    install -Dm0755 "$srcdir/appinstall-appimage-review.desktop" \
-        "$pkgdir/usr/share/kio/servicemenus/appinstall-appimage-review.desktop"
-    # Use the pacman-owned executable even when ~/.local/bin/appinstall
+    sed -i 's|^Exec=appinstall %F$|Exec=/usr/bin/abood-appinstall %F|' \
+        "$pkgdir/usr/share/applications/io.github.aboodmohd.AppInstall.desktop"
+    install -Dm0755 "$srcdir/io.github.aboodmohd.AppInstall.AppImageReview.desktop" \
+        "$pkgdir/usr/share/kio/servicemenus/io.github.aboodmohd.AppInstall.AppImageReview.desktop"
+    # Use the pacman-owned executable even when ~/.local/bin/abood-appinstall
     # from a source/beta installation appears first in PATH.
     # The source installer rewrites its own menu to the user-local path.
-    sed -i 's|^Exec=appinstall %f$|Exec=/usr/bin/appinstall %f|' \
-        "$pkgdir/usr/share/kio/servicemenus/appinstall-appimage-review.desktop"
+    sed -i 's|^Exec=appinstall %f$|Exec=/usr/bin/abood-appinstall %f|' \
+        "$pkgdir/usr/share/kio/servicemenus/io.github.aboodmohd.AppInstall.AppImageReview.desktop"
     # Application icon: install the official AppInstall logo to the freedesktop
     # hicolor theme at every supported size, keeping the installed name
-    # appinstall.png in each size directory.
+    # io.github.aboodmohd.AppInstall.png in each size directory.
     for size in 16 24 32 48 64 128 256 512; do
         install -Dm0644 "$srcdir/appinstall-${size}.png" \
-            "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/appinstall.png"
+            "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/io.github.aboodmohd.AppInstall.png"
     done
     install -Dm0644 "$srcdir/README.md" \
         "$pkgdir/usr/share/doc/$pkgname/README.md"

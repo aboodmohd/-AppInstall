@@ -168,7 +168,7 @@ def open_package(parent):
         return
     command = Path(__file__).with_name('appinstall')
     if not command.is_file():
-        command = Path.home() / '.local/bin/appinstall'
+        command = Path.home() / '.local/bin/abood-appinstall'
     try:
         subprocess.Popen([str(command), '--', path])
     except OSError as error:

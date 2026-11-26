@@ -18,17 +18,17 @@ ROOT = Path(__file__).resolve().parents[1]
 SHA_LINE = re.compile(r"^([0-9a-f]{64})  ([^\r\n]+)$")
 SHA = re.compile(r"^[0-9a-f]{40}$")
 REQUIRED = (
-    "usr/bin/appinstall", "usr/share/licenses/appinstall/LICENSE",
-    "usr/share/kio/servicemenus/appinstall-appimage-review.desktop",
+    "usr/bin/abood-appinstall", "usr/share/licenses/abood-appinstall/LICENSE",
+    "usr/share/kio/servicemenus/io.github.aboodmohd.AppInstall.AppImageReview.desktop",
 )
 
 # The eight official AppInstall hicolor icons are the ONLY PNG files permitted
 # inside the installable package. Installed destinations keep the freedesktop
-# hicolor name appinstall.png in each size directory. Any other PNG
+# hicolor name io.github.aboodmohd.AppInstall.png in each size directory. Any other PNG
 # (evidence/phase4 screenshots, unrelated images) is strictly rejected. This
 # allowlist mirrors ci_release_evidence_gate.APP_INSTALL_ICON_INSTALLED.
 APP_INSTALL_ICON_INSTALLED = {
-    f"usr/share/icons/hicolor/{size}x{size}/apps/appinstall.png": size
+    f"usr/share/icons/hicolor/{size}x{size}/apps/io.github.aboodmohd.AppInstall.png": size
     for size in (16, 24, 32, 48, 64, 128, 256, 512)
 }
 
@@ -65,7 +65,7 @@ def _pkg_version(pkgbuild):
 
 def verify_package(package, pkgbuild):
     version, release = _pkg_version(pkgbuild)
-    expected = f"appinstall-{version}-{release}-any.pkg.tar.zst"
+    expected = f"abood-appinstall-{version}-{release}-any.pkg.tar.zst"
     if package.name != expected:
         raise ValueError(f"Expected package {expected}, got {package.name}")
     result = subprocess.run(
@@ -85,7 +85,7 @@ def verify_package(package, pkgbuild):
     if set(packaged_png) != set(APP_INSTALL_ICON_INSTALLED):
         raise ValueError("Packaged AppInstall icon inventory incomplete or unexpected")
     result = subprocess.run(
-        ["bsdtar", "-xOf", str(package), "usr/share/licenses/appinstall/LICENSE"],
+        ["bsdtar", "-xOf", str(package), "usr/share/licenses/abood-appinstall/LICENSE"],
         capture_output=True, check=True, timeout=30,
     )
     if result.stdout != (ROOT / "LICENSE").read_bytes():

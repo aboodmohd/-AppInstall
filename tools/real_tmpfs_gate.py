@@ -112,14 +112,14 @@ def main(raw_mount):
                QT_QPA_PLATFORM="offscreen")
     result = run_install(env)
     must_pass(result, "Initial clean source registration")
-    installed = home / ".local/bin/appinstall"
+    installed = home / ".local/bin/abood-appinstall"
     manager = state / "manager.py"
     manager_qml = state / "manager_qml.py"
     associations = state / "associations.json"
     tracked = [installed, manager, manager_qml, mime, associations, registry, unrelated]
     before = {path: (path.read_bytes(), stat.S_IMODE(path.stat().st_mode))
               for path in tracked}
-    if b"application/vnd.flatpak=appinstall.desktop;" not in before[mime][0]:
+    if b"application/vnd.flatpak=io.github.aboodmohd.AppInstall.desktop;" not in before[mime][0]:
         raise AssertionError("Initial registration did not set the MIME default")
 
     filler = mount / "filler.bin"

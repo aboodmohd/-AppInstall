@@ -16,7 +16,7 @@
 #      stdin handed back to the terminal so `curl | bash` keeps working.
 #   5. Offers to install missing optional backends via pacman.
 #   6. Offers ONE clear confirmation to make AppInstall the default handler
-#      for every MIME type advertised in appinstall.desktop. Previous per-user
+#      for every MIME type advertised in io.github.aboodmohd.AppInstall.desktop. Previous per-user
 #      defaults are backed up first and a restore script is written.
 #
 # What this script NEVER does:
@@ -39,11 +39,13 @@ REPO_SLUG="aboodmohd/-AppInstall"
 API_BASE="https://api.github.com"
 RAW_URL="https://raw.githubusercontent.com/${REPO_SLUG}/main/install.sh"
 
-DESKTOP_ID="appinstall.desktop"
-APP_BIN="/usr/bin/appinstall"
-APP_LOCAL_BIN="$HOME/.local/bin/appinstall"
+DESKTOP_ID="io.github.aboodmohd.AppInstall.desktop"
+APP_BIN="/usr/bin/abood-appinstall"
+PACKAGE_ID="abood-appinstall"
+PROJECT_URL="https://github.com/aboodmohd/-AppInstall"
+APP_LOCAL_BIN="$HOME/.local/bin/abood-appinstall"
 
-# Every MIME type advertised in appinstall.desktop (handlers + aliases).
+# Every MIME type advertised in io.github.aboodmohd.AppInstall.desktop (handlers + aliases).
 MIME_TYPES=(
   "application/vnd.debian.binary-package"
   "application/x-deb"
@@ -329,9 +331,9 @@ try:
     if not re.fullmatch(r"v[0-9][A-Za-z0-9.+_-]*", tag):
         raise ValueError("invalid tag")
     package_pattern = {
-        "arch": r"appinstall-[0-9][A-Za-z0-9.+_-]*-any\.pkg\.tar\.zst",
-        "debian": r"appinstall_[0-9][A-Za-z0-9.+~-]*_all\.deb",
-        "fedora": r"appinstall-[0-9][A-Za-z0-9.+_~-]*-[0-9][A-Za-z0-9._+~]*\.noarch\.rpm",
+        "arch": r"abood-appinstall-[0-9][A-Za-z0-9.+_-]*-any\.pkg\.tar\.zst",
+        "debian": r"abood-appinstall_[0-9][A-Za-z0-9.+~-]*_all\.deb",
+        "fedora": r"abood-appinstall-[0-9][A-Za-z0-9.+_~-]*-[0-9][A-Za-z0-9._+~]*\.noarch\.rpm",
     }[sys.argv[2]]
     found = {}
     for asset in data["assets"]:
@@ -346,9 +348,9 @@ try:
                 raise ValueError("ambiguous release assets")
             found[key] = (name, url)
     pkg, sums = found["pkg"], found["sums"]
-    if sys.argv[2] == "debian" and not pkg[0].startswith("appinstall_" + tag[1:] + "-"):
+    if sys.argv[2] == "debian" and not pkg[0].startswith("abood-appinstall_" + tag[1:] + "-"):
         raise ValueError("Debian package version does not match release")
-    if sys.argv[2] == "fedora" and not pkg[0].startswith("appinstall-" + tag[1:] + "-"):
+    if sys.argv[2] == "fedora" and not pkg[0].startswith("abood-appinstall-" + tag[1:] + "-"):
         raise ValueError("Fedora RPM version does not match release")
     print("|".join((tag, pkg[1], sums[1], pkg[0])))
 except (ValueError, KeyError, TypeError):
@@ -391,17 +393,36 @@ CHECKSUM
 # Existing installation and conflict handling
 # ---------------------------------------------------------------------------
 installed_version() { # -> version string, empty when absent
+  local owner metadata status version url
   if [[ "${1:-arch}" == fedora ]]; then
-    rpm -q --qf '%{VERSION}-%{RELEASE}\n' appinstall 2>/dev/null || true
+    rpm -qf --qf '%{NAME}|%{URL}|%{VERSION}-%{RELEASE}\n' "$APP_BIN" 2>/dev/null |
+      awk -F'|' -v name="$PACKAGE_ID" -v url="$PROJECT_URL" '$1==name && $2==url {print $3}'
     return 0
   fi
   if [[ "${1:-arch}" == debian ]]; then
-    local status version
-    IFS='|' read -r status version < <(dpkg-query -W -f='${Status}|${Version}\n' appinstall 2>/dev/null) || return 0
-    [[ "$status" == 'install ok installed' || "$status" == 'hold ok installed' ]] && printf '%s\n' "$version"
+    owner="$(dpkg-query -S "$APP_BIN" 2>/dev/null)" || return 0
+    [[ "$owner" == "$PACKAGE_ID: $APP_BIN" ]] || return 0
+    IFS='|' read -r status url version < <(dpkg-query -W -f='${Status}|${Homepage}|${Version}\n' "$PACKAGE_ID" 2>/dev/null) || return 0
+    [[ "$url" == "$PROJECT_URL" && ( "$status" == 'install ok installed' || "$status" == 'hold ok installed' ) ]] && printf '%s\n' "$version"
     return 0
   fi
-  pacman -Q appinstall 2>/dev/null | awk '{print $2}'
+  owner="$(LC_ALL=C pacman -Qoq -- "$APP_BIN" 2>/dev/null)" || return 0
+  [[ "$owner" == "$PACKAGE_ID" ]] || return 0
+  metadata="$(LC_ALL=C pacman -Qi "$PACKAGE_ID" 2>/dev/null)" || return 0
+  awk -v url="$PROJECT_URL" '
+    /^URL[[:space:]]*:/ { sub(/^[^:]*:[[:space:]]*/, ""); official=($0 == url) }
+    /^Version[[:space:]]*:/ { sub(/^[^:]*:[[:space:]]*/, ""); version=$0 }
+    END { if (official) print version }
+  ' <<<"$metadata"
+}
+
+package_slot_occupied() {
+  case "$1" in
+    fedora) rpm -q "$PACKAGE_ID" >/dev/null 2>&1 ;;
+    debian) dpkg-query -W -f='${db:Status-Status}\n' "$PACKAGE_ID" 2>/dev/null |
+      grep -qx installed ;;
+    *) pacman -Qq "$PACKAGE_ID" >/dev/null 2>&1 ;;
+  esac
 }
 
 version_relation() { # a b -> a>b:1  a==b:0  a<b:-1  (empty comparison generic)
@@ -442,13 +463,13 @@ version_relation() { # a b -> a>b:1  a==b:0  a<b:-1  (empty comparison generic)
 check_shadow_conflicts() {
   local found=0
   [[ -e "$APP_LOCAL_BIN" ]] && found=$((found+1))
-  [[ -e "/usr/local/bin/appinstall" ]] && found=$((found+1))
+  [[ -e "/usr/local/bin/abood-appinstall" ]] && found=$((found+1))
   if ((found == 0)); then
     return 0
   fi
-  warn "A user-local AppInstall installation was found that would shadow /usr/bin/appinstall:"
+  warn "A user-local AppInstall installation was found that would shadow /usr/bin/abood-appinstall:"
   [[ -e "$APP_LOCAL_BIN" ]] && warn "  $APP_LOCAL_BIN"
-  [[ -e "/usr/local/bin/appinstall" ]] && warn "  /usr/local/bin/appinstall"
+  [[ -e "/usr/local/bin/abood-appinstall" ]] && warn "  /usr/local/bin/abood-appinstall"
   info "Records, containers and settings under ~ are never touched by cleanup."
   if [[ $DRY_RUN -eq 1 ]]; then
     printf '[dry-run] would ask to remove the conflicting source install first\n'
@@ -469,12 +490,12 @@ check_shadow_conflicts() {
     bad "Re-run with --remove-source-install if you want it removed, or remove it manually first."
     exit 2
   fi
-  if [[ -e "$APP_LOCAL_BIN" && -x "$HOME/.local/bin/appinstall-uninstall" ]]; then
-    "$HOME/.local/bin/appinstall-uninstall" || die 2 "Source uninstaller failed; resolve it manually before continuing."
+  if [[ -e "$APP_LOCAL_BIN" && -x "$HOME/.local/bin/abood-appinstall-uninstall" ]]; then
+    "$HOME/.local/bin/abood-appinstall-uninstall" || die 2 "Source uninstaller failed; resolve it manually before continuing."
   fi
-  [[ ! -e "$APP_LOCAL_BIN" ]] || { rm -f -- "$APP_LOCAL_BIN"; warn "Leftover $APP_LOCAL_BIN removed."; }
-  if [[ -e "/usr/local/bin/appinstall" ]]; then
-    bad "/usr/local/bin/appinstall is outside this installer's scope — remove it manually (usually a leftover of a manual copy), then re-run."
+  [[ ! -e "$APP_LOCAL_BIN" ]] || die 2 "Could not verify and remove $APP_LOCAL_BIN; inspect it manually."
+  if [[ -e "/usr/local/bin/abood-appinstall" ]]; then
+    bad "/usr/local/bin/abood-appinstall is outside this installer's scope — inspect it manually before continuing."
     exit 2
   fi
   log_write "shadow-conflict-cleared"
@@ -537,12 +558,12 @@ if ! touch "$MIMEAPPS" 2>/dev/null; then
   echo "Cannot write $MIMEAPPS" >&2
   exit 1
 fi
-DESKTOP_ID="appinstall.desktop"
+DESKTOP_ID="io.github.aboodmohd.AppInstall.desktop"
 python3 - "$TSV" "$MIMEAPPS" <<'PY'
 import os
 import sys
 tsv_path, mimeapps_path = sys.argv[1], sys.argv[2]
-DESKTOP_ID = "appinstall.desktop"
+DESKTOP_ID = "io.github.aboodmohd.AppInstall.desktop"
 
 ours = set()   # every MIME the installer may have set a default for
 prev = {}      # only those that had a non-empty previous default
@@ -741,19 +762,19 @@ rootless_podman_report() {
 # ---------------------------------------------------------------------------
 package_version_from_asset() { # native package filename -> version-release
   local base="${1##*/}"
-  if [[ "$base" == appinstall-*.noarch.rpm ]]; then
+  if [[ "$base" == abood-appinstall-*.noarch.rpm ]]; then
     base="${base%.noarch.rpm}"
-    printf '%s\n' "${base#appinstall-}"
+    printf '%s\n' "${base#abood-appinstall-}"
     return 0
   fi
-  if [[ "$base" == appinstall_*_all.deb ]]; then
-    base="${base#appinstall_}"
+  if [[ "$base" == abood-appinstall_*_all.deb ]]; then
+    base="${base#abood-appinstall_}"
     printf '%s\n' "${base%_all.deb}"
     return 0
   fi
   base="${base%.pkg.tar.zst}"
   base="${base%-any}"
-  printf '%s\n' "${base#appinstall-}"
+  printf '%s\n' "${base#abood-appinstall-}"
 }
 
 pkg_installed_state_hint() { # installed_version target_version -> words for dry-run
@@ -811,7 +832,7 @@ uninstall_flow() {
   fi
   info "Removing AppInstall package and optionally restoring previous file associations."
   info "Your application records, containers, launchers, logs and settings under ~ are always preserved."
-  if ! ask "Remove the system package now (${remove_command[*]} appinstall)? AppInstall windows should be closed first." n; then
+  if ! ask "Remove the system package now (${remove_command[*]} $PACKAGE_ID)? AppInstall windows should be closed first." n; then
     info "Keeping the package; nothing was changed."
     return 0
   fi
@@ -821,15 +842,15 @@ uninstall_flow() {
     if [[ "$family" == fedora ]]; then
       local dnf_flags=()
       [[ $ASSUME_YES -eq 1 ]] && dnf_flags+=(-y)
-      run_root dnf "${dnf_flags[@]}" remove appinstall || die 5 "DNF removal failed."
+      run_root dnf "${dnf_flags[@]}" --no-autoremove remove "$PACKAGE_ID" || die 5 "DNF removal failed."
     elif [[ "$family" == debian ]]; then
       local apt_flags=()
       [[ $ASSUME_YES -eq 1 ]] && apt_flags+=(-y)
-      run_root apt-get "${apt_flags[@]}" remove appinstall || die 5 "APT removal failed."
+      run_root apt-get "${apt_flags[@]}" remove "$PACKAGE_ID" || die 5 "APT removal failed."
     elif [[ $ASSUME_YES -eq 1 ]]; then
-      run_root pacman -R --noconfirm "appinstall" || die 5 "pacman -R failed; see pacman's output above."
+      run_root pacman -R --noconfirm "$PACKAGE_ID" || die 5 "pacman -R failed; see pacman's output above."
     else
-      run_root pacman -R "appinstall" || die 5 "pacman -R failed; see pacman's output above."
+      run_root pacman -R "$PACKAGE_ID" || die 5 "pacman -R failed; see pacman's output above."
     fi
     info "Package removed."
   fi
@@ -1018,14 +1039,15 @@ main() {
 
   prepare_tty
 
-  # --- 6. conflict / shadow install handling --------------------------
-  if [[ $DESKTOP_CHECK -eq 0 ]]; then
-    check_shadow_conflicts
-  fi
-
   # --- 7. resolve the latest stable release ---------------------------
   local installed_rel="" installed="0"
   installed_rel="$(installed_version "$family")" || true
+  if [[ -z "$installed_rel" ]] && package_slot_occupied "$family"; then
+    die 2 "The $PACKAGE_ID package slot is occupied, but its ownership or origin does not match AppInstall."
+  fi
+  if [[ $DESKTOP_CHECK -eq 0 ]]; then
+    check_shadow_conflicts
+  fi
   [[ -n "$installed_rel" ]] && installed=1
 
   info "Resolving the latest stable release from GitHub (drafts and prereleases are never used)…"
@@ -1116,18 +1138,28 @@ main() {
     info "Checksum verified."
     if [[ "$family" == debian ]]; then
       local pkg_path="${TMP_DIR}/${pkg_name}"
-      [[ "$(dpkg-deb -f "$pkg_path" Package)" == appinstall &&
+      [[ "$(dpkg-deb -f "$pkg_path" Package)" == "$PACKAGE_ID" &&
+         "$(dpkg-deb -f "$pkg_path" Homepage)" == "$PROJECT_URL" &&
          "$(dpkg-deb -f "$pkg_path" Version)" == "$pkg_ver" &&
          "$(dpkg-deb -f "$pkg_path" Architecture)" == all ]] ||
         die 3 "Debian package metadata did not match the selected release."
     elif [[ "$family" == fedora ]]; then
       local rpm_metadata=""
-      rpm_metadata="$(rpm -qp --qf '%{NAME}|%{VERSION}-%{RELEASE}|%{ARCH}' "${TMP_DIR}/${pkg_name}")" ||
+      rpm_metadata="$(rpm -qp --qf '%{NAME}|%{VERSION}-%{RELEASE}|%{ARCH}|%{URL}' "${TMP_DIR}/${pkg_name}")" ||
         die 3 "Could not read RPM package metadata."
-      [[ "$rpm_metadata" == "appinstall|$pkg_ver|noarch" ]] ||
+      [[ "$rpm_metadata" == "$PACKAGE_ID|$pkg_ver|noarch|$PROJECT_URL" ]] ||
         die 3 "RPM metadata does not match the selected release."
+    else
+      local metadata
+      metadata="$(bsdtar -xOf "${TMP_DIR}/${pkg_name}" .PKGINFO)" ||
+        die 3 "Could not read Arch package metadata."
+      for entry in "pkgname = $PACKAGE_ID" "pkgver = $pkg_ver" "arch = any" "url = $PROJECT_URL"; do
+        grep -Fxq -- "$entry" <<<"$metadata" || die 3 "Arch package metadata did not match the selected release."
+      done
     fi
     install_package_file "${TMP_DIR}/${pkg_name}" "$family"
+    [[ "$(installed_version "$family")" == "$pkg_ver" ]] ||
+      die 5 "The installed package identity and version could not be verified."
   fi
 
   if [[ -n "$DESKTOP_UPDATE" ]]; then

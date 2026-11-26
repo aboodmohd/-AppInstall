@@ -44,8 +44,8 @@ for required in ("modules", "qml_sources", "ICON_SIZES"):
     if required not in values:
         raise SystemExit("Missing source manifest entry: " + required)
 names = {
-    "appinstall", "install-user.sh", "appinstall.desktop",
-    "appinstall-appimage-review.desktop", "LICENSE",
+    "appinstall", "install-user.sh", "io.github.aboodmohd.AppInstall.desktop",
+    "io.github.aboodmohd.AppInstall.AppImageReview.desktop", "LICENSE",
     "README.md", "INSTALL.md", "RELEASE_NOTES.md", "CHANGELOG.md",
     "KNOWN_LIMITATIONS.md", "SECURITY_REVIEW.md",
 }

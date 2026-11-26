@@ -21,7 +21,7 @@ class CandidateBundleTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
-        self.package = self.root / "appinstall-1.0.0-1-any.pkg.tar.zst"
+        self.package = self.root / "abood-appinstall-1.0.0-1-any.pkg.tar.zst"
         self.package.write_bytes(b"disposable-test-only")
         self.sums = self.root / "SHA256SUMS"
         self.digest = hashlib.sha256(self.package.read_bytes()).hexdigest()
@@ -117,20 +117,20 @@ class CandidateBundleTests(unittest.TestCase):
         staging = Path(self.tmp.name) / "stage"
         staging.mkdir(exist_ok=True)
         full = dict(files)
-        full.setdefault("usr/bin/appinstall", b"#!/bin/sh\nexit 0\n")
+        full.setdefault("usr/bin/abood-appinstall", b"#!/bin/sh\nexit 0\n")
         full.setdefault(
-            "usr/share/licenses/appinstall/LICENSE",
+            "usr/share/licenses/abood-appinstall/LICENSE",
             (ROOT / "LICENSE").read_bytes(),
         )
         full.setdefault(
-            "usr/share/kio/servicemenus/appinstall-appimage-review.desktop",
+            "usr/share/kio/servicemenus/io.github.aboodmohd.AppInstall.AppImageReview.desktop",
             b"[Desktop Entry]\n",
         )
         for arc_path, content in full.items():
             target = staging / arc_path.lstrip("./")
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(content)
-        package = self.root / f"appinstall-{version}-{release}-any.pkg.tar.zst"
+        package = self.root / f"abood-appinstall-{version}-{release}-any.pkg.tar.zst"
         members = [p.lstrip("./") for p in full]
         subprocess.run(
             ["bsdtar", "-cf", str(package), "-C", str(staging)] + members,
@@ -145,7 +145,7 @@ class CandidateBundleTests(unittest.TestCase):
     def test_official_icons_are_accepted_in_package(self):
         sizes = sorted(bundle.APP_INSTALL_ICON_INSTALLED.values())
         files = {
-            f"usr/share/icons/hicolor/{s}x{s}/apps/appinstall.png":
+            f"usr/share/icons/hicolor/{s}x{s}/apps/io.github.aboodmohd.AppInstall.png":
                 (ROOT / f"appinstall-{s}.png").read_bytes()
             for s in sizes
         }
@@ -159,7 +159,7 @@ class CandidateBundleTests(unittest.TestCase):
             "usr/share/picture.png": b"\x89PNG fake screenshot",
         }
         files.update({
-            f"usr/share/icons/hicolor/{s}x{s}/apps/appinstall.png":
+            f"usr/share/icons/hicolor/{s}x{s}/apps/io.github.aboodmohd.AppInstall.png":
                 (ROOT / f"appinstall-{s}.png").read_bytes()
             for s in sizes
         })
@@ -171,7 +171,7 @@ class CandidateBundleTests(unittest.TestCase):
 
     def test_unknown_png_is_rejected(self):
         files = {
-            "usr/share/icons/hicolor/99x99/apps/appinstall.png": b"\x89PNG unknown",
+            "usr/share/icons/hicolor/99x99/apps/io.github.aboodmohd.AppInstall.png": b"\x89PNG unknown",
         }
         package, pkgbuild = self._make_archive(files)
         with self.assertRaisesRegex(
@@ -181,7 +181,7 @@ class CandidateBundleTests(unittest.TestCase):
 
     def test_missing_icon_inventory_is_rejected(self):
         files = {
-            f"usr/share/icons/hicolor/{s}x{s}/apps/appinstall.png":
+            f"usr/share/icons/hicolor/{s}x{s}/apps/io.github.aboodmohd.AppInstall.png":
                 (ROOT / f"appinstall-{s}.png").read_bytes()
             for s in (16, 24, 32, 48, 64, 128, 256)
         }

@@ -51,8 +51,8 @@ def find_update_helper():
 
     Native packages ship appinstall-installer next to this module; a source
     checkout only has install.sh (same --desktop-check/--desktop-update
-    protocol). PATH is the last resort. Returns the candidate path even when
-    missing so callers can treat 'no helper' as 'update UI unavailable'.
+    protocol). Never resolve an updater from PATH. Return the adjacent
+    candidate even when missing so callers can disable update UI.
     """
     here = Path(__file__).resolve().parent
     adjacent = here / 'appinstall-installer'
@@ -68,13 +68,10 @@ def find_update_helper():
     local = here / 'install.sh'
     if local.is_file():
         return local
-    found = shutil.which('appinstall-installer')
-    if found:
-        return Path(found)
     return adjacent
 
 
-RELEASE_NOTES_PATH = Path('/usr/share/appinstall/RELEASE_NOTES.md')
+RELEASE_NOTES_PATH = Path('/usr/share/abood-appinstall/RELEASE_NOTES.md')
 
 
 def release_notes(tag):
@@ -2448,6 +2445,7 @@ def main():
 
     app = QtWidgets.QApplication(sys.argv)
     app.setApplicationName('AppInstall')
+    app.setDesktopFileName('io.github.aboodmohd.AppInstall')
     app.setOrganizationName('AppInstall')
 
     anchor = QtWidgets.QWidget()
@@ -2474,7 +2472,7 @@ def main():
         sys.exit(1)
 
     window = engine.rootObjects()[0]
-    window.setIcon(QtGui.QIcon.fromTheme('appinstall'))
+    window.setIcon(QtGui.QIcon.fromTheme('io.github.aboodmohd.AppInstall'))
     if shot:
         # Same delayed-grab contract as the widgets window's --screenshot:
         # wait for the async inventory load to land, then save the window

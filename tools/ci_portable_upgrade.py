@@ -21,7 +21,7 @@ source = Path(sys.argv[1]).resolve()
 home = Path.home()
 state = Path(os.environ.get("XDG_DATA_HOME", str(home / ".local/share"))) / "appinstall"
 config = Path(os.environ.get("XDG_CONFIG_HOME", str(home / ".config")))
-launcher = home / ".local/bin/appinstall"
+launcher = home / ".local/bin/abood-appinstall"
 
 if os.geteuid() == 0 or not (state / "portable_update.py").is_file():
     raise SystemExit("Run after a real non-root portable install.")

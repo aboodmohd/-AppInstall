@@ -60,15 +60,21 @@ class SourceUpgradeSmokeTests(unittest.TestCase):
         self.assertFalse(self.state.exists())
         self.register()
 
-        installed = self.home / ".local/bin/appinstall"
+        installed = self.home / ".local/bin/abood-appinstall"
         self.assertTrue(installed.is_file())
         self.assertEqual(installed.read_bytes(), (ROOT / "appinstall").read_bytes())
-        self.assertTrue((self.data / "applications/appinstall.desktop").exists())
+        self.assertTrue((self.data / "applications/io.github.aboodmohd.AppInstall.desktop").exists())
         self.assertTrue((self.state / "manager.py").exists())
         self.assertTrue((self.state / "launch_monitor.py").exists())
         saved = json.loads((self.state / "associations.json").read_text())
         self.assertEqual(saved[MIME], "original.desktop;")
-        self.assertIn(MIME + "=appinstall.desktop;", self.defaults_file.read_text())
+        self.assertIn(MIME + "=io.github.aboodmohd.AppInstall.desktop;", self.defaults_file.read_text())
+        advertised = next(line.removeprefix("MimeType=").strip(";").split(";")
+                          for line in (self.data / "applications/io.github.aboodmohd.AppInstall.desktop")
+                          .read_text().splitlines() if line.startswith("MimeType="))
+        self.assertEqual(len(advertised), 9)
+        for mime in advertised:
+            self.assertIn(mime + "=io.github.aboodmohd.AppInstall.desktop;", self.defaults_file.read_text())
 
         # Desktop registration removal is not application-data removal.
         registry = self.state / "containers/registry.json"
@@ -78,7 +84,7 @@ class SourceUpgradeSmokeTests(unittest.TestCase):
         self.register("--uninstall")
 
         self.assertFalse(installed.exists())
-        self.assertFalse((self.data / "applications/appinstall.desktop").exists())
+        self.assertFalse((self.data / "applications/io.github.aboodmohd.AppInstall.desktop").exists())
         self.assertIn(MIME + "=original.desktop;", self.defaults_file.read_text())
         self.assertIn("text/plain=editor.desktop;", self.defaults_file.read_text())
         self.assertEqual(json.loads(registry.read_text()), data)
@@ -90,8 +96,8 @@ class SourceUpgradeSmokeTests(unittest.TestCase):
         old_module.write_text("# working deployed manager\n")
         old_associations = (self.state / "associations.json").read_bytes()
         old_defaults = self.defaults_file.read_bytes()
-        old_launcher = (self.data / "applications/appinstall.desktop").read_bytes()
-        old_executable = (self.home / ".local/bin/appinstall").read_bytes()
+        old_launcher = (self.data / "applications/io.github.aboodmohd.AppInstall.desktop").read_bytes()
+        old_executable = (self.home / ".local/bin/abood-appinstall").read_bytes()
 
         incomplete = Path(self.temp.name) / "incomplete source"
         incomplete.mkdir()
@@ -111,8 +117,8 @@ class SourceUpgradeSmokeTests(unittest.TestCase):
         self.assertEqual(old_module.read_text(), "# working deployed manager\n")
         self.assertEqual((self.state / "associations.json").read_bytes(), old_associations)
         self.assertEqual(self.defaults_file.read_bytes(), old_defaults)
-        self.assertEqual((self.data / "applications/appinstall.desktop").read_bytes(), old_launcher)
-        self.assertEqual((self.home / ".local/bin/appinstall").read_bytes(), old_executable)
+        self.assertEqual((self.data / "applications/io.github.aboodmohd.AppInstall.desktop").read_bytes(), old_launcher)
+        self.assertEqual((self.home / ".local/bin/abood-appinstall").read_bytes(), old_executable)
 
     def test_source_upgrade_keeps_records_original_association_and_modules(self):
         registry = self.state / "containers" / "registry.json"
@@ -122,7 +128,7 @@ class SourceUpgradeSmokeTests(unittest.TestCase):
         self.register()
         saved = json.loads((self.state / "associations.json").read_text())
         self.assertEqual(saved[MIME], "original.desktop;")
-        self.assertIn(MIME + "=appinstall.desktop;", self.defaults_file.read_text())
+        self.assertIn(MIME + "=io.github.aboodmohd.AppInstall.desktop;", self.defaults_file.read_text())
         self.assertEqual(json.loads(registry.read_text()), original)
 
         # Emulate an old deployed module and upgrade by rerunning registration.
@@ -164,9 +170,9 @@ class SourceUpgradeSmokeTests(unittest.TestCase):
     def test_uninstall_respects_default_changed_after_installation(self):
         self.register()
         current = self.defaults_file.read_text()
-        self.assertIn(MIME + "=appinstall.desktop;", current)
+        self.assertIn(MIME + "=io.github.aboodmohd.AppInstall.desktop;", current)
         self.defaults_file.write_text(
-            current.replace(MIME + "=appinstall.desktop;", MIME + "=user-choice.desktop;")
+            current.replace(MIME + "=io.github.aboodmohd.AppInstall.desktop;", MIME + "=user-choice.desktop;")
         )
         self.register("--uninstall")
         final = self.defaults_file.read_text()

@@ -56,16 +56,16 @@ jobs:
           pkgver=$(sed -n 's/^pkgver=//p' PKGBUILD)
           pkgrel=$(sed -n 's/^pkgrel=//p' PKGBUILD)
           test -n "$pkgver" && test -n "$pkgrel"
-          package="appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst"
+          package="abood-appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst"
           test -f "$package"
           echo "Package: $package"
           sha256sum "$package"
-          bsdtar -tf "$package" | grep -q 'usr/bin/appinstall'
+          bsdtar -tf "$package" | grep -q 'usr/bin/abood-appinstall'
           # System desktop entry must resolve the pacman build, not a beta in PATH.
-          bsdtar -xOf "$package" usr/share/applications/appinstall.desktop | grep -Fxq 'Exec=/usr/bin/appinstall %F'
+          bsdtar -xOf "$package" usr/share/applications/io.github.aboodmohd.AppInstall.desktop | grep -Fxq 'Exec=/usr/bin/abood-appinstall %F'
           # A packaged service-menu action must not resolve a user-local beta via PATH.
-          bsdtar -xOf "$package" usr/share/kio/servicemenus/appinstall-appimage-review.desktop | grep -Fxq 'Exec=/usr/bin/appinstall %f'
-          bsdtar -tf "$package" | grep -q 'usr/share/licenses/appinstall/LICENSE'
+          bsdtar -xOf "$package" usr/share/kio/servicemenus/io.github.aboodmohd.AppInstall.AppImageReview.desktop | grep -Fxq 'Exec=/usr/bin/abood-appinstall %f'
+          bsdtar -tf "$package" | grep -q 'usr/share/licenses/abood-appinstall/LICENSE'
           # Ensure pacman treats the stable build as newer than the
           # previously distributed beta and RC test packages.
           test "$(vercmp "${pkgver}-${pkgrel}" "1.0.0beta1-1")" -gt 0
@@ -79,28 +79,28 @@ jobs:
           set -eu
           pkgver=$(sed -n 's/^pkgver=//p' PKGBUILD)
           pkgrel=$(sed -n 's/^pkgrel=//p' PKGBUILD)
-          python3 tools/ci_release_evidence_gate.py --package "appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst"
+          python3 tools/ci_release_evidence_gate.py --package "abood-appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst"
 
       - name: Install, upgrade, and remove Arch package in disposable container
         if: matrix.kind == 'arch'
         run: |
           pkgver=$(sed -n 's/^pkgver=//p' PKGBUILD)
           pkgrel=$(sed -n 's/^pkgrel=//p' PKGBUILD)
-          package="appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst"
+          package="abood-appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst"
           expected=$(sed -n 's/^VERSION="\([^"]*\)"$/\1/p' appinstall)
           test -n "$expected"
           pacman -U --noconfirm --needed "$package"
-          test "$(appinstall --version)" = "appinstall $expected"
-          pacman -Q appinstall
+          test "$(abood-appinstall --version)" = "appinstall $expected"
+          pacman -Q abood-appinstall
           # QML manager prototype must come up from the installed package.
           # A missing Qt Quick runtime dependency fails the job right here.
           runuser -u appbuild -- env QT_QPA_PLATFORM=offscreen \
             APPINSTALL_DISABLE_UPDATE_TIMER=1 \
-            python3 /usr/bin/manager_qml.py --smoke
+            python3 /usr/lib/abood-appinstall/manager_qml.py --smoke
           pacman -U --noconfirm "$package"
-          test "$(appinstall --version)" = "appinstall $expected"
-          pacman -R --noconfirm appinstall
-          ! pacman -Q appinstall
+          test "$(abood-appinstall --version)" = "appinstall $expected"
+          pacman -R --noconfirm abood-appinstall
+          ! pacman -Q abood-appinstall
 
       - name: Verify published v1.0.0 upgrade and rollback in disposable Arch CI
         if: matrix.kind == 'arch' && github.head_ref == 'release/1.1.0-prep'
@@ -129,7 +129,7 @@ jobs:
           expected=$(sed -n 's/^VERSION="\([^"]*\)"$/\1/p' appinstall)
           test -n "$expected"
           bash -n tools/arch_clean_install_gate.sh
-          bash tools/arch_clean_install_gate.sh "appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst" "$expected"
+          bash tools/arch_clean_install_gate.sh "abood-appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst" "$expected"
 
       - name: Generate exact-candidate evidence and manual acceptance bundle
         if: matrix.kind == 'arch'
@@ -138,7 +138,7 @@ jobs:
           pkgver=$(sed -n 's/^pkgver=//p' PKGBUILD)
           pkgrel=$(sed -n 's/^pkgrel=//p' PKGBUILD)
           python3 tools/ci_candidate_bundle.py \
-            --package "appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst" \
+            --package "abood-appinstall-${pkgver}-${pkgrel}-any.pkg.tar.zst" \
             --sums SHA256SUMS \
             --source-sha "$GITHUB_SHA" \
             --event-name "$GITHUB_EVENT_NAME" \
@@ -152,7 +152,7 @@ jobs:
         with:
           name: appinstall-package-${{ github.sha }}
           path: |
-            appinstall-*.pkg.tar.zst
+            abood-appinstall-*.pkg.tar.zst
             SHA256SUMS
             release-candidate-evidence/
           retention-days: 14

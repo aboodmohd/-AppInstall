@@ -63,13 +63,13 @@ class InstallerTests(unittest.TestCase):
         defaults = config / 'mimeapps.list'
         defaults.write_text('[Default Applications]\napplication/vnd.flatpak=previous.desktop;\ntext/plain=editor.desktop;\n')
         subprocess.run(['python3',str(ROOT / 'integration.py')],env=self.env,check=True,capture_output=True)
-        self.assertIn('application/vnd.flatpak=appinstall.desktop;',defaults.read_text())
-        subprocess.run([str(self.home / '.local/bin/appinstall-uninstall')],env=self.env,check=True,capture_output=True)
+        self.assertIn('application/vnd.flatpak=io.github.aboodmohd.AppInstall.desktop;',defaults.read_text())
+        subprocess.run([str(self.home / '.local/bin/abood-appinstall-uninstall')],env=self.env,check=True,capture_output=True)
         self.assertIn('application/vnd.flatpak=previous.desktop;',defaults.read_text())
         self.assertIn('text/plain=editor.desktop;',defaults.read_text())
 
     def test_appimage_review_action_registered_and_removed(self):
-        menu = self.home / 'data/kio/servicemenus/appinstall-appimage-review.desktop'
+        menu = self.home / 'data/kio/servicemenus/io.github.aboodmohd.AppInstall.AppImageReview.desktop'
         subprocess.run(['python3', str(ROOT / 'integration.py')],
                        env=self.env, check=True, capture_output=True)
         self.assertTrue(menu.is_file())
@@ -80,14 +80,14 @@ class InstallerTests(unittest.TestCase):
         self.assertIn('X-KDE-Priority=TopLevel', text)
         self.assertIn('X-KDE-RequiredNumberOfUrls=1', text)
         self.assertIn('X-AppInstall-Managed=true', text)
-        self.assertIn('Exec="'+str(self.home / '.local/bin/appinstall')+'" %f', text)
+        self.assertIn('Exec="'+str(self.home / '.local/bin/abood-appinstall')+'" %f', text)
         self.assertNotIn('Exec=./', text)
-        subprocess.run([str(self.home / '.local/bin/appinstall-uninstall')],
+        subprocess.run([str(self.home / '.local/bin/abood-appinstall-uninstall')],
                        env=self.env, check=True, capture_output=True)
         self.assertFalse(menu.exists())
 
     def test_registration_rejects_unrelated_service_menu(self):
-        menu = self.home / 'data/kio/servicemenus/appinstall-appimage-review.desktop'
+        menu = self.home / 'data/kio/servicemenus/io.github.aboodmohd.AppInstall.AppImageReview.desktop'
         menu.parent.mkdir(parents=True)
         data = '[Desktop Entry]\\nType=Service\\nName=Unrelated\\n'
         menu.write_text(data)
@@ -95,21 +95,21 @@ class InstallerTests(unittest.TestCase):
                                 env=self.env, capture_output=True, text=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(menu.read_text(), data)
-        self.assertFalse((self.home / '.local/bin/appinstall').exists())
+        self.assertFalse((self.home / '.local/bin/abood-appinstall').exists())
 
     def test_uninstall_preserves_user_modified_unmanaged_menu(self):
-        menu = self.home / 'data/kio/servicemenus/appinstall-appimage-review.desktop'
+        menu = self.home / 'data/kio/servicemenus/io.github.aboodmohd.AppInstall.AppImageReview.desktop'
         subprocess.run(['python3', str(ROOT / 'integration.py')],
                        env=self.env, check=True, capture_output=True)
         custom = '[Desktop Entry]\\nName=Replaced by user\\n'
         menu.write_text(custom)
-        subprocess.run([str(self.home / '.local/bin/appinstall-uninstall')],
+        subprocess.run([str(self.home / '.local/bin/abood-appinstall-uninstall')],
                        env=self.env, check=True, capture_output=True)
         self.assertEqual(menu.read_text(), custom)
 
     def test_desktop_entry_fields(self):
         """Desktop entry has correct GenericName, Comment, and Exec."""
-        desktop = ROOT / 'appinstall.desktop'
+        desktop = ROOT / 'io.github.aboodmohd.AppInstall.desktop'
         text = desktop.read_text()
         self.assertIn('GenericName=Application Installer', text)
         self.assertIn('Comment=Install AppImage, Flatpak, DEB, and RPM applications', text)
@@ -125,7 +125,7 @@ class InstallerTests(unittest.TestCase):
         """The deployed appinstall executable supports --manage."""
         candidates = (
             Path.home() / '.local/bin' / 'appinstall',
-            Path('/usr/bin/appinstall'),
+            Path('/usr/bin/abood-appinstall'),
         )
         installed = next((p for p in candidates if p.is_file()), None)
         if installed is None:

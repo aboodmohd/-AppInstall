@@ -41,8 +41,8 @@ class ThreeFormatReleaseVersionTests(unittest.TestCase):
         self.assertIn('install-user.sh', portable)
         self.assertIn('manager_ui/main.qml', portable)
         self.assertIn('dpkg-query', source)
-        self.assertIn('rpm -q appinstall', source)
-        self.assertIn('pacman -Qq appinstall', source)
+        self.assertIn('rpm -q abood-appinstall', source)
+        self.assertIn('pacman -Qq abood-appinstall', source)
 
     def test_candidate_release_notes_match_version(self):
         pkg = (ROOT / "PKGBUILD").read_text()
@@ -54,7 +54,7 @@ class ThreeFormatReleaseVersionTests(unittest.TestCase):
     def test_installer_selects_all_three_native_formats(self):
         installer = (ROOT / "install.sh").read_text()
         for name in ('"arch"', '"debian"', '"fedora"'):
-            self.assertIn(name + ': r"appinstall', installer)
+            self.assertIn(name + ': r"abood-appinstall', installer)
         self.assertIn('SUPPORTED_IDS="arch cachyos fedora"', installer)
         self.assertIn('rpm -qp --qf', installer)
         self.assertIn('run_root dnf', installer)

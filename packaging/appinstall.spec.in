@@ -2,7 +2,7 @@
 # populated by tools/build_rpm.sh from the canonical PKGBUILD.
 # This RPM is intended for Fedora 44 testing; wider RPM distro support requires
 # distro-specific dependency validation and separate approval.
-Name:           appinstall
+Name:           abood-appinstall
 Version:        @VERSION@
 Release:        @RELEASE@
 Summary:        Install AppImage, Flatpak, DEB and RPM applications from the desktop
@@ -41,14 +41,14 @@ mkdir -p %{buildroot}
 cp -a usr %{buildroot}/
 
 %files
-%{_bindir}/appinstall
-%{_prefix}/lib/appinstall
-%{_datadir}/applications/appinstall.desktop
-%{_datadir}/kio/servicemenus/appinstall-appimage-review.desktop
-%{_datadir}/icons/hicolor/*/apps/appinstall.png
-%{_datadir}/appinstall
-%{_datadir}/doc/appinstall
-%license %{_datadir}/licenses/appinstall/LICENSE
+%{_bindir}/abood-appinstall
+%{_prefix}/lib/abood-appinstall
+%{_datadir}/applications/io.github.aboodmohd.AppInstall.desktop
+%{_datadir}/kio/servicemenus/io.github.aboodmohd.AppInstall.AppImageReview.desktop
+%{_datadir}/icons/hicolor/*/apps/io.github.aboodmohd.AppInstall.png
+%{_datadir}/abood-appinstall
+%{_datadir}/doc/abood-appinstall
+%license %{_datadir}/licenses/abood-appinstall/LICENSE
 
 %changelog
 * Sun Nov 15 2026 AppInstall Maintainers <maintainers@localhost> - @VERSION@-@RELEASE@

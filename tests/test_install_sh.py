@@ -55,6 +55,47 @@ def write_os_release(tmp, content):
     return str(f)
 
 
+class PackageCollisionTests(unittest.TestCase):
+    def test_arch_version_requires_exact_owner_and_upstream(self):
+        for owner, url, expected in (
+            ("appinstall", "https://github.com/aboodmohd/-AppInstall", ""),
+            ("abood-appinstall", "https://github.com/LukasYTTT/appinstaller", ""),
+            ("abood-appinstall", "https://github.com/aboodmohd/-AppInstall:other", ""),
+            ("abood-appinstall", "https://github.com/aboodmohd/-AppInstall", "1.9.0-1"),
+        ):
+            with self.subTest(owner=owner, url=url), tempfile.TemporaryDirectory() as tmp:
+                rc, out, err = run_sourced("""
+                    pacman() {
+                        case "$*" in
+                            '-Qoq -- /usr/bin/abood-appinstall') echo "$TEST_OWNER" ;;
+                            '-Qi abood-appinstall') printf 'Version : 1.9.0-1\\nURL : %s\\n' "$TEST_URL" ;;
+                            *) return 1 ;;
+                        esac
+                    }
+                    installed_version arch
+                """, home=tmp, env_extra={"TEST_OWNER": owner, "TEST_URL": url})
+                self.assertEqual((rc, out.strip()), (0, expected), err)
+
+    def test_yay_collision_is_not_compared_or_removed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            rc, out, err = run_sourced("""
+                pacman() {
+                    case "$*" in
+                        '-Q appinstall') echo 'appinstall 2.0.8-1' ;;
+                        '-Qi appinstall') echo 'URL : https://github.com/LukasYTTT/appinstaller' ;;
+                        *) return 1 ;;
+                    esac
+                }
+                ask() { return 0; }
+                run_root() { echo WRONG_PACKAGE_REMOVAL; return 1; }
+                printf 'version=<%s>\\n' "$(installed_version arch)"
+                uninstall_flow arch
+            """, home=tmp)
+        self.assertEqual(rc, 0, err)
+        self.assertIn("version=<>", out)
+        self.assertNotIn("WRONG_PACKAGE_REMOVAL", out)
+
+
 class DistroDetectionTests(unittest.TestCase):
     CASES = {
         "arch": ("arch", "ID=arch\n"),
@@ -104,10 +145,10 @@ class ReleaseResolutionTests(unittest.TestCase):
         "prerelease": False,
         "draft": False,
         "assets": [
-            {"name": "appinstall-1.0.0-1-any.pkg.tar.zst",
+            {"name": "abood-appinstall-1.0.0-1-any.pkg.tar.zst",
              "browser_download_url":
                  "https://github.com/aboodmohd/-AppInstall/releases/download/"
-                 "v1.0.0/appinstall-1.0.0-1-any.pkg.tar.zst"},
+                 "v1.0.0/abood-appinstall-1.0.0-1-any.pkg.tar.zst"},
             {"name": "SHA256SUMS",
              "browser_download_url":
                  "https://github.com/aboodmohd/-AppInstall/releases/download/"
@@ -135,13 +176,13 @@ class ReleaseResolutionTests(unittest.TestCase):
         self.assertEqual(rc, 0)
         tag, pkg_url, sums_url, pkg_name = line.split("|")
         self.assertEqual(tag, "v1.0.0")
-        self.assertEqual(pkg_name, "appinstall-1.0.0-1-any.pkg.tar.zst")
-        self.assertTrue(pkg_url.endswith("appinstall-1.0.0-1-any.pkg.tar.zst"))
+        self.assertEqual(pkg_name, "abood-appinstall-1.0.0-1-any.pkg.tar.zst")
+        self.assertTrue(pkg_url.endswith("abood-appinstall-1.0.0-1-any.pkg.tar.zst"))
         self.assertTrue(sums_url.endswith("SHA256SUMS"))
 
     def test_selects_only_native_package_from_mixed_release(self):
         data = json.loads(json.dumps(self.RELEASE_JSON))
-        name = "appinstall_1.0.0-1_all.deb"
+        name = "abood-appinstall_1.0.0-1_all.deb"
         data["assets"].append({
             "name": name,
             "browser_download_url":
@@ -155,8 +196,8 @@ class ReleaseResolutionTests(unittest.TestCase):
 
     def test_fedora_selects_only_rpm_from_mixed_release(self):
         data = json.loads(json.dumps(self.RELEASE_JSON))
-        for name in ("appinstall_1.0.0-1_all.deb",
-                     "appinstall-1.0.0-1.noarch.rpm"):
+        for name in ("abood-appinstall_1.0.0-1_all.deb",
+                     "abood-appinstall-1.0.0-1.noarch.rpm"):
             data["assets"].append({
                 "name": name,
                 "browser_download_url":
@@ -164,7 +205,7 @@ class ReleaseResolutionTests(unittest.TestCase):
             })
         rc, line, err = self.resolve(data, "fedora")
         self.assertEqual(rc, 0, err)
-        self.assertTrue(line.endswith("|appinstall-1.0.0-1.noarch.rpm"))
+        self.assertTrue(line.endswith("|abood-appinstall-1.0.0-1.noarch.rpm"))
 
     def test_fedora_refuses_release_without_native_rpm(self):
         rc, line, _ = self.resolve(self.RELEASE_JSON, "fedora")
@@ -174,12 +215,12 @@ class ReleaseResolutionTests(unittest.TestCase):
         for mutation in ("tag", "url", "duplicate"):
             with self.subTest(mutation=mutation):
                 data = json.loads(json.dumps(self.RELEASE_JSON))
-                name = "appinstall-1.0.0-1.noarch.rpm"
+                name = "abood-appinstall-1.0.0-1.noarch.rpm"
                 url = "https://github.com/aboodmohd/-AppInstall/releases/download/v1.0.0/" + name
                 data["assets"].append({"name": name, "browser_download_url": url})
                 if mutation == "tag":
-                    data["assets"][-1]["name"] = "appinstall-1.1.0-1.noarch.rpm"
-                    data["assets"][-1]["browser_download_url"] = url.replace(name, "appinstall-1.1.0-1.noarch.rpm")
+                    data["assets"][-1]["name"] = "abood-appinstall-1.1.0-1.noarch.rpm"
+                    data["assets"][-1]["browser_download_url"] = url.replace(name, "abood-appinstall-1.1.0-1.noarch.rpm")
                 elif mutation == "url":
                     data["assets"][-1]["browser_download_url"] = "https://example.org/" + name
                 else:
@@ -194,12 +235,12 @@ class ReleaseResolutionTests(unittest.TestCase):
             rc, out, err = run_sourced(
                 'APP_BIN="$TEST_BIN"; ASSUME_YES=1; '
                 'run_root() { printf "%s\\n" "$@"; }; '
-                'install_package_file /tmp/appinstall-1.0.0-1.noarch.rpm fedora',
+                'install_package_file /tmp/abood-appinstall-1.0.0-1.noarch.rpm fedora',
                 env_extra={"TEST_BIN": str(binary)},
             )
             self.assertEqual(rc, 0, err)
             self.assertEqual(out.splitlines()[-4:], [
-                "dnf", "-y", "install", "/tmp/appinstall-1.0.0-1.noarch.rpm",
+                "dnf", "-y", "install", "/tmp/abood-appinstall-1.0.0-1.noarch.rpm",
             ])
 
     def test_apt_fails_when_release_only_has_arch_package(self):
@@ -213,22 +254,22 @@ class ReleaseResolutionTests(unittest.TestCase):
             rc, out, err = run_sourced(
                 'APP_BIN="$TEST_BIN"; ASSUME_YES=1; '
                 'run_root() { printf "%s\\n" "$@"; }; '
-                'install_package_file /tmp/appinstall_1.0.0-1_all.deb debian',
+                'install_package_file /tmp/abood-appinstall_1.0.0-1_all.deb debian',
                 env_extra={"TEST_BIN": str(path)},
             )
             self.assertEqual(rc, 0, err)
             self.assertEqual(out.splitlines()[-5:], [
                 "apt-get", "--no-install-recommends", "-y", "install",
-                "/tmp/appinstall_1.0.0-1_all.deb",
+                "/tmp/abood-appinstall_1.0.0-1_all.deb",
             ])
 
     def test_signature_assets_are_not_picked_as_package(self):
         data = json.loads(json.dumps(self.RELEASE_JSON))
         data["assets"][0]["browser_download_url"] += ".sig"
         data["assets"].append(
-            {"name": "appinstall-1.0.0-1-any.pkg.tar.zst.sig",
+            {"name": "abood-appinstall-1.0.0-1-any.pkg.tar.zst.sig",
              "browser_download_url":
-                 "https://x/y/appinstall-1.0.0-1-any.pkg.tar.zst.sig"})
+                 "https://x/y/abood-appinstall-1.0.0-1-any.pkg.tar.zst.sig"})
         rc, line, _ = self.resolve(data)
         self.assertNotEqual(rc, 0, "a .sig file must never satisfy the package slot")
 
@@ -262,7 +303,7 @@ class ReleaseResolutionTests(unittest.TestCase):
 
 
 class ChecksumVerificationTests(unittest.TestCase):
-    PKG_NAME = "appinstall-1.0.0-1-any.pkg.tar.zst"
+    PKG_NAME = "abood-appinstall-1.0.0-1-any.pkg.tar.zst"
 
     def make_dir(self, raw=b"payload-bytes"):
         tmp = tempfile.mkdtemp(prefix="appinstall-checksum-")
@@ -317,9 +358,9 @@ class ChecksumVerificationTests(unittest.TestCase):
 class PackageVersionTests(unittest.TestCase):
     def test_version_extraction(self):
         cases = {
-            "appinstall-1.0.0-1-any.pkg.tar.zst": "1.0.0-1",
-            "appinstall-1.2.3-1-any.pkg.tar.zst": "1.2.3-1",
-            "appinstall-1.0.0b1-1-any.pkg.tar.zst": "1.0.0b1-1",
+            "abood-appinstall-1.0.0-1-any.pkg.tar.zst": "1.0.0-1",
+            "abood-appinstall-1.2.3-1-any.pkg.tar.zst": "1.2.3-1",
+            "abood-appinstall-1.0.0b1-1-any.pkg.tar.zst": "1.0.0b1-1",
         }
         for name, expected in cases.items():
             with self.subTest(name=name):
@@ -330,7 +371,7 @@ class PackageVersionTests(unittest.TestCase):
 class FedoraVersionTests(unittest.TestCase):
     def test_rpm_basename_yields_version(self):
         rc, out, err = run_sourced(
-            "package_version_from_asset 'appinstall-1.5.0-1.noarch.rpm'")
+            "package_version_from_asset 'abood-appinstall-1.5.0-1.noarch.rpm'")
         self.assertEqual((rc, out.strip()), (0, "1.5.0-1"), err)
 
     def test_rpm_native_compare(self):
@@ -513,7 +554,7 @@ else:
 
         # 2) every advertised MIME now points at AppInstall per-user
         for mime in ALL_MIMES:
-            self.assertEqual(self.query(mime), "appinstall.desktop", mime)
+            self.assertEqual(self.query(mime), "io.github.aboodmohd.AppInstall.desktop", mime)
 
         # 3) backup preserved the previous state exactly,
         #    including the *unset* entry
@@ -577,7 +618,7 @@ else:
         rc, _, err = self.run_snippet(snippet)
         self.assertEqual(rc, 0, f"set_mime_defaults failed: {err}")
         for mime in ALL_MIMES:
-            self.assertEqual(self.query(mime), "appinstall.desktop", mime)
+            self.assertEqual(self.query(mime), "io.github.aboodmohd.AppInstall.desktop", mime)
 
         # User changes one MIME away from AppInstall AFTER installation.
         env = self.env_for()
@@ -642,7 +683,7 @@ else:
             'set_mime_defaults >/dev/null')
         self.assertEqual(rc, 0, err)
         with self.mimeapps.open("a") as stream:
-            stream.write("[Added Associations]\napplication/x-deb=appinstall.desktop;other.desktop;\n"
+            stream.write("[Added Associations]\napplication/x-deb=io.github.aboodmohd.AppInstall.desktop;other.desktop;\n"
                          "[Removed Associations]\napplication/x-deb=blocked.desktop;\n")
         rc, _, err = self.run_snippet('"$STATE_RESTORE_SCRIPT"')
         self.assertEqual(rc, 0, err)
@@ -650,7 +691,7 @@ else:
         text = self.mimeapps.read_text()
         self.assertIn("application/x-deb=other.desktop;", text)
         self.assertIn("application/x-deb=blocked.desktop;", text)
-        self.assertNotIn("appinstall.desktop", text)
+        self.assertNotIn("io.github.aboodmohd.AppInstall.desktop", text)
 
 
 
@@ -661,8 +702,8 @@ class ShadowConflictTests(unittest.TestCase):
     def setup_shadow(self, home):
         bindir = Path(home) / ".local" / "bin"
         bindir.mkdir(parents=True, exist_ok=True)
-        (bindir / "appinstall").write_text("#!/bin/sh\necho source-install\n")
-        (bindir / "appinstall").chmod(0o755)
+        (bindir / "abood-appinstall").write_text("#!/bin/sh\necho source-install\n")
+        (bindir / "abood-appinstall").chmod(0o755)
 
     def run_conflict(self, env_extra):
         home = tempfile.mkdtemp(prefix="appinstall-conflict-")
@@ -679,7 +720,7 @@ class ShadowConflictTests(unittest.TestCase):
         rc, _, _ = self.run_conflict({"ASSUME_YES": "1", "DRY_RUN": "0"})
         self.assertEqual(rc, 2, "--yes must not remove a source install without --remove-source-install")
 
-    def test_remove_source_install_flag_authorizes_removal_attempt(self):
+    def test_remove_source_install_refuses_unverified_file(self):
         home = tempfile.mkdtemp(prefix="appinstall-remove-")
         self.setup_shadow(home)
         env = {
@@ -689,10 +730,9 @@ class ShadowConflictTests(unittest.TestCase):
             "REMOVE_SOURCE_INSTALL": "1",
             "DRY_RUN": "0",
         }
-        # There is no appinstall-uninstall script, so removal attempts fail
-        # gracefully but consent was granted (no exit-2 refusal).
         rc, _, err = run_sourced("check_shadow_conflicts", env_extra=env, home=home)
-        self.assertNotEqual(rc, 2, "--remove-source-install must consent to removal")
+        self.assertEqual(rc, 2, err)
+        self.assertTrue((Path(home) / ".local/bin/abood-appinstall").exists())
 
 
 class InstallerConsentTests(unittest.TestCase):
@@ -703,7 +743,7 @@ class InstallerConsentTests(unittest.TestCase):
                 'ASSUME_YES=1; TTY_OK=1; tty_read_line() { echo n; }; '
                 'check_shadow_conflicts', home=home)
             self.assertEqual(rc, 2)
-            self.assertTrue((Path(home) / '.local/bin/appinstall').exists())
+            self.assertTrue((Path(home) / '.local/bin/abood-appinstall').exists())
 
     def test_api_token_header_accepts_punctuation_without_argv_exposure(self):
         rc, out, err = run_sourced(

@@ -70,13 +70,13 @@ jobs:
             bash -c 'cd "$1" && bash tools/build_rpm.sh dist' _ "$GITHUB_WORKSPACE"
           version="$(sed -n 's/^pkgver=//p' PKGBUILD)"
           release="$(sed -n 's/^pkgrel=//p' PKGBUILD)"
-          pkg="dist/appinstall-${version}-${release}.noarch.rpm"
+          pkg="dist/abood-appinstall-${version}-${release}.noarch.rpm"
           test -s "$pkg"
           rpm -qp --qf '%{NAME}|%{VERSION}|%{RELEASE}|%{ARCH}\n' "$pkg" |
             grep -Fx "appinstall|${version}|${release}|noarch"
-          rpm -qpl "$pkg" | grep -Fx /usr/bin/appinstall
-          rpm -qpl "$pkg" | grep -Fx /usr/lib/appinstall/manager_ui/main.qml
-          rpm -qpl "$pkg" | grep -Fx /usr/share/licenses/appinstall/LICENSE
+          rpm -qpl "$pkg" | grep -Fx /usr/bin/abood-appinstall
+          rpm -qpl "$pkg" | grep -Fx /usr/lib/abood-appinstall/manager_ui/main.qml
+          rpm -qpl "$pkg" | grep -Fx /usr/share/licenses/abood-appinstall/LICENSE
           rpm -qp --requires "$pkg" | grep -Fx python3-pyside6
           (cd dist && sha256sum "$(basename "$pkg")" > SHA256SUMS && \
             sha256sum -c SHA256SUMS)
@@ -84,7 +84,7 @@ jobs:
       - name: RPM dependency install, QML smoke and removal (isolated CI)
         run: |
           set -euo pipefail
-          pkg=(dist/appinstall-*.noarch.rpm)
+          pkg=(dist/abood-appinstall-*.noarch.rpm)
           mkdir -p /home/appbuild/Applications /home/appbuild/.config
           printf '%s\n' 'preserve user data' > /home/appbuild/Applications/keep
           printf '%s\n' '[Default Applications]' 'text/plain=original.desktop;' \
@@ -92,25 +92,25 @@ jobs:
           chown -R appbuild:appbuild /home/appbuild
           dnf -y install "${pkg[0]}"
           ver="$(sed -n 's/^pkgver=//p' PKGBUILD)"
-          test "$(appinstall --version)" = "appinstall $ver"
-          test "$(readlink /usr/bin/appinstall)" = ../lib/appinstall/appinstall
-          desktop-file-validate /usr/share/applications/appinstall.desktop
-          grep -Fxq 'Exec=/usr/bin/appinstall %F' /usr/share/applications/appinstall.desktop
-          grep -Fxq 'Exec=/usr/bin/appinstall %f' \
-            /usr/share/kio/servicemenus/appinstall-appimage-review.desktop
+          test "$(abood-appinstall --version)" = "appinstall $ver"
+          test "$(readlink /usr/bin/abood-appinstall)" = ../lib/abood-appinstall/appinstall
+          desktop-file-validate /usr/share/applications/io.github.aboodmohd.AppInstall.desktop
+          grep -Fxq 'Exec=/usr/bin/abood-appinstall %F' /usr/share/applications/io.github.aboodmohd.AppInstall.desktop
+          grep -Fxq 'Exec=/usr/bin/abood-appinstall %f' \
+            /usr/share/kio/servicemenus/io.github.aboodmohd.AppInstall.AppImageReview.desktop
           runuser -u appbuild -- env QT_QPA_PLATFORM=offscreen \
             APPINSTALL_DISABLE_UPDATE_TIMER=1 \
-            python3 /usr/lib/appinstall/manager_qml.py --smoke
-          rpm -V appinstall
-          dnf -y remove appinstall
-          if rpm -q appinstall; then exit 1; fi
+            python3 /usr/lib/abood-appinstall/manager_qml.py --smoke
+          rpm -V abood-appinstall
+          dnf -y remove abood-appinstall
+          if rpm -q abood-appinstall; then exit 1; fi
           grep -Fxq 'preserve user data' /home/appbuild/Applications/keep
           grep -Fxq 'text/plain=original.desktop;' /home/appbuild/.config/mimeapps.list
 
       - name: Verify Fedora one-command installer with a local stable fixture
         run: |
           set -euo pipefail
-          test ! -e /usr/bin/appinstall
+          test ! -e /usr/bin/abood-appinstall
           useradd -m -s /bin/bash appinstall-ci
           cat >/etc/sudoers.d/appinstall-ci <<'SUDOERS'
           appinstall-ci ALL=(root) NOPASSWD: /usr/bin/dnf, /usr/bin/true
@@ -120,7 +120,7 @@ jobs:
           import json
           from pathlib import Path
           dist = (Path.cwd() / "dist").resolve()
-          pkg = next(dist.glob("appinstall-*.noarch.rpm"))
+          pkg = next(dist.glob("abood-appinstall-*.noarch.rpm"))
           names = (pkg.name, "SHA256SUMS")
           assets = [{"name": name,
                      "browser_download_url": (dist / name).as_uri()}
@@ -135,15 +135,15 @@ jobs:
             APPINSTALL_TEST_RELEASES_JSON="$GITHUB_WORKSPACE/dist/fedora-release-fixture.json" \
             bash "$GITHUB_WORKSPACE/install.sh" --yes --no-defaults --no-optional
           version="$(sed -n 's/^pkgver=//p' PKGBUILD)"
-          test "$(appinstall --version)" = "appinstall $version"
-          rpm -V appinstall
+          test "$(abood-appinstall --version)" = "appinstall $version"
+          rpm -V abood-appinstall
 
       - name: Upload candidate RPM and SHA256SUMS (not a release)
         uses: actions/upload-artifact@v4
         with:
           name: appinstall-rpm-${{ github.sha }}
           path: |
-            dist/appinstall-*.noarch.rpm
+            dist/abood-appinstall-*.noarch.rpm
             dist/SHA256SUMS
           if-no-files-found: error
           retention-days: 14
