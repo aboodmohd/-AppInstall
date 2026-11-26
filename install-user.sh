@@ -5,6 +5,10 @@ if ! command -v python3 >/dev/null; then
   echo 'Python 3 is required for desktop registration.' >&2
   exit 1
 fi
+if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 8) else 1)' >/dev/null 2>&1; then
+  echo 'Python 3.8 or newer is required for portable registration. Install a supported Python package (for example python311 on openSUSE Leap) and expose it as python3.' >&2
+  exit 2
+fi
 if ! command -v kdialog >/dev/null && ! command -v zenity >/dev/null; then
   echo 'Install zenity (GNOME/Xfce) or kdialog (KDE) using your package manager for graphical dialogs.' >&2
 fi

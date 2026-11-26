@@ -104,6 +104,27 @@ class SourceInstallerConflictTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn('SOURCE_REGISTRATION_INVOKED', result.stdout)
 
+    def test_old_python_is_rejected_with_actionable_message(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            bindir = root/'bin'
+            bindir.mkdir()
+            for name in ('pacman', 'dpkg-query', 'rpm'):
+                stub = bindir/name
+                stub.write_text('#!/bin/sh\nexit 1\n')
+                stub.chmod(0o755)
+            python = bindir/'python3'
+            python.write_text('#!/bin/sh\ncase "$*" in *version_info*) exit 1;; esac\nprintf "SOURCE_REGISTRATION_INVOKED\\n"\n')
+            python.chmod(0o755)
+            env = os.environ.copy()
+            env.update(HOME=str(root), PATH=str(bindir)+':/usr/bin:/bin')
+            result = subprocess.run(['bash', str(SCRIPT)], cwd=ROOT,
+                                    stdin=subprocess.DEVNULL, capture_output=True,
+                                    text=True, env=env, timeout=10)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn('Python 3.8 or newer', result.stderr)
+            self.assertNotIn('SOURCE_REGISTRATION_INVOKED', result.stdout)
+
     def test_no_existing_pacman_install_runs_source_registration(self):
         result = self.run_script(package_installed=False)
         self.assertEqual(result.returncode, 0, result.stderr)

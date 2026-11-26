@@ -15,6 +15,62 @@ import diagnostics_core as core
 import runtime_probe as probe
 
 class MonitorTests(unittest.TestCase):
+    def test_native_flatpak_export_rejects_symlink(self):
+        appid = 'org.example.Link'
+        root = self.root/'data/flatpak/exports/share/applications'
+        root.mkdir(parents=True)
+        target = root/'real.desktop'
+        target.write_text('[Desktop Entry]\nExec=flatpak run org.example.Link\n')
+        (root/f'{appid}.desktop').symlink_to(target)
+        self.assertIsNone(m.native_flatpak_export(appid))
+
+    def test_flatpak_exec_validation_rejects_unrelated_command(self):
+        appid = 'org.example.Check'
+        valid = f'/usr/bin/flatpak run {appid}'
+        self.assertEqual(m.flatpak_exec_argv(valid, appid)[0], '/usr/bin/flatpak')
+        with self.assertRaises(ValueError):
+            m.flatpak_exec_argv('/bin/sh -c evil', appid)
+        with self.assertRaises(ValueError):
+            m.flatpak_exec_argv('/usr/bin/flatpak run org.example.Other', appid)
+
+    def test_legacy_flatpak_wrapper_migrates_to_native_export(self):
+        appid = 'org.example.Legacy'
+        export = self.root/'data/flatpak/exports/share/applications'/f'{appid}.desktop'
+        export.parent.mkdir(parents=True)
+        export.write_text(f'[Desktop Entry]\nName=Native Export\nExec=flatpak run {appid}\n')
+        path = self.root/'data/applications'/f'{appid}.desktop'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f'[Desktop Entry]\nName=Legacy\nExec=flatpak run {appid}\n')
+        m.wrap_desktop(f'flatpak:{appid}', path, 'flatpak', appid=appid,
+                       command_override=f'/usr/bin/flatpak run {appid}')
+        key = f'flatpak:{appid}'
+        self.assertFalse(m.registry()[key].get('native_flatpak'))
+        result = m.migrate_flatpak_launchers()
+        self.assertEqual(result['migrated'], ['Legacy'])
+        self.assertTrue(path.is_symlink())
+        self.assertEqual(path.resolve(), export.resolve())
+        spec = m.registry()[key]
+        self.assertTrue(spec['native_flatpak'])
+        self.assertIn('flatpak run '+appid, spec['command'])
+        export.write_text(f'[Desktop Entry]\nName=Upstream Update\nExec=flatpak run {appid}\n')
+        self.assertIn('Upstream Update', path.read_text())
+
+    def test_modified_flatpak_wrapper_is_not_migrated(self):
+        appid = 'org.example.Modified'
+        export = self.root/'data/flatpak/exports/share/applications'/f'{appid}.desktop'
+        export.parent.mkdir(parents=True)
+        export.write_text(f'[Desktop Entry]\nName=Native\nExec=flatpak run {appid}\n')
+        path = self.root/'data/applications'/f'{appid}.desktop'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f'[Desktop Entry]\nName=Legacy\nExec=flatpak run {appid}\n')
+        m.wrap_desktop(f'flatpak:{appid}', path, 'flatpak', appid=appid,
+                       command_override=f'/usr/bin/flatpak run {appid}')
+        path.write_text(path.read_text()+'Comment=User edit\n')
+        result = m.migrate_flatpak_launchers()
+        self.assertEqual(result['migrated'], [])
+        self.assertFalse(path.is_symlink())
+        self.assertIn('User edit', path.read_text())
+
     def test_flatpak_adoption_tracks_replacement_export(self):
         appid = 'org.example.App'
         apps = self.root/'data/applications'
@@ -30,6 +86,22 @@ class MonitorTests(unittest.TestCase):
         new.replace(export)
         self.assertTrue(path.is_symlink())
         self.assertEqual(m.desktop_values(path.read_text())['Name'], 'Updated')
+
+    def test_incomplete_registry_record_does_not_abort_uninstall(self):
+        path = self.root/'broken.desktop'
+        path.write_text('[Desktop Entry]\nName=Broken\nExec=true\n')
+        m.update_registry('test:broken', {'key': 'test:broken', 'name': 'Broken',
+                                          'desktop': str(path), 'format': 'test'})
+        result = m.restore_launchers(preserve_records=True)
+        self.assertIn('Broken', result['skipped_modified'])
+        self.assertTrue(path.exists())
+
+    def test_migrate_flatpak_cli_flag(self):
+        result = subprocess.run([sys.executable, str(ROOT/'launch_monitor.py'),
+                                 '--migrate-flatpak'], capture_output=True, text=True,
+                                env=dict(os.environ, XDG_DATA_HOME=str(self.root/'data'),
+                                         XDG_STATE_HOME=str(self.root/'state')))
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_uninstall_does_not_rewrite_unrelated_export_hashes(self):
         first = self.spec(key='test:first')

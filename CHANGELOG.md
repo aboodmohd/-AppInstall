@@ -1,5 +1,10 @@
 # AppInstall Changelog
 
+## 1.9.3 — Compatibility and migration (candidate)
+
+- Migrate legacy monitored Flatpak launchers to live native exports without overwriting user edits.
+- Expand disposable compatibility and security testing. Details will be recorded in `docs/V1_9_3_COMPATIBILITY_AUDIT.md`.
+
 ## 1.9.2 — Reliability & Stability (published 2026-11-26)
 
 - Repair local DEB repository handling, launcher lifecycle, AppImage staging and identity, and URL diagnostics. Harden APT source selection, uninstall record handling and URL log retention. See [the audit](docs/V1_9_2_RELIABILITY_AUDIT.md).

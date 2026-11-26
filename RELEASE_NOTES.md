@@ -1,3 +1,13 @@
+# AppInstall v1.9.3 — Compatibility and migration (candidate)
+
+Unpublished development candidate. The latest published stable release is v1.9.2.
+
+This candidate focuses on remaining reliability, migration and compatibility work before v2.0.0. See `docs/V1_9_3_COMPATIBILITY_AUDIT.md` for verified evidence and limitations.
+
+Candidate artifact prefix: `appinstall-1.9.3-portable.tar.gz`; native packages use `abood-appinstall` with version `1.9.3-1`.
+
+## Previous release notes
+
 # AppInstall v1.9.2 — Reliability & Stability (published 2026-11-26)
 
 This is the latest stable release. It keeps the AppInstall public name, Premium UI, and the unique `abood-appinstall` package identity from v1.9.1.

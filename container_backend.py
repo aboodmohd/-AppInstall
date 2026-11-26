@@ -24,6 +24,10 @@ from package_meta import require_backend_tools
 SPECS = {'deb': ('debian-apps', 'docker.io/library/debian:13'),
          'rpm': ('fedora-apps', 'registry.fedoraproject.org/fedora:44')}
 ENV = dict(os.environ, DBX_CONTAINER_MANAGER='podman', LC_ALL='C')
+INSECURE_APT = re.compile(
+    r'(?i)\b(?:trusted\s*[:=]\s*(?:yes|true)|allow[-_]?insecure|allow[-_]?weak|'
+    r'allow[-_]?downgrade[-_]?to[-_]?insecure|check[-_]?date\s*[:=]\s*(?:no|false)|'
+    r'check[-_]?valid[-_]?until\s*[:=]\s*(?:no|false))\b')
 PROGRESS = contextvars.ContextVar('appinstall_progress',default=None)
 
 
@@ -41,6 +45,7 @@ def command(args, **kwargs):
         process.stdout.close()
         status = process.wait(); content = b''.join(chunks)
     else:
+        kwargs.setdefault('timeout', 120)
         result = subprocess.run(args, env=ENV, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, **kwargs)
         status,content = result.returncode,result.stdout
     if status:
@@ -174,7 +179,10 @@ def inspect_package(file):
 
 
 def validate_apt_sources(sources):
+    """Accept only official Debian sources with apt-secure verification enabled."""
     from urllib.parse import urlparse
+    if INSECURE_APT.search(sources):
+        raise RuntimeError('Container APT sources disable signature or date verification; review them manually before continuing.')
     urls=[];continuation=False
     for raw in sources.splitlines():
         line=raw.split('#',1)[0].rstrip()
@@ -188,9 +196,16 @@ def validate_apt_sources(sources):
         else:
             continuation=False
             if re.match(r'^deb(?:-src)?\s',stripped):
-                fields=re.sub(r'\[[^]]*\]','',stripped).split()
-                if len(fields)>1:urls.append(fields[1])
-    if any(urlparse(url).scheme not in ('http','https') or urlparse(url).hostname not in ('deb.debian.org','security.debian.org') for url in urls):
+                bracket=re.search(r'\[[^]]*\]',stripped)
+                if bracket and INSECURE_APT.search(bracket.group(0)):
+                    raise RuntimeError('Container APT sources disable signature verification; review them manually before continuing.')
+                fields = re.sub(r'\[[^]]*\]','',stripped).split()
+                if len(fields) > 1:
+                    urls.append(fields[1])
+    if any(urlparse(url).scheme not in ('http','https') or
+           urlparse(url).hostname not in ('deb.debian.org','security.debian.org') or
+           not urlparse(url).path.startswith(('/debian','/debian-security'))
+           for url in urls):
         raise RuntimeError('Container contains an unknown APT repository; review it manually before continuing.')
 
 
@@ -282,6 +297,7 @@ class Engine:
         written = 0
         for path in candidates:
             try:
+                self.enter(info, ['test', '-f', str(path)])
                 text = self.enter(info, ['cat', str(path)]).decode()
             except RuntimeError:
                 continue
@@ -345,8 +361,7 @@ class Engine:
             if not any(line.strip() and not line.lstrip().startswith('#')
                        for line in block):
                 return False
-            if re.search(r'(?im)^\s*Trusted:\s*(yes|true)\s*$', block) or \
-                    re.search(r'\[[^\]]*\btrusted\s*=\s*(yes|true)\b', block):
+            if INSECURE_APT.search(block):
                 return False
             uris = uri_values(block)
             if not uris or not all(trusted_uri(uri) for uri in uris):
@@ -588,7 +603,9 @@ class Engine:
             for item in info.get('exports',[])+info.get('icons',[]):
                 path = item['path']
                 if any(path==other['path'] for otherkey,record in self.registry.items()
-                       if otherkey!=key for other in record.get('icons',[])+record.get('exports',[])):
+                       if otherkey!=key and isinstance(record, dict)
+                       for other in record.get('icons',[])+record.get('exports',[])
+                       if isinstance(other, dict) and 'path' in other):
                     continue
                 p = Path(path)
                 if p.is_file() and hashlib.sha256(p.read_bytes()).hexdigest() == item['sha256']:

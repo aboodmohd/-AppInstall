@@ -64,7 +64,7 @@ SUPPORTED_IDS="arch cachyos fedora"
 # Optional backends offered after core installation (pacman package names).
 OPTIONAL_PKGS=(flatpak podman distrobox squashfs-tools fuse2 kdialog zenity libnotify)
 
-INSTALLER_VERSION="1.9.2"
+INSTALLER_VERSION="1.9.3"
 
 # ---------------------------------------------------------------------------
 # Flags / state. Defaults respect pre-existing environment values so the test
@@ -839,8 +839,13 @@ uninstall_flow() {
   if [[ -z "$(installed_version "$family")" ]]; then
     info "AppInstall does not appear to be installed through the native package manager; nothing to remove."
   else
-    python3 /usr/lib/abood-appinstall/launch_monitor.py --detach-launchers ||
-      die 5 "Could not detach managed launchers safely. AppInstall was not removed."
+    if python3 /usr/lib/abood-appinstall/launch_monitor.py --help 2>/dev/null |
+         grep -q -- '--detach-launchers'; then
+      python3 /usr/lib/abood-appinstall/launch_monitor.py --detach-launchers ||
+        die 5 "Could not detach managed launchers safely. AppInstall was not removed."
+    else
+      info "Installed helper has no launcher-detach support; leaving launchers unchanged."
+    fi
     if [[ "$family" == fedora ]]; then
       local dnf_flags=()
       [[ $ASSUME_YES -eq 1 ]] && dnf_flags+=(-y)
@@ -965,7 +970,7 @@ main() {
       ;;
     *)
       if [[ "$family" != arch ]]; then
-        die 2 "Unsupported distribution '$distro_id'. No package was downloaded and nothing was changed."
+        die 2 "Unsupported distribution '$distro_id'. No package was downloaded and nothing was changed. Use the published portable archive (install-user.sh) instead; see INSTALL.md."
       fi
       ;;
   esac
@@ -976,7 +981,7 @@ main() {
       warn "Distro '${distro_id}' is arch-like but untested — continuing because --allow-arch-like was used. Install at your own risk."
     else
       bad "Arch-like distro '${distro_id}' is not in the tested list (${SUPPORTED_IDS})."
-      bad "You can force installation with --allow-arch-like, but there is no compatibility claim."
+      bad "You can force installation with --allow-arch-like, but there is no compatibility claim. Otherwise use the portable archive (install-user.sh); see INSTALL.md."
       exit 2
     fi
   fi

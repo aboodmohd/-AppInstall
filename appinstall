@@ -10,7 +10,7 @@
 set -u
 IFS=$'\n\t'
 
-VERSION="1.9.2"
+VERSION="1.9.3"
 INSTALL_DIR="${APPINSTALL_APPIMAGES:-$HOME/Applications}"
 APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/pixmaps"
@@ -574,6 +574,12 @@ main() {
   # Widgets interface (manager.py). --manage can appear before or after
   # --widgets; both orders are honoured.
   if [ "$MANAGE" -eq 1 ]; then
+    local monitor_flag
+    monitor="$(dirname -- "$(realpath -- "$0")")/launch_monitor.py"
+    [ -f "$monitor" ] || monitor="${XDG_DATA_HOME:-$HOME/.local/share}/appinstall/launch_monitor.py"
+    if [ -f "$monitor" ] && python3 "$monitor" --help 2>/dev/null | grep -q -- '--migrate-flatpak'; then
+      python3 "$monitor" --migrate-flatpak >/dev/null 2>&1 || true
+    fi
     if [ "$USE_WIDGETS" -eq 1 ]; then
       manager="$(dirname -- "$(realpath -- "$0")")/manager.py"
     else
