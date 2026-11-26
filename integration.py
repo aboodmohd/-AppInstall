@@ -221,6 +221,14 @@ if not uninstalling:
                 launch_monitor.adopt_flatpak(meta['X-Flatpak'])
         except (OSError, ValueError, RuntimeError, configparser.Error):
             pass
+    try:
+        migration = launch_monitor.migrate_flatpak_launchers()
+        for name in migration['migrated']:
+            print('Flatpak launcher migrated to native export: '+name, file=sys.stderr)
+        for name in migration['skipped']:
+            print('Flatpak launcher review needed (left unchanged): '+name, file=sys.stderr)
+    except (OSError, ValueError, RuntimeError, configparser.Error) as error:
+        print('Flatpak launcher migration skipped: '+str(error), file=sys.stderr)
 
 if shutil.which('update-desktop-database'):
     subprocess.run(['update-desktop-database', str(apps)], check=False)

@@ -277,19 +277,28 @@ def install(source, destination, fallback=False):
         staged_manifest.write_text(json.dumps(info))
         staged_entry = entry.with_suffix('.new')
         staged_entry.write_text(text)
+        old_entry = entry.read_bytes() if entry.exists() else None
+        old_manifest = manifest.read_bytes() if manifest.exists() else None
         staged_manifest.replace(manifest)
+        staged_entry.replace(entry)
+        import launch_monitor
         try:
-            staged_entry.replace(entry)
+            launch_monitor.wrap_appimage(entry, manifest)
         except Exception:
-            manifest.unlink(missing_ok=True)
+            if old_entry is None:
+                entry.unlink(missing_ok=True)
+            else:
+                entry.write_bytes(old_entry)
+            if old_manifest is None:
+                manifest.unlink(missing_ok=True)
+            else:
+                manifest.write_bytes(old_manifest)
             raise
     except Exception:
         shutil.rmtree(generation, ignore_errors=True)
         manifest.with_suffix('.new').unlink(missing_ok=True)
         entry.with_suffix('.new').unlink(missing_ok=True)
         raise
-    import launch_monitor
-    launch_monitor.wrap_appimage(entry, manifest)
     return entry
 
 if __name__ == '__main__':

@@ -400,6 +400,38 @@ def deliver_error(spec,attempt):
     return delivered
 
 
+def flatpak_exec_argv(value, appid):
+    """Validate a native Flatpak Exec line and return its exact argv."""
+    from package_meta import APPID_PATTERN
+    argv = shlex.split(decode_value(value))
+    if not argv or Path(argv[0]).name != 'flatpak':
+        raise ValueError('The Flatpak launcher does not use the flatpak binary.')
+    known = shutil.which('flatpak')
+    if not known:
+        raise ValueError('The flatpak binary is unavailable; launch it from the terminal instead.')
+    actual = argv[0] if Path(argv[0]).is_absolute() else (shutil.which(argv[0]) or argv[0])
+    if Path(actual).resolve() != Path(known).resolve():
+        raise ValueError('The Flatpak launcher uses an unexpected binary.')
+    if len(argv) < 2 or argv[1] != 'run':
+        raise ValueError('The Flatpak launcher does not use flatpak run.')
+    if not APPID_PATTERN.fullmatch(appid):
+        raise ValueError('Invalid Flatpak application ID.')
+    index = 2
+    value_options = ('--branch', '--arch', '--command', '--installation')
+    while index < len(argv):
+        token = argv[index]
+        if token in value_options:
+            index += 2
+            continue
+        if token.startswith('-'):
+            index += 1
+            continue
+        break
+    if index >= len(argv) or argv[index] != appid:
+        raise ValueError('The Flatpak launcher does not match its application ID.')
+    return argv
+
+
 def monitor(spec, files=(), action=None, notify=True, startup=STARTUP_SECONDS):
     attempt=new_attempt(spec); log=SafeLog(attempt['log'])
     start=time.monotonic()
@@ -419,6 +451,8 @@ def monitor(spec, files=(), action=None, notify=True, startup=STARTUP_SECONDS):
         if spec.get('native_flatpak'):
             section = 'Desktop Action '+action if action else 'Desktop Entry'
             value = desktop_values(Path(spec['desktop']).read_text(), section).get('Exec')
+            native_argv = flatpak_exec_argv(value, spec.get('appid', ''))
+            value = ' '.join(desktop_quote(token, fields=True) for token in native_argv)
         else:
             value=spec.get('actions',{}).get(action) if action else spec['command']
         if value is None: raise ValueError('The requested desktop action does not exist.')
@@ -573,7 +607,8 @@ def restore_launchers(preserve_records=False):
         containers=json.loads(container_file.read_text()) if container_file.exists() else {}
         changed_container_exports = False
         for key,spec in registry().items():
-            if not isinstance(spec, dict):
+            if not isinstance(spec, dict) or 'original_text' not in spec:
+                skipped.append(spec.get('name', key) if isinstance(spec, dict) else key)
                 continue
             path=Path(spec.get('desktop',''))
             if preserve_records and not path.exists():
@@ -621,6 +656,71 @@ def restore_launchers(preserve_records=False):
     return dict(restored=restored,skipped_modified=skipped)
 
 
+def native_flatpak_export(appid):
+    """Find Flatpak's maintained desktop entry for a validated application ID."""
+    from package_meta import APPID_PATTERN
+    if not APPID_PATTERN.fullmatch(appid):
+        return None
+    name = appid+'.desktop'
+    for root in (data_root().parent/'flatpak',
+                 Path('/var/lib/flatpak')):
+        entry = root/'exports/share/applications'/name
+        if not entry.is_file():
+            continue
+        try:
+            resolved = entry.resolve(strict=True)
+        except OSError:
+            continue
+        # Flatpak legitimately exports desktop files as symlinks into its app
+        # directory. Accept them only when they stay inside that installation.
+        if resolved.is_file() and resolved.is_relative_to(root.resolve()):
+            return entry
+    return None
+
+
+def migrate_flatpak_launchers(appid=None):
+    """Replace AppInstall-wrapped Flatpak launchers with live native exports.
+
+    Only a launcher that is byte-identical to the recorded AppInstall wrapper is
+    migrated. User-edited or relocated launchers are always skipped so their
+    changes are never overwritten.
+    """
+    migrated, skipped = [], []
+    for key, spec in list(registry().items()):
+        if not isinstance(spec, dict) or spec.get('format') != 'flatpak':
+            continue
+        if spec.get('native_flatpak'):
+            continue
+        current_appid = spec.get('appid', '')
+        if not current_appid or (appid and current_appid != appid):
+            continue
+        path = Path(spec.get('desktop', ''))
+        export = native_flatpak_export(current_appid)
+        if (not export or path.name != current_appid+'.desktop' or not path.is_file()
+                or path.is_symlink()):
+            skipped.append(spec.get('name', key))
+            continue
+        if hashlib.sha256(path.read_bytes()).hexdigest() != spec.get('desktop_hash'):
+            skipped.append(spec.get('name', key))
+            continue
+        validated = export.read_bytes()
+        text = validated.decode('utf-8')
+        meta = desktop_values(text)
+        try:
+            flatpak_exec_argv(meta.get('Exec', ''), current_appid)
+        except ValueError:
+            skipped.append(spec.get('name', key))
+            continue
+        temp = path.with_name('.'+path.name+'.'+uuid.uuid4().hex+'.tmp')
+        temp.symlink_to(export)
+        temp.replace(path)
+        spec.update(native_flatpak=True, command=meta['Exec'], original_text=text,
+                    desktop_hash=hashlib.sha256(validated).hexdigest())
+        update_registry(key, spec)
+        migrated.append(spec.get('name', key))
+    return dict(migrated=migrated, skipped=skipped)
+
+
 def adopt_flatpak(appid):
     from package_meta import APPID_PATTERN
     if not APPID_PATTERN.fullmatch(appid):
@@ -630,18 +730,14 @@ def adopt_flatpak(appid):
     if not path.exists(): return
     key = 'flatpak:'+appid
     meta=desktop_values(path.read_text())
+    export = native_flatpak_export(appid)
     if meta.get('X-AppInstall-LaunchID'):
         spec = registry().get(key)
-        export = data_root().parent/'flatpak/exports/share/applications'/path.name
-        if (not spec or path.is_symlink() or not export.is_file() or
+        if (not spec or path.is_symlink() or export is None or
                 hashlib.sha256(path.read_bytes()).hexdigest() != spec.get('desktop_hash')):
             return
         meta = desktop_values(export.read_text())
-    else:
-        export = None
-    argv=shlex.split(decode_value(meta.get('Exec','')))
-    if not argv or Path(argv[0]).name!='flatpak' or appid not in argv:
-        raise RuntimeError('The existing launcher is not the expected Flatpak entry.')
+    flatpak_exec_argv(meta.get('Exec', ''), appid)
     if export is not None:
         temporary = path.with_name('.'+path.name+'.'+uuid.uuid4().hex+'.tmp')
         temporary.symlink_to(export)
@@ -653,8 +749,13 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser()
     parser.add_argument('--restore-launchers',action='store_true');parser.add_argument('--forget');parser.add_argument('--launch');parser.add_argument('--action');parser.add_argument('--adopt-flatpak')
     parser.add_argument('--detach-launchers', action='store_true')
+    parser.add_argument('--migrate-flatpak', action='store_true')
     parser.add_argument('files',nargs='*');args=parser.parse_args()
-    if args.detach_launchers:
+    if args.migrate_flatpak:
+        result = migrate_flatpak_launchers()
+        for name in result['migrated']:
+            print('Migrated Flatpak launcher: '+name)
+    elif args.detach_launchers:
         result = restore_launchers(preserve_records=True)
         if result['skipped_modified']:
             raise SystemExit('Some managed launchers were edited; review them before uninstalling.')

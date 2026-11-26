@@ -15,6 +15,102 @@ import diagnostics_core as core
 import runtime_probe as probe
 
 class MonitorTests(unittest.TestCase):
+    def test_native_flatpak_export_rejects_symlink(self):
+        appid = 'org.example.Link'
+        root = self.root/'data/flatpak/exports/share/applications'
+        root.mkdir(parents=True)
+        outside = self.root/'outside.desktop'
+        outside.write_text('[Desktop Entry]\nExec=flatpak run org.example.Link\n')
+        (root/f'{appid}.desktop').symlink_to(outside)
+        self.assertIsNone(m.native_flatpak_export(appid))
+
+    def test_native_flatpak_export_accepts_internal_symlink(self):
+        appid = 'org.example.Internal'
+        root = self.root/'data/flatpak'
+        target = root/'app/org.example.Internal/current/active/export/share/applications'/f'{appid}.desktop'
+        target.parent.mkdir(parents=True)
+        target.write_text(f'[Desktop Entry]\nExec=flatpak run {appid}\n')
+        (root/'exports/share/applications').mkdir(parents=True, exist_ok=True)
+        (root/'exports/share/applications'/f'{appid}.desktop').symlink_to(target)
+        self.assertEqual(m.native_flatpak_export(appid).name, f'{appid}.desktop')
+
+    def test_adopt_flatpak_rejects_external_export_symlink(self):
+        appid = 'org.example.External'
+        root = self.root/'data'
+        apps = root/'applications'; apps.mkdir(parents=True)
+        outside = self.root/'outside.desktop'
+        outside.write_text(f'[Desktop Entry]\nName=Outside\nExec=/usr/bin/flatpak run {appid}\n')
+        exports = root/'flatpak/exports/share/applications'; exports.mkdir(parents=True)
+        (exports/f'{appid}.desktop').symlink_to(outside)
+        launcher = apps/f'{appid}.desktop'
+        launcher.write_text(f'[Desktop Entry]\nName=Owned\nX-AppInstall-LaunchID=flatpak:{appid}\nExec=/usr/bin/flatpak run {appid}\n')
+        m.update_registry(f'flatpak:{appid}', {'key':f'flatpak:{appid}', 'name':'Owned',
+                                                'desktop':str(launcher), 'format':'flatpak',
+                                                'appid':appid, 'native_flatpak':False,
+                                                'desktop_hash':__import__('hashlib').sha256(launcher.read_bytes()).hexdigest()})
+        m.adopt_flatpak(appid)
+        self.assertFalse(launcher.is_symlink())
+        self.assertTrue(launcher.read_text().startswith('[Desktop Entry]\nName=Owned'))
+
+    def test_flatpak_exec_validation_rejects_unrelated_command(self):
+        appid = 'org.example.Check'
+        valid = f'/usr/bin/flatpak run {appid}'
+        with self.fake_flatpak():
+            self.assertEqual(m.flatpak_exec_argv(valid, appid)[0], '/usr/bin/flatpak')
+        with patch.object(m.shutil, 'which', return_value='/usr/bin/flatpak'):
+            with self.assertRaises(ValueError):
+                m.flatpak_exec_argv('/tmp/evil/flatpak run '+appid, appid)
+        with patch.object(m.shutil, 'which', return_value=None):
+            with self.assertRaises(ValueError):
+                m.flatpak_exec_argv('/usr/bin/flatpak run '+appid, appid)
+        with self.fake_flatpak():
+            with self.assertRaises(ValueError):
+                m.flatpak_exec_argv('/bin/sh -c evil', appid)
+            with self.assertRaises(ValueError):
+                m.flatpak_exec_argv('/usr/bin/flatpak run org.example.Other', appid)
+            with self.assertRaises(ValueError):
+                m.flatpak_exec_argv('/usr/bin/flatpak /bin/sh '+appid, appid)
+
+    def test_legacy_flatpak_wrapper_migrates_to_native_export(self):
+        appid = 'org.example.Legacy'
+        export = self.root/'data/flatpak/exports/share/applications'/f'{appid}.desktop'
+        export.parent.mkdir(parents=True)
+        export.write_text(f'[Desktop Entry]\nName=Native Export\nExec=flatpak run {appid}\n')
+        path = self.root/'data/applications'/f'{appid}.desktop'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f'[Desktop Entry]\nName=Legacy\nExec=flatpak run {appid}\n')
+        m.wrap_desktop(f'flatpak:{appid}', path, 'flatpak', appid=appid,
+                       command_override=f'/usr/bin/flatpak run {appid}')
+        key = f'flatpak:{appid}'
+        self.assertFalse(m.registry()[key].get('native_flatpak'))
+        with self.fake_flatpak():
+            result = m.migrate_flatpak_launchers()
+        self.assertEqual(result['migrated'], ['Legacy'])
+        self.assertTrue(path.is_symlink())
+        self.assertEqual(path.resolve(), export.resolve())
+        spec = m.registry()[key]
+        self.assertTrue(spec['native_flatpak'])
+        self.assertIn('flatpak run '+appid, spec['command'])
+        export.write_text(f'[Desktop Entry]\nName=Upstream Update\nExec=flatpak run {appid}\n')
+        self.assertIn('Upstream Update', path.read_text())
+
+    def test_modified_flatpak_wrapper_is_not_migrated(self):
+        appid = 'org.example.Modified'
+        export = self.root/'data/flatpak/exports/share/applications'/f'{appid}.desktop'
+        export.parent.mkdir(parents=True)
+        export.write_text(f'[Desktop Entry]\nName=Native\nExec=flatpak run {appid}\n')
+        path = self.root/'data/applications'/f'{appid}.desktop'
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f'[Desktop Entry]\nName=Legacy\nExec=flatpak run {appid}\n')
+        m.wrap_desktop(f'flatpak:{appid}', path, 'flatpak', appid=appid,
+                       command_override=f'/usr/bin/flatpak run {appid}')
+        path.write_text(path.read_text()+'Comment=User edit\n')
+        with self.fake_flatpak():
+            result = m.migrate_flatpak_launchers()
+        self.assertEqual(result['migrated'], [])
+        self.assertFalse(path.is_symlink())
+        self.assertIn('User edit', path.read_text())
+
     def test_flatpak_adoption_tracks_replacement_export(self):
         appid = 'org.example.App'
         apps = self.root/'data/applications'
@@ -24,12 +120,29 @@ class MonitorTests(unittest.TestCase):
         path = apps/export.name
         export.write_text(f'[Desktop Entry]\nName=Example\nExec=flatpak run {appid}\n')
         path.symlink_to(export)
-        m.adopt_flatpak(appid)
+        with self.fake_flatpak():
+            m.adopt_flatpak(appid)
         new = export.with_suffix('.new')
         new.write_text(f'[Desktop Entry]\nName=Updated\nExec=flatpak run {appid}\n')
         new.replace(export)
         self.assertTrue(path.is_symlink())
         self.assertEqual(m.desktop_values(path.read_text())['Name'], 'Updated')
+
+    def test_incomplete_registry_record_does_not_abort_uninstall(self):
+        path = self.root/'broken.desktop'
+        path.write_text('[Desktop Entry]\nName=Broken\nExec=true\n')
+        m.update_registry('test:broken', {'key': 'test:broken', 'name': 'Broken',
+                                          'desktop': str(path), 'format': 'test'})
+        result = m.restore_launchers(preserve_records=True)
+        self.assertIn('Broken', result['skipped_modified'])
+        self.assertTrue(path.exists())
+
+    def test_migrate_flatpak_cli_flag(self):
+        result = subprocess.run([sys.executable, str(ROOT/'launch_monitor.py'),
+                                 '--migrate-flatpak'], capture_output=True, text=True,
+                                env=dict(os.environ, XDG_DATA_HOME=str(self.root/'data'),
+                                         XDG_STATE_HOME=str(self.root/'state')))
+        self.assertEqual(result.returncode, 0, result.stderr)
 
     def test_uninstall_does_not_rewrite_unrelated_export_hashes(self):
         first = self.spec(key='test:first')
@@ -65,6 +178,9 @@ class MonitorTests(unittest.TestCase):
         self.environment=patch.dict(os.environ,{'XDG_DATA_HOME':str(self.root/'data'),'XDG_STATE_HOME':str(self.root/'state')})
         self.environment.start()
     def tearDown(self):self.environment.stop();self.temp.cleanup()
+    def fake_flatpak(self):
+        """Flatpak is absent in CI; make Exec validation hermetic."""
+        return patch.object(m.shutil, 'which', return_value='/usr/bin/flatpak')
     def spec(self,script="pass",key='test:example'):
         path=self.root/'example.desktop'
         path.write_text('[Desktop Entry]\nType=Application\nName=Example\nIcon=example\nCategories=Development;\nExec='+m.desktop_quote(sys.executable)+' -c '+m.desktop_quote(script)+' %U\n')

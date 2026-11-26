@@ -205,6 +205,25 @@ class AppImageTests(unittest.TestCase):
                 self.assertEqual(info['fallback'], '')
                 self.assertEqual(Path(info['target']).read_bytes(), source.read_bytes())
 
+    def test_monitor_registration_failure_rolls_back_publication(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source = root/'Example.AppImage'
+            source.write_bytes(fixture_appimage())
+            dest = root/'Applications'
+            env = {'XDG_DATA_HOME': str(root/'data'), 'XDG_STATE_HOME': str(root/'state')}
+            import launch_monitor
+            with patch.dict(os.environ, env), \
+                 patch.object(backend, 'preview_contents',
+                              side_effect=backend.PreviewUnavailable('fixture')), \
+                 patch.object(launch_monitor, 'wrap_appimage',
+                              side_effect=RuntimeError('registry failure')):
+                with self.assertRaisesRegex(RuntimeError, 'registry failure'):
+                    backend.install(source, dest)
+            self.assertFalse(list((root/'data/applications').glob('*.desktop')))
+            self.assertFalse(list((root/'data/appinstall').glob('*.json')))
+            self.assertEqual(list(dest.iterdir()), [])
+
     def test_cli_stdout_is_desktop_path_and_open_manifest_is_usable(self):
         with tempfile.TemporaryDirectory(prefix='appinstall cli ') as temp:
             root = Path(temp)

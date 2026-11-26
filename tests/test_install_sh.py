@@ -55,6 +55,20 @@ def write_os_release(tmp, content):
     return str(f)
 
 
+class UninstallCompatibilityTests(unittest.TestCase):
+    def test_uninstall_continues_with_older_helper(self):
+        rc, out, err = run_sourced("""
+            installed_version() { printf '1.9.3-1\n'; }
+            python3() { printf 'usage: launch_monitor [--restore-launchers]\n'; }
+            run_root() { printf 'ROOT:%s\n' "$*"; }
+            ask() { return 0; }
+            log_write() { :; }
+            uninstall_flow arch
+        """)
+        self.assertEqual(rc, 0, err)
+        self.assertIn('Installed helper has no launcher-detach support', out)
+        self.assertIn('ROOT:pacman -R abood-appinstall', out)
+
 class PackageCollisionTests(unittest.TestCase):
     def test_arch_version_requires_exact_owner_and_upstream(self):
         for owner, url, expected in (
