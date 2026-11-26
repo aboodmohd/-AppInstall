@@ -4,9 +4,10 @@
 
 [![Latest release](https://img.shields.io/github/v/release/aboodmohd/-AppInstall)](https://github.com/aboodmohd/-AppInstall/releases/latest)
 
-> **Latest published stable: [v1.9.0 — Premium UI/UX](https://github.com/aboodmohd/-AppInstall/releases/tag/v1.9.0).**
-> The Qt Quick/QML redesign is included in the published release. The installer
-> uses only published stable releases, never draft PR artifacts or test builds.
+> **[Download the latest stable AppInstall](https://github.com/aboodmohd/-AppInstall/releases/latest).**
+> Starting with v1.9.1, the package and command are `abood-appinstall` and
+> the desktop ID is `io.github.aboodmohd.AppInstall`. The AppInstall name and
+> Premium UI are unchanged. Existing users: [migrate from the legacy package](UPGRADE.md#migration-from-the-legacy-appinstall-package).
 
 A graphical double-click installer for AppImage, Flatpak, DEB, and RPM files on Linux desktops. DEB/RPM applications run in rootless Debian/Fedora Distrobox containers.
 
@@ -136,13 +137,13 @@ unverified distribution.
 
 If your distro is not in the native list, AppInstall also has a
 **distribution-neutral, non-root source route**, not a falsely renamed
-DEB/RPM. Use the verified, published `appinstall-1.9.0-portable.tar.gz`
+DEB/RPM. Use the verified, published `appinstall-1.9.1-portable.tar.gz`
 archive for the current stable portable install:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf appinstall-1.9.0-portable.tar.gz
-cd appinstall-1.9.0
+tar -xzf appinstall-1.9.1-portable.tar.gz
+cd appinstall-1.9.1
 bash ./install-user.sh
 ~/.local/bin/abood-appinstall --manage
 ```
@@ -285,22 +286,22 @@ The downloaded file is then handed to the normal installation backends (AppImage
 CLI:
 ```sh
 abood-appinstall --install-url https://example.com/releases/application.AppImage
-appinstall --yes --install-url https://example.com/releases/application.AppImage
+abood-appinstall --yes --install-url https://example.com/releases/application.AppImage
 ```
 `--yes` bypasses confirmation (scripts only). Cancellation with `Ctrl+C` removes the partial download.
 
 ## CLI
 
 ```sh
-appinstall FILE.AppImage
+abood-appinstall FILE.AppImage
 abood-appinstall --diagnostics
-appinstall --yes --nolaunch FILE.flatpakref
-appinstall --dir ~/Games FILE.AppImage
+abood-appinstall --yes --nolaunch FILE.flatpakref
+abood-appinstall --dir ~/Games FILE.AppImage
 abood-appinstall --install-url https://example.com/releases/application.AppImage
-appinstall --yes --install-url https://example.com/releases/application.AppImage
+abood-appinstall --yes --install-url https://example.com/releases/application.AppImage
 abood-appinstall --list
 abood-appinstall --remove NAME
-appinstall --detect FILE
+abood-appinstall --detect FILE
 ```
 
 `--yes` bypasses confirmation and disables the Open prompt. `--nolaunch` suppresses the Open prompt. `APPINSTALL_APPIMAGES` sets the default AppImage directory. Application menu and icon directories respect `XDG_DATA_HOME`; association settings respect `XDG_CONFIG_HOME`.
@@ -363,9 +364,9 @@ CLI-only packages are recorded without a graphical launcher.
 Lifecycle commands use a registry key such as `deb:example` or `rpm:example`:
 
 ```sh
-appinstall --container-info deb:example
-appinstall --container-launch deb:example
-appinstall --container-remove deb:example
+abood-appinstall --container-info deb:example
+abood-appinstall --container-launch deb:example
+abood-appinstall --container-remove deb:example
 ```
 
 Select the same package file again to reinstall; select a newer file to update.

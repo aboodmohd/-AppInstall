@@ -159,18 +159,49 @@ Arch/CachyOS, Debian/Ubuntu and Fedora. Its desktop ID is
 replace, or obsolete `appinstall`: that name also belongs to an unrelated AUR
 project. No installer or uninstaller should remove it by name alone.
 
+On CachyOS, an AUR update through Yay offered an unrelated `appinstall`
+2.0.8-1 as an upgrade to the official v1.9.0 package because both used the
+same package name. The v1.9.1 identity separates those packages. If the
+collision already happened, leave the unrelated package alone and install
+`abood-appinstall` alongside it.
+
 1. Close AppInstall, and back up `$XDG_DATA_HOME/appinstall`,
    `$XDG_STATE_HOME/appinstall` (defaulting to `~/.local/share` and
    `~/.local/state` respectively), and `mimeapps.list`. Leave managed apps,
    Flatpak installations and Distrobox storage in place.
-2. For a **legacy native** install, install the new package alongside it,
-   then run the new installer with `--set-defaults` if you want AppInstall
-   to handle all nine supported MIME types. Confirm that the new launcher
-   shows your records. Only if the legacy package is confirmed to be this
-   project (official upstream `https://github.com/aboodmohd/-AppInstall`
-   **and** owns the legacy launcher) should you retire it via your native
-   package manager. If the owner is the unrelated AppInstaller, leave it
-   untouched. Do not use recursive removal or purge.
+2. For a **legacy native** install, use the [published one-command installer](INSTALL.md#one-command-installation)
+   or install the checksum-verified native package alongside the legacy
+   package (`pacman -U` for Arch/CachyOS, `apt install` for Debian/Ubuntu,
+   `dnf install` for Fedora). Run `abood-appinstall --version` and open
+   `abood-appinstall --manage` to verify that your records are present.
+
+   To switch all nine defaults with the published installer, pass
+   `--set-defaults` to it. That option queries the published release feed;
+   for an unpublished CI build or a local package install, set and verify
+   the defaults directly as your desktop user:
+
+   ```bash
+   (
+     set -euo pipefail
+     id=io.github.aboodmohd.AppInstall.desktop
+     entry=/usr/share/applications/$id
+     test -r "$entry"
+     mapfile -t mimes < <(sed -n 's/^MimeType=//p' "$entry" | tr ';' '\n' | grep .)
+     test "${#mimes[@]}" -eq 9
+     for mime in "${mimes[@]}"; do
+       xdg-mime default "$id" "$mime"
+       test "$(xdg-mime query default "$mime")" = "$id"
+     done
+   )
+   ```
+
+   Retire the legacy package only after checking that it owns the old
+   launcher and that its upstream is `https://github.com/aboodmohd/-AppInstall`.
+   On Arch/CachyOS, use `pacman -Qo /usr/bin/appinstall` and `pacman -Qi appinstall`
+   to verify both before running `sudo pacman -R -- appinstall`. On other
+   systems, use the corresponding native ownership and metadata queries.
+   If any check is inconclusive, or identifies the unrelated AppInstaller,
+   leave it untouched. Do not use recursive removal or purge.
 3. For a **legacy portable** install, verify the existing source uninstaller
    belongs to this project, then run it **before** running `install-user.sh`
    from the new verified portable bundle. The uninstaller removes legacy

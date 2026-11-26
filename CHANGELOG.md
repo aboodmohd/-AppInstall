@@ -1,7 +1,8 @@
 # AppInstall Changelog
 
-## 1.9.1 — Package identity maintenance (release candidate)
+## 1.9.1 — Package identity maintenance
 
+- Fix the collision where Yay offered unrelated AUR `appinstall` 2.0.8-1 as an upgrade to official AppInstall 1.9.0-1.
 - Use `abood-appinstall` for native packages and the CLI, and `io.github.aboodmohd.AppInstall` for desktop integration. The product is still AppInstall.
 - Check package ownership and origin before version checks or removal; leave unrelated legacy packages untouched.
 - Migrate from v1.9.0 without renaming data or container registry paths. See [the migration guide](UPGRADE.md#migration-from-the-legacy-appinstall-package).

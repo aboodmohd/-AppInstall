@@ -1,18 +1,20 @@
-# AppInstall v1.9.1 — Package identity maintenance candidate
+# AppInstall v1.9.1 — Package identity maintenance
 
-Not published. The latest published stable release is still v1.9.0.
+On CachyOS, Yay offered unrelated AUR `appinstall` 2.0.8-1 as an upgrade to official AppInstall 1.9.0-1 because both used the same package name. v1.9.1 gives AppInstall its own package identity without replacing or removing unrelated packages.
 
 AppInstall retains its public name and Premium UI. Native packages and the CLI now use `abood-appinstall`; the desktop ID is `io.github.aboodmohd.AppInstall`. This keeps the official package separate from unrelated software using the legacy `appinstall` name. The update helper checks local package ownership and origin before comparing versions.
 
-Follow [the migration and rollback guide](UPGRADE.md#migration-from-the-legacy-appinstall-package) for the first upgrade. Settings, application records, and Distrobox registry paths do not change.
+Follow [the migration and rollback guide](https://github.com/aboodmohd/-AppInstall/blob/v1.9.1/UPGRADE.md#migration-from-the-legacy-appinstall-package) for the first upgrade. Settings, application records, and Distrobox registry paths do not change.
 
-Candidate artifacts (CI only):
+## Release assets
 
 - Arch Linux / CachyOS: `abood-appinstall-1.9.1-1-any.pkg.tar.zst`
 - Debian / Ubuntu: `abood-appinstall_1.9.1-1_all.deb`
 - Fedora: `abood-appinstall-1.9.1-1.noarch.rpm`
 - Portable: `appinstall-1.9.1-portable.tar.gz`
-- `SHA256SUMS`
+- `SHA256SUMS`: verify the downloaded asset before installation.
+
+The v1.9.1 migration was verified on live CachyOS. The Premium UI, all nine MIME associations, and existing records, Flatpaks, AppImages and Distrobox containers were preserved.
 
 ## Previous stable release
 
