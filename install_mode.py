@@ -80,12 +80,15 @@ def repair_user_desktop_entry(home=None):
     expected = str(NATIVE_EXEC)
     if current == expected:
         return False
-    # Only repair entries that clearly belong to AppInstall and point to a
-    # launcher that is absent or outside a current verified installation.
+    # Only repair entries that clearly belong to AppInstall, use an explicit
+    # absolute/~ launcher path, and whose launcher is gone. Existing portable
+    # launchers and PATH-based commands are legitimate customizations: keep.
     text = '\n'.join(lines)
     is_ours = ('Name=AppInstall' in text or 'abood-appinstall' in current or
                '/appinstall' in current)
-    if not is_ours:
+    if not is_ours or not current.startswith(('~', '/')):
+        return False
+    if Path(os.path.expanduser(current)).exists():
         return False
     lines[exec_index] = 'Exec='+expected+' %F'
     temp = entry.with_name('.'+entry.name+'.appinstall-repair.tmp')

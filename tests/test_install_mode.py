@@ -28,6 +28,18 @@ class InstallModeTests(unittest.TestCase):
         self.assertIn('Exec='+str(mode.NATIVE_EXEC)+' %F', lines)
         self.assertIn('Icon=custom', lines)
 
+    def test_keeps_legitimate_existing_portable_launcher(self):
+        entry = self.root/'.local/share/applications'/mode.DESKTOP_ID
+        entry.parent.mkdir(parents=True)
+        launcher = self.root/'.local/bin/abood-appinstall'
+        launcher.parent.mkdir(parents=True)
+        launcher.write_text('#!/bin/sh\n')
+        entry.write_text('[Desktop Entry]\nName=AppInstall\n'
+                         'Exec='+str(launcher)+' %F\nIcon=custom\n')
+        with patch.object(mode, 'native_installation', return_value=True):
+            self.assertFalse(mode.repair_user_desktop_entry(self.root))
+        self.assertIn('Exec='+str(launcher)+' %F', entry.read_text())
+
     def test_does_not_repair_unrelated_entry(self):
         entry = self.root/'.local/share/applications'/mode.DESKTOP_ID
         entry.parent.mkdir(parents=True)
