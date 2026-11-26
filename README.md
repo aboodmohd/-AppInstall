@@ -118,7 +118,7 @@ automatic host-native package manager changes are made by Discover.
 `My Applications` and the accepted View/Tools/Settings/Help layout remain
 unchanged.
 
-v1.7.0, v1.8.0, v1.9.0 and v1.9.1 are published stable releases. v1.9.2 is an unpublished reliability candidate. See
+v1.7.0, v1.8.0, v1.9.0, v1.9.1 and v1.9.2 are published stable releases. See
 [RELEASE_NOTES.md](RELEASE_NOTES.md) for the release history and the current
 supported scope.
 
@@ -137,13 +137,13 @@ unverified distribution.
 
 If your distro is not in the native list, AppInstall also has a
 **distribution-neutral, non-root source route**, not a falsely renamed
-DEB/RPM. Use the verified, published `appinstall-1.9.1-portable.tar.gz`
+DEB/RPM. Use the verified, published `appinstall-1.9.2-portable.tar.gz`
 archive for the current stable portable install:
 
 ```bash
 sha256sum --ignore-missing -c SHA256SUMS
-tar -xzf appinstall-1.9.1-portable.tar.gz
-cd appinstall-1.9.1
+tar -xzf appinstall-1.9.2-portable.tar.gz
+cd appinstall-1.9.2
 bash ./install-user.sh
 ~/.local/bin/abood-appinstall --manage
 ```

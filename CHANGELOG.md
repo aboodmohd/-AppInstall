@@ -1,6 +1,6 @@
 # AppInstall Changelog
 
-## 1.9.2 — Reliability maintenance (candidate)
+## 1.9.2 — Reliability & Stability (published 2026-11-26)
 
 - Repair local DEB repository handling, launcher lifecycle, AppImage staging and identity, and URL diagnostics. Harden APT source selection, uninstall record handling and URL log retention. See [the audit](docs/V1_9_2_RELIABILITY_AUDIT.md).
 

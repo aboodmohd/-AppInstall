@@ -218,3 +218,9 @@ collision already happened, leave the unrelated package alone and install
 The application data directories and container registry are not renamed.
 The pre-migration desktop updater cannot perform this identity change;
 use the verified package or bundle directly for the first migration.
+
+## v1.9.1 to v1.9.2 reliability upgrade
+
+No data migration is required. Install the verified native package or portable bundle over v1.9.1; application data, container registries, settings, launchers and MIME defaults remain in the same locations. The Premium UI and `abood-appinstall` command are unchanged.
+
+Existing Flatpak launchers adopted before v1.9.2 remain monitored wrappers; new adoptions preserve Flatpak's live export symlink. If you want an existing launcher converted, remove its local copy only after confirming a native export exists at `~/.local/share/flatpak/exports/share/applications/<appid>.desktop` (or the system equivalent), then re-run the Flatpak registration. Do not delete managed applications or containers.
