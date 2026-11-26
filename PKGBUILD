@@ -166,6 +166,7 @@ package() {
     install -Dm0644 "$srcdir/appimage_updates.py" "$pkgdir/usr/lib/$pkgname/appimage_updates.py"
     install -Dm0644 "$srcdir/confirm.py" "$pkgdir/usr/lib/$pkgname/confirm.py"
     install -Dm0644 "$srcdir/package_meta.py" "$pkgdir/usr/lib/$pkgname/package_meta.py"
+    install -Dm0644 "$srcdir/install_mode.py" "$pkgdir/usr/lib/$pkgname/install_mode.py"
     install -Dm0644 "$srcdir/qt_compat.py" "$pkgdir/usr/lib/$pkgname/qt_compat.py"
     install -Dm0644 "$srcdir/ui_style.py" "$pkgdir/usr/lib/$pkgname/ui_style.py"
     install -Dm0644 "$srcdir/settings.py" "$pkgdir/usr/lib/$pkgname/settings.py"

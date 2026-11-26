@@ -28,6 +28,10 @@ The portable security check was working; the updater was simply the wrong update
 - Stale AppInstall desktop entries whose `Exec` target is missing are repaired to the package-owned executable, preserving other fields. The repair runs from the native CLI, the one-command installer and native package install/upgrade scriptlets.
 - Regression tests reproduce the exact error scenario: native package present, stale user-data portable module present, and a helper resolution that must not select the portable updater.
 
+## Packaging verification
+
+Initial CI exposed that `install_mode.py` was added to `source=` but not installed into `/usr/lib/abood-appinstall`, causing `ModuleNotFoundError` in native packages. The packaging rule was corrected and a local `makepkg` build now includes the module and the install scriptlet.
+
 ## Verification status
 
 Pending live verification with the installed hotfix and existing CachyOS profile. This document will be updated with exact observed results before any merge or publication.
