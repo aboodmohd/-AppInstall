@@ -401,12 +401,33 @@ def deliver_error(spec,attempt):
 
 
 def flatpak_exec_argv(value, appid):
-    """Validate a native Flatpak Exec line and return its argv."""
+    """Validate a native Flatpak Exec line and return its exact argv."""
     from package_meta import APPID_PATTERN
     argv = shlex.split(decode_value(value))
-    if not argv or Path(argv[0]).name != 'flatpak' or 'run' not in argv:
+    if not argv or Path(argv[0]).name != 'flatpak':
+        raise ValueError('The Flatpak launcher does not use the flatpak binary.')
+    known = shutil.which('flatpak')
+    if not known:
+        raise ValueError('The flatpak binary is unavailable; launch it from the terminal instead.')
+    actual = argv[0] if Path(argv[0]).is_absolute() else (shutil.which(argv[0]) or argv[0])
+    if Path(actual).resolve() != Path(known).resolve():
+        raise ValueError('The Flatpak launcher uses an unexpected binary.')
+    if len(argv) < 2 or argv[1] != 'run':
         raise ValueError('The Flatpak launcher does not use flatpak run.')
-    if not APPID_PATTERN.fullmatch(appid) or appid not in argv:
+    if not APPID_PATTERN.fullmatch(appid):
+        raise ValueError('Invalid Flatpak application ID.')
+    index = 2
+    value_options = ('--branch', '--arch', '--command', '--installation')
+    while index < len(argv):
+        token = argv[index]
+        if token in value_options:
+            index += 2
+            continue
+        if token.startswith('-'):
+            index += 1
+            continue
+        break
+    if index >= len(argv) or argv[index] != appid:
         raise ValueError('The Flatpak launcher does not match its application ID.')
     return argv
 
@@ -430,7 +451,8 @@ def monitor(spec, files=(), action=None, notify=True, startup=STARTUP_SECONDS):
         if spec.get('native_flatpak'):
             section = 'Desktop Action '+action if action else 'Desktop Entry'
             value = desktop_values(Path(spec['desktop']).read_text(), section).get('Exec')
-            flatpak_exec_argv(value, spec.get('appid', ''))
+            native_argv = flatpak_exec_argv(value, spec.get('appid', ''))
+            value = ' '.join(desktop_quote(token, fields=True) for token in native_argv)
         else:
             value=spec.get('actions',{}).get(action) if action else spec['command']
         if value is None: raise ValueError('The requested desktop action does not exist.')
@@ -640,10 +662,18 @@ def native_flatpak_export(appid):
     if not APPID_PATTERN.fullmatch(appid):
         return None
     name = appid+'.desktop'
-    for root in (data_root().parent/'flatpak/exports/share/applications',
-                 Path('/var/lib/flatpak/exports/share/applications')):
-        entry = root/name
-        if entry.is_file() and not entry.is_symlink():
+    for root in (data_root().parent/'flatpak',
+                 Path('/var/lib/flatpak')):
+        entry = root/'exports/share/applications'/name
+        if not entry.is_file():
+            continue
+        try:
+            resolved = entry.resolve(strict=True)
+        except OSError:
+            continue
+        # Flatpak legitimately exports desktop files as symlinks into its app
+        # directory. Accept them only when they stay inside that installation.
+        if resolved.is_file() and resolved.is_relative_to(root.resolve()):
             return entry
     return None
 
@@ -700,15 +730,13 @@ def adopt_flatpak(appid):
     if not path.exists(): return
     key = 'flatpak:'+appid
     meta=desktop_values(path.read_text())
+    export = native_flatpak_export(appid)
     if meta.get('X-AppInstall-LaunchID'):
         spec = registry().get(key)
-        export = data_root().parent/'flatpak/exports/share/applications'/path.name
-        if (not spec or path.is_symlink() or not export.is_file() or
+        if (not spec or path.is_symlink() or export is None or
                 hashlib.sha256(path.read_bytes()).hexdigest() != spec.get('desktop_hash')):
             return
         meta = desktop_values(export.read_text())
-    else:
-        export = None
     flatpak_exec_argv(meta.get('Exec', ''), appid)
     if export is not None:
         temporary = path.with_name('.'+path.name+'.'+uuid.uuid4().hex+'.tmp')

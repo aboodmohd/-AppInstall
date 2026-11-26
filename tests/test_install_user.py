@@ -122,7 +122,7 @@ class SourceInstallerConflictTests(unittest.TestCase):
                                     stdin=subprocess.DEVNULL, capture_output=True,
                                     text=True, env=env, timeout=10)
             self.assertEqual(result.returncode, 2, result.stderr)
-            self.assertIn('Python 3.8 or newer', result.stderr)
+            self.assertIn('Python 3.9 or newer', result.stderr)
             self.assertNotIn('SOURCE_REGISTRATION_INVOKED', result.stdout)
 
     def test_no_existing_pacman_install_runs_source_registration(self):

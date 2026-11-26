@@ -19,19 +19,55 @@ class MonitorTests(unittest.TestCase):
         appid = 'org.example.Link'
         root = self.root/'data/flatpak/exports/share/applications'
         root.mkdir(parents=True)
-        target = root/'real.desktop'
-        target.write_text('[Desktop Entry]\nExec=flatpak run org.example.Link\n')
-        (root/f'{appid}.desktop').symlink_to(target)
+        outside = self.root/'outside.desktop'
+        outside.write_text('[Desktop Entry]\nExec=flatpak run org.example.Link\n')
+        (root/f'{appid}.desktop').symlink_to(outside)
         self.assertIsNone(m.native_flatpak_export(appid))
+
+    def test_native_flatpak_export_accepts_internal_symlink(self):
+        appid = 'org.example.Internal'
+        root = self.root/'data/flatpak'
+        target = root/'app/org.example.Internal/current/active/export/share/applications'/f'{appid}.desktop'
+        target.parent.mkdir(parents=True)
+        target.write_text(f'[Desktop Entry]\nExec=flatpak run {appid}\n')
+        (root/'exports/share/applications').mkdir(parents=True, exist_ok=True)
+        (root/'exports/share/applications'/f'{appid}.desktop').symlink_to(target)
+        self.assertEqual(m.native_flatpak_export(appid).name, f'{appid}.desktop')
+
+    def test_adopt_flatpak_rejects_external_export_symlink(self):
+        appid = 'org.example.External'
+        root = self.root/'data'
+        apps = root/'applications'; apps.mkdir(parents=True)
+        outside = self.root/'outside.desktop'
+        outside.write_text(f'[Desktop Entry]\nName=Outside\nExec=/usr/bin/flatpak run {appid}\n')
+        exports = root/'flatpak/exports/share/applications'; exports.mkdir(parents=True)
+        (exports/f'{appid}.desktop').symlink_to(outside)
+        launcher = apps/f'{appid}.desktop'
+        launcher.write_text(f'[Desktop Entry]\nName=Owned\nX-AppInstall-LaunchID=flatpak:{appid}\nExec=/usr/bin/flatpak run {appid}\n')
+        m.update_registry(f'flatpak:{appid}', {'key':f'flatpak:{appid}', 'name':'Owned',
+                                                'desktop':str(launcher), 'format':'flatpak',
+                                                'appid':appid, 'native_flatpak':False,
+                                                'desktop_hash':__import__('hashlib').sha256(launcher.read_bytes()).hexdigest()})
+        m.adopt_flatpak(appid)
+        self.assertFalse(launcher.is_symlink())
+        self.assertTrue(launcher.read_text().startswith('[Desktop Entry]\nName=Owned'))
 
     def test_flatpak_exec_validation_rejects_unrelated_command(self):
         appid = 'org.example.Check'
         valid = f'/usr/bin/flatpak run {appid}'
         self.assertEqual(m.flatpak_exec_argv(valid, appid)[0], '/usr/bin/flatpak')
+        with patch.object(m.shutil, 'which', return_value='/usr/bin/flatpak'):
+            with self.assertRaises(ValueError):
+                m.flatpak_exec_argv('/tmp/evil/flatpak run '+appid, appid)
+        with patch.object(m.shutil, 'which', return_value=None):
+            with self.assertRaises(ValueError):
+                m.flatpak_exec_argv('/usr/bin/flatpak run '+appid, appid)
         with self.assertRaises(ValueError):
             m.flatpak_exec_argv('/bin/sh -c evil', appid)
         with self.assertRaises(ValueError):
             m.flatpak_exec_argv('/usr/bin/flatpak run org.example.Other', appid)
+        with self.assertRaises(ValueError):
+            m.flatpak_exec_argv('/usr/bin/flatpak /bin/sh '+appid, appid)
 
     def test_legacy_flatpak_wrapper_migrates_to_native_export(self):
         appid = 'org.example.Legacy'

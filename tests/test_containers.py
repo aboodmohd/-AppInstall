@@ -67,10 +67,22 @@ class ContainerTests(unittest.TestCase):
     def test_services_rejected(self):
         with self.assertRaisesRegex(ValueError,'System packages'):
             self.inspect(deb(files={'./usr/lib/systemd/system/example.service':b'service'}))
+    def test_engine_load_skips_malformed_records(self):
+        with patch.object(c.os,'geteuid',return_value=1000):
+            engine=c.Engine(); engine.close()
+        engine.file.write_text(json.dumps({'deb:bad':'not a mapping'}))
+        with patch.object(c.os,'geteuid',return_value=1000):
+            recovered=c.Engine(); recovered.close()
+        self.assertEqual(recovered.registry['deb:bad'],'not a mapping')
+
     def test_apt_sources_reject_signature_bypass(self):
         for source in (
             'deb [trusted=yes] http://deb.debian.org/debian trixie main\n',
             'deb [signed-by=/etc/apt/keyrings/vendor.gpg Trusted=Yes] https://vendor.example/repo stable main\n',
+            'deb [trusted=1] http://deb.debian.org/debian trixie main\n',
+            'Types: deb\nURIs: http://deb.debian.org/debian\nTrusted: on\n',
+            'Types: deb\nURIs: http://deb.debian.org/debian\nCheck-Date: 0\n',
+            'Types: deb\nURIs: http://deb.debian.org/debian\nCheck-Valid-Until: off\n',
             'Types: deb\nURIs: http://deb.debian.org/debian\nAllow-Insecure: true\n',
         ):
             with self.subTest(source=source), self.assertRaises(RuntimeError):
@@ -78,6 +90,7 @@ class ContainerTests(unittest.TestCase):
 
     def test_commented_repository_not_enabled(self):
         c.validate_apt_sources('# http://snapshot.debian.org/archive/example\nURIs: http://deb.debian.org/debian')
+        c.validate_apt_sources('Types: deb\nURIs: https://deb.debian.org\nSuites: stable\nComponents: main\n')
         with self.assertRaises(RuntimeError):
             c.validate_apt_sources('URIs: https://untrusted.example/repo')
 

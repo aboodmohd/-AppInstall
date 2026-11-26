@@ -95,7 +95,7 @@ not live desktop acceptance.
 
 ## System requirements
 
-- Python 3.8 or newer
+- Python 3.9 or newer
 - bash, coreutils, xdg-utils
 - PySide6 or PyQt6 (graphical interface)
 - kdialog (KDE) or zenity (GNOME/Xfce) (fallback dialogs)

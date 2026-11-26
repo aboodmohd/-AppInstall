@@ -25,9 +25,9 @@ SPECS = {'deb': ('debian-apps', 'docker.io/library/debian:13'),
          'rpm': ('fedora-apps', 'registry.fedoraproject.org/fedora:44')}
 ENV = dict(os.environ, DBX_CONTAINER_MANAGER='podman', LC_ALL='C')
 INSECURE_APT = re.compile(
-    r'(?i)\b(?:trusted\s*[:=]\s*(?:yes|true)|allow[-_]?insecure|allow[-_]?weak|'
-    r'allow[-_]?downgrade[-_]?to[-_]?insecure|check[-_]?date\s*[:=]\s*(?:no|false)|'
-    r'check[-_]?valid[-_]?until\s*[:=]\s*(?:no|false))\b')
+    r'(?i)\b(?:trusted\s*[:=]\s*(?:yes|true|1|on|y|t)|allow[-_]?insecure|allow[-_]?weak|'
+    r'allow[-_]?downgrade[-_]?to[-_]?insecure|check[-_]?date\s*[:=]\s*(?:no|false|0|off|n|f)|'
+    r'check[-_]?valid[-_]?until\s*[:=]\s*(?:no|false|0|off|n|f))\b')
 PROGRESS = contextvars.ContextVar('appinstall_progress',default=None)
 
 
@@ -204,7 +204,8 @@ def validate_apt_sources(sources):
                     urls.append(fields[1])
     if any(urlparse(url).scheme not in ('http','https') or
            urlparse(url).hostname not in ('deb.debian.org','security.debian.org') or
-           not urlparse(url).path.startswith(('/debian','/debian-security'))
+           urlparse(url).path not in ('', '/', '/debian', '/debian-security')
+           and not urlparse(url).path.startswith('/debian/')
            for url in urls):
         raise RuntimeError('Container contains an unknown APT repository; review it manually before continuing.')
 
@@ -219,6 +220,8 @@ class Engine:
         fcntl.flock(self.lock,fcntl.LOCK_EX | fcntl.LOCK_NB)
         self.registry = json.loads(self.file.read_text()) if self.file.exists() else {}
         for record in self.registry.values():
+            if not isinstance(record, dict):
+                continue
             if record.get('status') in ('installing','removing','updating'):
                 record['status']='needs-repair'
         self.save()

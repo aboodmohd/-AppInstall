@@ -3,7 +3,8 @@
 ## 1.9.3 — Compatibility and migration (candidate)
 
 - Migrate legacy monitored Flatpak launchers to live native exports without overwriting user edits.
-- Expand disposable compatibility and security testing. Details will be recorded in `docs/V1_9_3_COMPATIBILITY_AUDIT.md`.
+- Expand disposable compatibility and security testing.
+- Accept legitimate Flatpak export symlinks only when they resolve inside the Flatpak installation root; refuse external redirection. See `docs/V1_9_3_COMPATIBILITY_AUDIT.md`.
 
 ## 1.9.2 — Reliability & Stability (published 2026-11-26)
 

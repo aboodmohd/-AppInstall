@@ -6,6 +6,8 @@ This candidate focuses on remaining reliability, migration and compatibility wor
 
 Candidate artifact prefix: `appinstall-1.9.3-portable.tar.gz`; native packages use `abood-appinstall` with version `1.9.3-1`.
 
+Live acceptance corrected Flatpak export handling: legitimate Flatpak export symlinks are followed only within the Flatpak installation root, while external symlink redirection and user-edited launchers are refused unchanged.
+
 ## Previous release notes
 
 # AppInstall v1.9.2 — Reliability & Stability (published 2026-11-26)
