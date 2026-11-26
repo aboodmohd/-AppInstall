@@ -80,7 +80,7 @@ class InstallerTests(unittest.TestCase):
         self.assertIn('X-KDE-Priority=TopLevel', text)
         self.assertIn('X-KDE-RequiredNumberOfUrls=1', text)
         self.assertIn('X-AppInstall-Managed=true', text)
-        self.assertIn('Exec="'+str(self.home / '.local/bin/abood-appinstall')+'" %f', text)
+        self.assertIn(f'Exec={self.home / ".local/bin/abood-appinstall"} %f', text)
         self.assertNotIn('Exec=./', text)
         subprocess.run([str(self.home / '.local/bin/abood-appinstall-uninstall')],
                        env=self.env, check=True, capture_output=True)
