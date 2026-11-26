@@ -108,6 +108,35 @@ class CandidateTests(unittest.TestCase):
                                             cancelled=cancel), [])
         self.assertEqual(run.calls, [])
 
+    def test_one_failing_backend_does_not_block_other_backends(self):
+        good = app()
+        ident = 'org.example.App'
+        ref = 'app/org.example.App/x86_64/stable'
+        responses = {
+            ('flatpak', 'info', '--user', '--show-ref', ident): ref,
+            ('flatpak', 'info', '--user', '--show-origin', ref): 'flathub',
+            ('flatpak', 'info', '--user', '--show-commit', ref):
+                subprocess.TimeoutExpired('flatpak', 30),
+            ('flatpak', 'info', '--user', '--show-ref', 'org.example.Other'):
+                'app/org.example.Other/x86_64/stable',
+            ('flatpak', 'info', '--user', '--show-origin',
+             'app/org.example.Other/x86_64/stable'): 'flathub',
+            ('flatpak', 'info', '--user', '--show-commit',
+             'app/org.example.Other/x86_64/stable'): 'b' * 64,
+            ('flatpak', 'remote-info', '--user', '--show-commit', 'flathub',
+             'app/org.example.Other/x86_64/stable'): 'b' * 64,
+        }
+        runner = FakeRunner(responses)
+        engine = updates.UpdateEngine(runner=runner)
+        results = engine.check_many([good, app(name='org.example.Other')])
+        self.assertEqual(len(results), 2)
+        self.assertEqual(results[0].key, good['key'])
+        self.assertEqual(results[0].state, updates.ERROR)
+        self.assertIn('flatpak', results[0].reason.lower())
+        self.assertIn('timed out', results[0].reason.lower())
+        self.assertEqual(results[1].key, 'flatpak:org.example.Other')
+        self.assertEqual(results[1].state, updates.UP_TO_DATE)
+
     def test_bounded_subprocess_timeout_and_no_shell(self):
         run = FakeRunner({("flatpak", "info", "--user", "--show-ref",
                             "org.example.App"): subprocess.TimeoutExpired("flatpak", 10)})

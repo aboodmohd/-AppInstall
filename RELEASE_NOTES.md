@@ -1,3 +1,13 @@
+# AppInstall v1.9.4 — Update check reliability (candidate)
+
+Unpublished development candidate. The latest published stable release is v1.9.3.
+
+Fixes the live CachyOS issue where the Premium UI reported "Could not check for updates" without an actionable explanation. Self-update failures are now categorized and explained; update checks have a timeout; application update backends are isolated so one failure cannot suppress partial results.
+
+Candidate artifact prefix: `appinstall-1.9.4-portable.tar.gz`; native packages use `abood-appinstall` version `1.9.4-1`.
+
+## Previous release notes
+
 # AppInstall v1.9.3 — Compatibility and migration (candidate)
 
 Unpublished development candidate. The latest published stable release is v1.9.2.

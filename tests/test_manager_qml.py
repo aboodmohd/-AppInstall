@@ -1189,12 +1189,35 @@ class BridgeUpdateTests(QmlManagerBase):
         detailed = box.return_value.setDetailedText.call_args[0][0]
         self.assertIn('releases/tag/v1.4.1', detailed)
 
+    def test_self_update_network_failure_is_actionable(self):
+        self.process.readAll.return_value = QtCore.QByteArray(
+            b'==> Resolving the latest stable release...\n'
+            b'APPINSTALL_UPDATE_ERROR=network: Could not reach GitHub.\n'
+            b'curl: (7) proxy refused\n')
+        self.bridge.checkUpdates(True)
+        with patch.object(QtWidgets, 'QMessageBox') as box:
+            self.bridge._update_finished(4, QtCore.QProcess.ExitStatus.NormalExit)
+        self.assertEqual(self.bridge._update_status, 'Update check failed: network')
+        detailed = box.return_value.setDetailedText.call_args[0][0]
+        self.assertIn('Check your internet connection', detailed)
+        self.assertIn('internet', detailed.lower())
+        self.assertIn('curl: (7)', detailed)
+
+    def test_self_update_timeout_terminates_helper(self):
+        self.bridge.checkUpdates(True)
+        self.process.kill = Mock()
+        with patch.object(self.bridge, '_show_update_details'):
+            self.bridge._update_timed_out()
+        self.assertEqual(self.bridge._update_status, 'Update check failed: timeout')
+        self.process.kill.assert_called_once_with()
+        self.assertEqual(self.bridge._update_operation, '')
+
     def test_manual_check_failure_shows_details(self):
         self.process.readAll.return_value = QtCore.QByteArray(b'boom\n')
         self.bridge.checkUpdates(True)
         with patch.object(QtWidgets, 'QMessageBox') as box:
             self.bridge._update_finished(1, QtCore.QProcess.ExitStatus.CrashExit)
-        self.assertEqual(self.bridge._update_status, 'Could not check for updates')
+        self.assertEqual(self.bridge._update_status, 'Update check failed: backend')
         self.assertIn('boom', box.return_value.setDetailedText.call_args[0][0])
 
 

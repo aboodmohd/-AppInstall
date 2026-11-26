@@ -59,8 +59,61 @@ class UpdateCandidate:
         return asdict(self)
 
 
+def classify_update_failure(output):
+    """Return (category, title, action) for a failed AppInstall update check."""
+    text = output or ""
+    marker = re.search(r'^APPINSTALL_UPDATE_ERROR=([a-z-]+):\s*(.+)$', text, re.M)
+    if marker:
+        category, detail = marker[1], marker[2]
+    elif re.search(r'rate limit|HTTP 403', text, re.I):
+        category, detail = 'api-limit', 'GitHub rate limit reached.'
+    elif re.search(r'timed out|timeout', text, re.I):
+        category, detail = 'timeout', 'The update service did not respond in time.'
+    elif re.search(r'could not resolve|failed to connect|proxy|network|unreachable', text, re.I):
+        category, detail = 'network', 'The update service could not be reached.'
+    elif re.search(r'not found|not installed|unavailable|missing command', text, re.I):
+        category, detail = 'dependency', 'A required update dependency is missing.'
+    else:
+        category, detail = 'backend', 'The update backend reported a failure.'
+    titles = {
+        'network': 'Network problem', 'timeout': 'Update check timed out',
+        'http': 'GitHub API error', 'api-limit': 'GitHub rate limit reached',
+        'tls': 'Certificate problem', 'dependency': 'Missing update dependency',
+        'unsupported': 'Unsupported installation', 'backend': 'Update check failed',
+    }
+    actions = {
+        'network': 'Check your internet connection, DNS, firewall and proxy settings, then try again.',
+        'timeout': 'Wait a moment and try again. If it repeats, check your network or GitHub status.',
+        'http': 'Check GitHub API rate limits and try again later.',
+        'api-limit': 'Wait for the GitHub rate limit to reset, then try again.',
+        'tls': 'Check your system time and CA certificates, then try again.',
+        'dependency': 'Install the missing update dependency from your distribution, then try again.',
+        'unsupported': 'Use a verified installation path for automatic updates.',
+        'backend': 'Review the diagnostic details below and try again.',
+    }
+    return category, titles.get(category, 'Update check failed'), \
+        actions.get(category, actions['backend']) + '\n\n' + detail
+
+
 def _clean(value):
     return str(value).strip()[:240] if value is not None else ""
+
+
+def backend_error_reason(fmt, exc):
+    """Turn a provider exception into a short, actionable backend message."""
+    names = {
+        "flatpak": "Flatpak", "deb": "APT/DEB",
+        "rpm": "DNF/RPM", "appimage": "AppImage",
+    }
+    name = names.get(fmt, fmt)
+    if isinstance(exc, subprocess.TimeoutExpired):
+        return (name + " update check timed out. Check the backend and try again.")
+    if isinstance(exc, FileNotFoundError):
+        return (name + " update backend is not installed (" +
+                str(getattr(exc, "filename", "missing command")) + ").")
+    if isinstance(exc, subprocess.SubprocessError):
+        return (name + " update backend failed: " + _clean(exc)[:180])
+    return (name + " update check failed: " + _clean(exc)[:180])
 
 
 def _package_identity(app, kind):
@@ -368,8 +421,9 @@ class UpdateEngine:
                 }[fmt](app, cancelled)
             except UpdateCancelled:
                 raise
-            except (OSError, ValueError, RuntimeError, TypeError) as exc:
-                result = self._candidate(app, ERROR, reason=str(exc)[:360])
+            except Exception as exc:  # noqa: BLE001 - isolate every provider
+                result = self._candidate(app, ERROR,
+                                         reason=backend_error_reason(fmt, exc)[:360])
         if result.state != ERROR:
             with self._lock:
                 if len(self._cache) >= MAX_APPS:
@@ -388,4 +442,8 @@ class UpdateEngine:
                 results.append(self.check_one(app, cancelled=cancelled, force=force))
             except UpdateCancelled:
                 break
+            except Exception as exc:  # noqa: BLE001 - one app must not stop the scan
+                results.append(self._candidate(
+                    app, ERROR, reason=backend_error_reason(
+                        app.get("format", "unknown"), exc)[:360]))
         return results
