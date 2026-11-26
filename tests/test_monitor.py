@@ -55,19 +55,21 @@ class MonitorTests(unittest.TestCase):
     def test_flatpak_exec_validation_rejects_unrelated_command(self):
         appid = 'org.example.Check'
         valid = f'/usr/bin/flatpak run {appid}'
-        self.assertEqual(m.flatpak_exec_argv(valid, appid)[0], '/usr/bin/flatpak')
+        with self.fake_flatpak():
+            self.assertEqual(m.flatpak_exec_argv(valid, appid)[0], '/usr/bin/flatpak')
         with patch.object(m.shutil, 'which', return_value='/usr/bin/flatpak'):
             with self.assertRaises(ValueError):
                 m.flatpak_exec_argv('/tmp/evil/flatpak run '+appid, appid)
         with patch.object(m.shutil, 'which', return_value=None):
             with self.assertRaises(ValueError):
                 m.flatpak_exec_argv('/usr/bin/flatpak run '+appid, appid)
-        with self.assertRaises(ValueError):
-            m.flatpak_exec_argv('/bin/sh -c evil', appid)
-        with self.assertRaises(ValueError):
-            m.flatpak_exec_argv('/usr/bin/flatpak run org.example.Other', appid)
-        with self.assertRaises(ValueError):
-            m.flatpak_exec_argv('/usr/bin/flatpak /bin/sh '+appid, appid)
+        with self.fake_flatpak():
+            with self.assertRaises(ValueError):
+                m.flatpak_exec_argv('/bin/sh -c evil', appid)
+            with self.assertRaises(ValueError):
+                m.flatpak_exec_argv('/usr/bin/flatpak run org.example.Other', appid)
+            with self.assertRaises(ValueError):
+                m.flatpak_exec_argv('/usr/bin/flatpak /bin/sh '+appid, appid)
 
     def test_legacy_flatpak_wrapper_migrates_to_native_export(self):
         appid = 'org.example.Legacy'
@@ -81,7 +83,8 @@ class MonitorTests(unittest.TestCase):
                        command_override=f'/usr/bin/flatpak run {appid}')
         key = f'flatpak:{appid}'
         self.assertFalse(m.registry()[key].get('native_flatpak'))
-        result = m.migrate_flatpak_launchers()
+        with self.fake_flatpak():
+            result = m.migrate_flatpak_launchers()
         self.assertEqual(result['migrated'], ['Legacy'])
         self.assertTrue(path.is_symlink())
         self.assertEqual(path.resolve(), export.resolve())
@@ -102,7 +105,8 @@ class MonitorTests(unittest.TestCase):
         m.wrap_desktop(f'flatpak:{appid}', path, 'flatpak', appid=appid,
                        command_override=f'/usr/bin/flatpak run {appid}')
         path.write_text(path.read_text()+'Comment=User edit\n')
-        result = m.migrate_flatpak_launchers()
+        with self.fake_flatpak():
+            result = m.migrate_flatpak_launchers()
         self.assertEqual(result['migrated'], [])
         self.assertFalse(path.is_symlink())
         self.assertIn('User edit', path.read_text())
@@ -116,7 +120,8 @@ class MonitorTests(unittest.TestCase):
         path = apps/export.name
         export.write_text(f'[Desktop Entry]\nName=Example\nExec=flatpak run {appid}\n')
         path.symlink_to(export)
-        m.adopt_flatpak(appid)
+        with self.fake_flatpak():
+            m.adopt_flatpak(appid)
         new = export.with_suffix('.new')
         new.write_text(f'[Desktop Entry]\nName=Updated\nExec=flatpak run {appid}\n')
         new.replace(export)
@@ -173,6 +178,9 @@ class MonitorTests(unittest.TestCase):
         self.environment=patch.dict(os.environ,{'XDG_DATA_HOME':str(self.root/'data'),'XDG_STATE_HOME':str(self.root/'state')})
         self.environment.start()
     def tearDown(self):self.environment.stop();self.temp.cleanup()
+    def fake_flatpak(self):
+        """Flatpak is absent in CI; make Exec validation hermetic."""
+        return patch.object(m.shutil, 'which', return_value='/usr/bin/flatpak')
     def spec(self,script="pass",key='test:example'):
         path=self.root/'example.desktop'
         path.write_text('[Desktop Entry]\nType=Application\nName=Example\nIcon=example\nCategories=Development;\nExec='+m.desktop_quote(sys.executable)+' -c '+m.desktop_quote(script)+' %U\n')
