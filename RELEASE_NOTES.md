@@ -8,6 +8,7 @@ Unpublished. See [the reliability audit](docs/V1_9_2_RELIABILITY_AUDIT.md) for f
 - Install AppImages using a single staged copy and independent identities; same-name images coexist.
 - Improve URL download and backend errors with redacted diagnostic output.
 - Retain the AppInstall product name, `abood-appinstall` identity, and the existing Premium UI.
+- Final acceptance covered real browser DEBs, 512 MiB/1 GiB/2 GiB AppImages, native and portable uninstall, v1.9.1 migration, and URL failure diagnostics.
 
 ## Candidate artifacts
 

@@ -388,7 +388,7 @@ Host desktop export conflict recovery restores overwritten launcher content.
 
 Real integration testing on CachyOS KDE now passes for Debian Galculator and
 Fedora Character Map: Dolphin double-click, confirmation, dependency resolution,
-export, visible GUI launch, reinstall without duplicate launchers, and uninstall.
+export, visible GUI launch, reinstall as a new independent record, and uninstall.
 The published beta release was qualified with 121 passing automated tests and 10 live acceptance tests on CachyOS KDE. Existing Seanime AppImage and Stremio
 Flatpak windows were also visually verified. See [INTEGRATION_TESTING.md](INTEGRATION_TESTING.md)
 for exact evidence, tested scope, storage and limitations.

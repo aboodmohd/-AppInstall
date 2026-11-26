@@ -526,7 +526,7 @@ def uninstall_app(app, cleanup=()):
 
 
 def reinstall_app(app):
-    """Reinstall from the staged/original package file. No duplicates created."""
+    """Reinstall from the staged/original package file as a new independent record."""
     if app['format'] == 'appimage':
         target = app.get('target')
         if not target or not Path(target).is_file():

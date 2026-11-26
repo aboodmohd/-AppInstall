@@ -107,6 +107,10 @@ def installation_failure(result):
         log.add(re.sub(r"""https?://[^\s<>"']+""", '<redacted URL>', output,
                        flags=re.IGNORECASE))
         log.flush()
+        logs = sorted(directory.glob('failure-*.log'),
+                      key=lambda item: item.stat().st_mtime_ns)
+        for stale in logs[:-5]:
+            stale.unlink(missing_ok=True)
         return message + f' See {path} for details.'
     except OSError:
         return message + ' The diagnostic log could not be written.'
@@ -422,7 +426,7 @@ def download_url(url, expected_checksum=None, max_size=MAX_DOWNLOAD_SIZE,
             raise DownloadError("TLS certificate verification failed for " +
                                 parsed.hostname + ". Check the certificate or network.") from error
         raise DownloadError("Could not connect to " + parsed.hostname + ". Check your connection and retry.") from error
-    except (OSError, HTTPException) as error:
+    except Exception as error:  # noqa: BLE001 - network failures are fatal here
         raise DownloadError("Could not connect to " + parsed.hostname + ". Check your connection and retry.") from error
 
     # Everything after the connection is cleanup-protected: any failure (web
@@ -453,7 +457,7 @@ def download_url(url, expected_checksum=None, max_size=MAX_DOWNLOAD_SIZE,
                     raise DownloadCancelled()
                 try:
                     chunk = response.read(CHUNK)
-                except (HTTPException, OSError) as error:
+                except Exception as error:  # noqa: BLE001 - read failures are fatal
                     raise DownloadError(f"Download interrupted while reading from {parsed.hostname}. Retry the download.") from error
                 if not chunk:
                     break
@@ -473,7 +477,7 @@ def download_url(url, expected_checksum=None, max_size=MAX_DOWNLOAD_SIZE,
                         "percent": percent,
                         "bytes_per_second": downloaded / elapsed,
                     })
-        if total_size is not None and downloaded != total_size:
+        if total_size is not None and downloaded < total_size:
             raise DownloadError(f"Incomplete download: received {downloaded} of {total_size} bytes. Retry the download.")
         digest = sha.hexdigest()
 

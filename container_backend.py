@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+from urllib.parse import urlparse
 sys.path.insert(0,str(Path(__file__).resolve().parent))
 
 from package_meta import require_backend_tools
@@ -249,18 +250,102 @@ class Engine:
     def key(self, info):
         return info['kind']+':'+info['name']
 
+    def write_container_file(self, info, path, content):
+        """Write a private file inside the Distrobox container via tee."""
+        result = subprocess.run(
+            ['distrobox', 'enter', '--name', info['container'], '--no-tty',
+             '--', 'tee', path],
+            input=content.encode(), env=ENV, stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT, timeout=60)
+        if result.returncode:
+            raise RuntimeError('Could not stage APT sources in container: ' +
+                               result.stdout.decode(errors='replace')[-1200:])
+
     def apt_sources(self, info):
-        for path in ('/etc/apt/sources.list.d/debian.sources', '/etc/apt/sources.list'):
+        """Build a private APT source tree inside the container.
+
+        Only authenticated sources are copied. Vendor packages may add their
+        own signed repositories; those remain usable for dependency resolution,
+        while unsigned or malformed fragments cannot break local transactions.
+        Host APT configuration is never disabled.
+        """
+        trusted = '/tmp/appinstall-apt-sources'
+        self.enter(info, ['mkdir', '-p', trusted])
+        self.enter(info, ['find', trusted, '-maxdepth', '1', '-type', 'f', '-delete'])
+        candidates = [Path('/etc/apt/sources.list'),
+                      Path('/etc/apt/sources.list.d/debian.sources'),
+                      Path('/etc/apt/sources.list.d/ubuntu.sources')]
+        candidates += sorted(Path('/etc/apt/sources.list.d').glob('*.list'))
+        candidates += sorted(Path('/etc/apt/sources.list.d').glob('*.sources'))
+        candidates = list(dict.fromkeys(candidates))
+        written = 0
+        for path in candidates:
             try:
-                source = self.enter(info, ['cat', path]).decode()
+                text = self.enter(info, ['cat', str(path)]).decode()
             except RuntimeError:
                 continue
-            if source.strip():
-                validate_apt_sources(source)
-                return ['-o', 'Dir::Etc::sourceparts=-',
-                        '-o', 'Dir::Etc::sourcelist='+path,
-                        '-o', 'DPkg::Lock::Timeout=30']
-        raise RuntimeError('No Debian APT source file found in the container. Restore its Debian repositories before installing.')
+            safe = self.safe_apt_source(info, text)
+            if not safe:
+                continue
+            name = path.name if written == 0 else f'{path.stem}-{written}{path.suffix}'
+            self.write_container_file(info, trusted+'/'+name, safe)
+            written += 1
+        if not written:
+            raise RuntimeError('No authenticated APT source found in the container. Restore its package repositories before installing.')
+        return ['-o', 'Dir::Etc::sourceparts='+str(trusted),
+                '-o', 'Dir::Etc::sourcelist=-',
+                '-o', 'DPkg::Lock::Timeout=30']
+
+    def safe_apt_source(self, info, text):
+        """Return source stanzas that are signed or from official Debian mirrors."""
+        def official_debian(uri):
+            parsed = urlparse(uri)
+            allowed_paths = ('/debian', '/debian-security')
+            return (parsed.hostname in ('deb.debian.org', 'security.debian.org')
+                    and parsed.scheme in ('http', 'https')
+                    and (parsed.path in allowed_paths
+                         or parsed.path.startswith('/debian/')))
+
+        def trusted_uri(uri):
+            return urlparse(uri).scheme == 'https' or official_debian(uri)
+
+        def has_keyring(value):
+            value = '\n'.join(line for line in value.splitlines()
+                              if not line.lstrip().startswith('#'))
+            match = re.search(r'(?:Signed-By|signed-by)\s*[:=]\s*([^\s,\]]+)', value)
+            if not match:
+                return False
+            path = match.group(1).strip().strip('"\'')
+            if not path.startswith('/') or not re.search(r'(keyring|\.(gpg|asc)$)', path):
+                return False
+            try:
+                self.enter(info, ['test', '-r', path])
+                return True
+            except RuntimeError:
+                return False
+
+        def trust(block):
+            if not any(line.strip() and not line.lstrip().startswith('#')
+                       for line in block):
+                return False
+            uris = re.findall(r'(?im)^\s*URIs?:\s*(\S+)', block)
+            if not uris:
+                one_line = re.search(r'(?m)^\s*deb(?:\s|\[)', block)
+                if one_line:
+                    uris = re.findall(r'https?://\S+', block)
+            if not uris or not all(trusted_uri(uri) for uri in uris):
+                return False
+            return has_keyring(block) or all(official_debian(uri) for uri in uris)
+
+        if '\n\n' in text or re.search(r'(?m)^\s*(Types|URIs|Suites|Components):', text):
+            blocks = re.split(r'\n\s*\n', text)
+            kept = '\n\n'.join(block for block in blocks if trust(block)).strip()
+            return kept+'\n' if kept else ''
+        kept = [line for line in text.splitlines()
+                if line.lstrip().startswith('#') or trust(line)]
+        if not any(line.strip() and not line.lstrip().startswith('#') for line in kept):
+            return ''
+        return '\n'.join(kept)+'\n'
 
     def apt(self, info, options, *args):
         try:

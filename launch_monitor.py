@@ -573,7 +573,9 @@ def restore_launchers(preserve_records=False):
         containers=json.loads(container_file.read_text()) if container_file.exists() else {}
         changed_container_exports = False
         for key,spec in registry().items():
-            path=Path(spec['desktop'])
+            if not isinstance(spec, dict):
+                continue
+            path=Path(spec.get('desktop',''))
             if preserve_records and not path.exists():
                 path = relocated_desktop_launcher(spec) or path
             if spec.get('native_flatpak') or not path.is_file() or path.is_symlink():
@@ -603,8 +605,10 @@ def restore_launchers(preserve_records=False):
             temp=path.with_name('.'+path.name+'.'+uuid.uuid4().hex+'.tmp')
             temp.write_text(text);temp.replace(path)
             for record in containers.values():
+                if not isinstance(record, dict):
+                    continue
                 for entry in record.get('exports',[]):
-                    if entry['path']==str(path):
+                    if not isinstance(entry, dict) or entry.get('path')!=str(path):
                         entry['sha256']=hashlib.sha256(path.read_bytes()).hexdigest()
                         changed_container_exports = True
             if not preserve_records:

@@ -2,7 +2,7 @@
 
 ## 1.9.2 — Reliability maintenance (candidate)
 
-- Repair local DEB repository handling, launcher lifecycle, AppImage staging and identity, and URL diagnostics. See [the audit](docs/V1_9_2_RELIABILITY_AUDIT.md).
+- Repair local DEB repository handling, launcher lifecycle, AppImage staging and identity, and URL diagnostics. Harden APT source selection, uninstall record handling and URL log retention. See [the audit](docs/V1_9_2_RELIABILITY_AUDIT.md).
 
 ## 1.9.1 — Package identity maintenance
 

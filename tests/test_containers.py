@@ -72,16 +72,31 @@ class ContainerTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             c.validate_apt_sources('URIs: https://untrusted.example/repo')
 
-    def test_apt_transaction_ignores_vendor_source_fragments(self):
+    def test_apt_transaction_uses_scoped_source_tree(self):
         engine = self.engine()
         info = self.inspect(deb())
-        with patch.object(engine, 'ensure'), patch.object(engine, 'enter') as enter:
-            enter.side_effect = [b'URIs: https://deb.debian.org/debian\n', b'', b'preview']
+        options = ['-o', 'Dir::Etc::sourceparts=/tmp/trusted',
+                   '-o', 'Dir::Etc::sourcelist=-',
+                   '-o', 'DPkg::Lock::Timeout=30']
+        with patch.object(engine, 'ensure'), \
+             patch.object(engine, 'apt_sources', return_value=options), \
+             patch.object(engine, 'apt', side_effect=[b'', b'preview']) as apt:
             self.assertEqual(engine.transaction(info), 'preview')
-            for call in enter.call_args_list[1:]:
-                args = call.args[1]
-                self.assertIn('Dir::Etc::sourceparts=-', args)
-                self.assertIn('DPkg::Lock::Timeout=30', args)
+            self.assertEqual(apt.call_args_list[1].args[1], options)
+
+    def test_signed_vendor_source_kept_unsigned_fragment_dropped(self):
+        engine = self.engine()
+        info = self.inspect(deb())
+        signed = ('Types: deb\nURIs: https://vendor.example/repo\nSuites: stable\n'
+                  'Components: main\nSigned-By: /usr/share/keyrings/vendor.gpg\n')
+        unsigned = 'Types: deb\nURIs: http://unknown.example/repo\nSuites: stable\nComponents: main\n'
+        with patch.object(engine, 'enter', return_value=b''):
+            self.assertIn('vendor.example', engine.safe_apt_source(info, signed))
+            self.assertEqual(engine.safe_apt_source(info, unsigned), '')
+            prefix = 'URIs: http://deb.debian.org/debian.attacker.example\nSuites: stable\nComponents: main\n'
+            self.assertEqual(engine.safe_apt_source(info, prefix), '')
+            commented = '# Signed-By: /usr/share/keyrings/vendor.gpg\nURIs: https://vendor.example/repo\n'
+            self.assertEqual(engine.safe_apt_source(info, commented), '')
     def test_theme_icon_metadata(self):
         info=self.inspect(deb(files={'./usr/share/applications/example.desktop':b'[Desktop Entry]\nName=Example\nIcon=accessories-character-map\n'}))
         self.assertEqual(info['icon_name'],'accessories-character-map')
@@ -120,10 +135,12 @@ class ContainerTests(unittest.TestCase):
         engine=self.engine(); info=self.inspect(deb())
         def enter(info,args):
             if args[0]=='cat' and args[1].endswith('debian.sources'):
-                return b'URIs: https://deb.debian.org/debian\n'
+                return b'URIs: http://deb.debian.org/debian\n'
             if args[0]=='dpkg-query': return b'/usr/share/applications/example.desktop\n'
             return b''
-        with patch.object(engine,'enter',side_effect=enter),patch.object(engine,'export',return_value=[{'path':'example.desktop','sha256':'hash'}]):
+        with patch.object(engine,'enter',side_effect=enter), \
+             patch.object(engine,'write_container_file'), \
+             patch.object(engine,'export',return_value=[{'path':'example.desktop','sha256':'hash'}]):
             engine.install(info,lambda items:items[0]); engine.install(info,lambda items:items[0])
         self.assertEqual(len(engine.registry),1); self.assertEqual(engine.registry['deb:example']['status'],'installed')
     def test_failure_and_interruption(self):
@@ -168,6 +185,12 @@ class ContainerTests(unittest.TestCase):
 
     def test_transaction_uses_container_only(self):
         engine=self.engine(); info=self.inspect(deb())
-        with patch.object(engine,'ensure'),patch.object(engine,'enter',return_value=b'Package transaction') as enter:
+        def enter(info, args):
+            if args[0] == 'cat':
+                return b'URIs: http://deb.debian.org/debian\n'
+            return b'Package transaction'
+        with patch.object(engine,'ensure'), \
+             patch.object(engine,'enter',side_effect=enter) as mocked, \
+             patch.object(engine,'write_container_file'):
             engine.transaction(info)
-        self.assertIn('--simulate',enter.call_args.args[1]); self.assertEqual(enter.call_args.args[1][-1],info['file'])
+        self.assertIn('--simulate',mocked.call_args.args[1]); self.assertEqual(mocked.call_args.args[1][-1],info['file'])
