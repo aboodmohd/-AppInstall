@@ -28,6 +28,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$(uname -m)" = aarch64
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libarchive-tools
           bash -n install.sh
           python3 -m unittest -v \
             tests.test_install_sh.ArchitectureTests \
@@ -64,7 +66,7 @@ jobs:
           printf '%s\n' "$version" > /tmp/arm64-version
           sudo useradd -m -s /bin/bash arm64-test
           sudo chown -R arm64-test:arm64-test /tmp/arm64-portable
-          runuser -u arm64-test -- env HOME=/home/arm64-test \
+          sudo runuser -u arm64-test -- env HOME=/home/arm64-test \
             XDG_DATA_HOME=/home/arm64-test/.local/share \
             XDG_CONFIG_HOME=/home/arm64-test/.config \
             QT_QPA_PLATFORM=offscreen APPINSTALL_DISABLE_UPDATE_TIMER=1 \
