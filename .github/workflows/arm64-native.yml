@@ -369,8 +369,10 @@ jobs:
       - name: Dry run against the live stable release
         run: |
           set -euo pipefail
+          latest="$(curl -fsSL https://api.github.com/repos/aboodmohd/-AppInstall/releases/latest \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')"
           bash ./install.sh --dry-run --yes --no-defaults --no-optional | tee /tmp/arm64-dry.log
-          grep -F 'Latest stable: v1.9.5' /tmp/arm64-dry.log
+          grep -F "Latest stable: $latest" /tmp/arm64-dry.log
           echo 'PASS: one-command installer accepted aarch64 against live release metadata'
       - name: Real install from verified candidate artifacts
         run: |
@@ -394,8 +396,10 @@ jobs:
             bash ./install.sh --yes --set-defaults --no-optional
           test "$(abood-appinstall --version)" = "appinstall $version"
           xdg-mime query default application/x-deb | grep -q AppInstall
+          latest="$(curl -fsSL https://api.github.com/repos/aboodmohd/-AppInstall/releases/latest \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["tag_name"])')"
           /usr/lib/abood-appinstall/appinstall-installer --desktop-check | tee /tmp/arm64-update.log
-          grep -F 'Latest stable: v1.9.5' /tmp/arm64-update.log
+          grep -F "Latest stable: $latest" /tmp/arm64-update.log
           ! grep -q '^APPINSTALL_UPDATE=' /tmp/arm64-update.log
           echo 'PASS: aarch64 install, MIME defaults and live update detection'
       - name: Uninstall preserving records

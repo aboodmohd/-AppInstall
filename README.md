@@ -204,11 +204,26 @@ curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.
 For a no-changes plan, run `curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash -s -- --dry-run`. The `--yes` flag allows unattended installation, but does **not** automatically change file defaults; use `--set-defaults` to opt in, or `--no-defaults` to leave them unchanged. See [INSTALL.md](INSTALL.md) for all flags and installation details.
 
 **Fedora 44 support (v1.6.0):** a native RPM and DNF installation path
-join the Arch and Debian packages. The installer accepts Fedora 44 x86_64 only
-when the **latest published stable release** contains a matching verified RPM;
-otherwise it refuses to install. Fedora support is tested in a disposable
-CI container; actual GNOME/KDE sessions still require separate acceptance.
-See [FEDORA_RPM_ACCEPTANCE.md](FEDORA_RPM_ACCEPTANCE.md).
+join the Arch and Debian packages. The installer accepts Fedora 44 on x86_64
+and aarch64 only when the **latest published stable release** contains a
+matching verified RPM; otherwise it refuses to install. Fedora support is
+tested in a disposable CI container; actual GNOME/KDE sessions still require
+separate acceptance. See [FEDORA_RPM_ACCEPTANCE.md](FEDORA_RPM_ACCEPTANCE.md).
+
+### Supported architectures by format
+
+| Format | x86_64 host | aarch64 host |
+|---|---|---|
+| AppInstall native package | `any` (Arch), `all` (DEB), `noarch` (RPM) | same architecture-neutral packages |
+| Third-party DEB | `amd64`, `all` | `arm64`, `all` |
+| Third-party RPM | `x86_64`, `noarch` | `aarch64`, `noarch` |
+| AppImage | ELF machine 62 | ELF machine 183 |
+| Flatpak | `x86_64` refs | `aarch64` refs |
+| Container DEB/RPM preview | `amd64`/`x86_64`/`all`/`noarch` | `arm64`/`aarch64`/`all`/`noarch` |
+
+Foreign architectures are refused before anything is installed. No QEMU or
+binfmt emulation is enabled automatically. Full details and runtime evidence:
+[docs/ARM64_NATIVE_SUPPORT.md](docs/ARM64_NATIVE_SUPPORT.md).
 
 For other distributions, see [source installation](INSTALL.md). Installing
 DEB/RPM apps inside AppInstall uses Distrobox and is separate from installing
