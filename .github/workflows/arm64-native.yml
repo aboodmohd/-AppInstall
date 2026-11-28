@@ -51,7 +51,8 @@ jobs:
             python3 python3-pip python3-venv git curl xdg-utils \
             desktop-file-utils squashfs-tools libarchive-tools \
             libegl1 libgl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0 passwd
-          python3 -m pip install --break-system-packages PySide6
+          # System-wide so the disposable test user can import PySide6 too.
+          sudo python3 -m pip install --break-system-packages PySide6
           python3 -c 'from PySide6 import QtCore, QtWidgets, QtQml; print("PySide6 QML import OK")'
       - name: Build and install the portable candidate
         run: |
@@ -65,6 +66,8 @@ jobs:
           cp tools/ci_portable_upgrade.py /tmp/arm64-portable/
           printf '%s\n' "$version" > /tmp/arm64-version
           sudo useradd -m -s /bin/bash arm64-test
+          sudo runuser -u arm64-test -- python3 -c \
+            'from PySide6 import QtCore, QtWidgets, QtQml; print("test user PySide6 QML OK")'
           sudo chown -R arm64-test:arm64-test /tmp/arm64-portable
           sudo runuser -u arm64-test -- env HOME=/home/arm64-test \
             XDG_DATA_HOME=/home/arm64-test/.local/share \
