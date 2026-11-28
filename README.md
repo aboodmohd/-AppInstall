@@ -128,10 +128,12 @@ supported scope.
 
 The normal one-command installer still selects an **official native package**
 only for the currently verified hosts: Arch Linux/CachyOS, Debian 13,
-Ubuntu 24.04/26.04, Linux Mint 22, or Fedora 44 on x86_64. It always
-downloads the **latest published stable** release, not an unmerged PR or
-unpublished candidate build. No host package manager is invoked on an
-unverified distribution.
+Ubuntu 24.04/26.04, Linux Mint 22, or Fedora 44. x86_64 is supported on all
+of these; native aarch64 (ARM64) is verified on Debian 13, Ubuntu 24.04/26.04
+and Fedora 44. It always downloads the **latest published stable** release,
+not an unmerged PR or unpublished candidate build. No host package manager is
+invoked on an unverified distribution, and no architecture emulation is
+enabled. See [Native ARM64 support](docs/ARM64_NATIVE_SUPPORT.md).
 
 ### Other Linux desktops — portable source installation
 
@@ -160,7 +162,8 @@ For portable removal run `~/.local/bin/abood-appinstall-uninstall`; the
 installer preserves managed packages and user data.
 
 
-**One-command installation** detects the host distribution (x86_64). Run this as your normal desktop user (not with `sudo`):
+**One-command installation** detects the host distribution and architecture
+(`x86_64` or `aarch64`; every other machine type is refused). Run this as your normal desktop user (not with `sudo`):
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.sh | bash
@@ -168,7 +171,7 @@ curl -fsSL https://raw.githubusercontent.com/aboodmohd/-AppInstall/main/install.
 
 The installer downloads the host-native package and verifies it against
 `SHA256SUMS`. Arch Linux/CachyOS use pacman; Debian 13, Ubuntu 24.04/26.04
-and Linux Mint 22 use APT; and Fedora 44 x86_64 uses a native RPM installed
+and Linux Mint 22 use APT; and Fedora 44 uses a native RPM installed
 through DNF when the latest published stable release includes that asset.
 Ubuntu needs the Universe repository for its Qt bindings. The installer
 refuses unsupported distributions rather than reusing another platform's

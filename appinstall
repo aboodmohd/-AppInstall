@@ -10,7 +10,7 @@
 set -u
 IFS=$'\n\t'
 
-VERSION="1.9.5"
+VERSION="1.10.0"
 _repair_desktop_launcher() {
   local marker
   marker="$(dirname -- "$(realpath -- "$0")")/install_mode.py"

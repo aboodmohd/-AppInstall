@@ -66,15 +66,18 @@ absent, Discover Apps cannot open; KDialog/Zenity CLI fallback may still
 work for some operations. Install graphical dependencies through your
 distribution's repository, not a guessed native AppInstall package.
 
-The v1.9.2 native CI targets remain **Arch/CachyOS, Debian 13,
-Ubuntu 24.04/26.04, Linux Mint 22 and Fedora 44**, on x86_64.
-Other distributions require independent compatibility checks; this
-portable option is not a guarantee that every application will work.
-See `RELEASE_NOTES.md`.
+The native CI targets remain **Arch/CachyOS, Debian 13,
+Ubuntu 24.04/26.04, Linux Mint 22 and Fedora 44**, on x86_64, plus native
+aarch64 (ARM64) coverage for Debian 13, Ubuntu 24.04/26.04 and Fedora 44.
+Arch Linux ARM is not covered by an official native CI image; its `any`
+package is architecture-neutral but unverified there. Other distributions
+require independent compatibility checks; this portable option is not a
+guarantee that every application will work. See `docs/ARM64_NATIVE_SUPPORT.md`
+and `RELEASE_NOTES.md`.
 
 ## Native Fedora 44 RPM (introduced in v1.6.0)
 
-Fedora 44 (x86_64) uses DNF and the native
+Fedora 44 (x86_64 or aarch64) uses DNF and the native
 `abood-appinstall-1.9.2-1.noarch.rpm` package. The one-command installer
 fetches it only from a published stable release alongside `SHA256SUMS`,
 validates the package checksum and RPM name/version/architecture and

@@ -41,5 +41,28 @@ hosts and native arm64 container images:
 - a genuine aarch64 Flatpak ref and a genuine aarch64 AppImage validated by the
   production `validate_appimage` path.
 
+Additional native-runtime acceptance (v1.10.0 release candidate):
+
+- a genuine third-party **arm64 DEB** (`hello`) is inspected by the production
+  native backend, installed with APT, launched and removed in Debian 13 arm64;
+  a genuine **amd64** build is refused and application records are unchanged;
+- a genuine third-party **aarch64 RPM** is inspected, installed with DNF,
+  launched and removed in Fedora 44 arm64; a genuine **x86_64** build is
+  refused and records are unchanged;
+- a genuine **aarch64 AppImage** is validated by the production validator and
+  launched; a real **aarch64 Flatpak** is installed, launched, updated and
+  removed;
+- the **one-command installer** is exercised on an aarch64 host both as a dry
+  run against live release metadata and as a real install from locally built,
+  checksum-verified candidate artifacts, followed by uninstall with records
+  preserved;
+- **Discover Apps** repository filtering uses real `apt-cache` output and the
+  production catalog on aarch64; update detection uses the real installer.
+
+Foreign-architecture packages are rejected before any package manager runs.
+No binfmt/QEMU registration or `--platform` override is used anywhere.
+
 x86_64 compatibility and the Premium UI remain covered by the existing x64 jobs.
-No release is published from this branch.
+Arch Linux ARM is not covered by an official native CI image; its architecture
+neutral `any` package is unchanged and x64 Arch coverage is intact. No release
+is published from this branch.
