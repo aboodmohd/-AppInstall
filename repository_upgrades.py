@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
+import platform
 import re
 import subprocess
 
@@ -156,6 +157,12 @@ class RepositoryUpgradeService:
         return output
 
     def _preview(self, kind, name, installed, target, architecture):
+        # Registry architecture is untrusted provenance: revalidate against host.
+        allowed = {"x86_64": {"x86_64", "amd64", "all", "noarch"},
+                   "aarch64": {"aarch64", "arm64", "all", "noarch"}}.get(
+            platform.machine(), set())
+        if not allowed or architecture not in allowed:
+            raise UpgradeBlocked("Package architecture does not match this host.")
         if (not VERSION_RE.fullmatch(target) or
                 not VERSION_RE.fullmatch(installed)):
             raise UpgradeBlocked("Invalid package version in update metadata.")

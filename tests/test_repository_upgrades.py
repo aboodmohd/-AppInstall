@@ -162,6 +162,14 @@ class ReviewTests(RegistryFixture):
             with self.subTest(version=version), self.assertRaises(upgrades.UpgradeBlocked):
                 self.service._preview("deb", "gimp", "3.0-1", version, "amd64")
 
+    def test_foreign_architecture_from_registry_is_rejected(self):
+        with patch.object(upgrades.platform, "machine", return_value="aarch64"):
+            for architecture in ("amd64", "x86_64", "unknown"):
+                with self.subTest(architecture=architecture), \
+                     self.assertRaises(upgrades.UpgradeBlocked):
+                    self.service._preview("rpm", "gimp", "3.0-1", "3.2-1",
+                                          architecture)
+
     def test_unknown_repositories_fail_closed(self):
         with patch.object(upgrades.repository_catalog, "ready", return_value=True), \
              patch.object(self.service, "_enter",

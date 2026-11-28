@@ -64,7 +64,7 @@ SUPPORTED_IDS="arch cachyos fedora"
 # Optional backends offered after core installation (pacman package names).
 OPTIONAL_PKGS=(flatpak podman distrobox squashfs-tools fuse2 kdialog zenity libnotify)
 
-INSTALLER_VERSION="1.9.5"
+INSTALLER_VERSION="1.10.0"
 
 # ---------------------------------------------------------------------------
 # Flags / state. Defaults respect pre-existing environment values so the test
@@ -194,6 +194,10 @@ detect_distro_version() {
 }
 
 detect_arch() { uname -m; }
+
+# Native x86_64 and aarch64 hosts only. Emulation is never enabled implicitly:
+# an unrecognised machine is refused rather than routed to a foreign package.
+supported_arch() { case "${1:-$(detect_arch)}" in x86_64|aarch64) return 0;; *) return 1;; esac; }
 
 detect_de() {
   local de="${XDG_CURRENT_DESKTOP:-}"
@@ -1001,8 +1005,8 @@ main() {
       exit 2
     fi
   fi
-  if [[ "$arch" != "x86_64" ]]; then
-    bad "Architecture '${arch}' is not supported by the tested stable release (x86_64)."
+  if ! supported_arch "$arch"; then
+    bad "Architecture '${arch}' is not supported by the tested stable release (x86_64, aarch64)."
     bad "No untested builds will be installed."
     exit 2
   fi

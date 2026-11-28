@@ -1,5 +1,12 @@
 # AppInstall Changelog
 
+## 1.10.0 — Native ARM64 support (release candidate)
+
+- Accept `aarch64` hosts in the one-command installer; x86_64 remains supported and no architecture emulation is enabled.
+- Verify native amd64/arm64 DEB and x86_64/aarch64 RPM package matching, with `all`/`noarch` preserved.
+- Add native ARM64 CI: architecture gates, portable/PySide6/Qt QML lifecycle, real arm64 DEB/RPM apps, AppImage, Flatpak, Podman and Distrobox.
+- Document ARM64 support in README, INSTALL and docs/ARM64_NATIVE_SUPPORT.md.
+
 ## 1.9.5 — Native update routing hotfix (candidate)
 
 - Route native Arch/DEB/RPM installations to their package-backed updater even when stale portable source modules remain.

@@ -64,6 +64,13 @@ class ContainerTests(unittest.TestCase):
         with self.assertRaises(ValueError): self.inspect(b'invalid','example.rpm')
     def test_architecture(self):
         with self.assertRaisesRegex(ValueError,'architecture'): self.inspect(deb('arm64'))
+    def test_arm64_host_accepts_only_arm64_packages(self):
+        self.arch.stop()
+        self.arch = patch.object(c.platform,'machine',return_value='aarch64'); self.arch.start()
+        self.assertEqual(self.inspect(deb('arm64'))['name'],'example')
+        self.assertEqual(self.inspect(deb('all'))['name'],'example')
+        with self.assertRaisesRegex(ValueError,'architecture'): self.inspect(deb('amd64'))
+
     def test_services_rejected(self):
         with self.assertRaisesRegex(ValueError,'System packages'):
             self.inspect(deb(files={'./usr/lib/systemd/system/example.service':b'service'}))

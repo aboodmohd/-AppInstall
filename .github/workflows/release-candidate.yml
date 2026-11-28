@@ -135,6 +135,6 @@ jobs:
           echo "The four candidate archives and one manifest are ready for review."
       - uses: actions/upload-artifact@v4
         with:
-          name: appinstall-v1.9.5-release-candidate
+          name: appinstall-v1.10.0-release-candidate
           path: release/
           if-no-files-found: error

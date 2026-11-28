@@ -63,7 +63,7 @@ def inspect_runtime(request):
         if header[:4] == b'\x7fELF':
             endian = 'little' if header[5] == 1 else 'big'
             machine = int.from_bytes(header[18:20], endian)
-            expected = {'x86_64':62,'aarch64':183}.get(platform.machine())
+            expected = {'x86_64':62,'aarch64':183,'arm64':183}.get(platform.machine())
             if expected and machine != expected:
                 return dict(category='architecture', detail='The executable architecture does not match this environment.')
             if shutil.which('readelf'):

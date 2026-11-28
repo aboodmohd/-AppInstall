@@ -1,10 +1,15 @@
-# AppInstall v1.9.5 — Native update routing hotfix (candidate)
+# AppInstall v1.10.0 — Native ARM64 Support (release candidate)
 
-Unpublished development candidate. The latest published stable release is v1.9.4.
+Unpublished development candidate. The latest published stable release is v1.9.5.
 
-Fixes the live CachyOS error `AppInstall portable update refused: Portable AppInstall user launcher is missing or is a symlink` on a native `abood-appinstall` installation. The cause was a stale user-level desktop entry pointing to a removed temporary portable launcher; module path alone misclassified the installation as portable. Native package ownership now wins, and stale AppInstall desktop entries are repaired to the package-owned executable.
+Adds native `aarch64` host support to the one-command installer alongside `x86_64`,
+without enabling binfmt/QEMU or any other cross-architecture emulation. Native
+amd64/arm64 DEB and x86_64/aarch64 RPM packages are matched to the host while
+`all`/`noarch` packages keep working. AppImage, Flatpak, portable installs, the
+Premium UI and PySide6/Qt QML are covered by native ARM64 runtime CI.
 
-Candidate artifact prefix: `appinstall-1.9.5-portable.tar.gz`; native packages use `abood-appinstall` version `1.9.5-1`.
+Candidate artifact prefix: `appinstall-1.10.0-portable.tar.gz`; native packages
+use `abood-appinstall` version `1.10.0-1`.
 
 ## Previous release notes
 
