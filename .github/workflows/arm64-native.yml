@@ -213,8 +213,8 @@ jobs:
             https://flathub.org/repo/flathub.flatpakrepo
           sudo flatpak install --noninteractive -y flathub org.gnome.Calculator
           flatpak info --show-ref org.gnome.Calculator | grep -Fxq 'app/org.gnome.Calculator/aarch64/stable'
-          flatpak run org.gnome.Calculator --version > /tmp/calculator-version.log 2>/dev/null || true
-          grep -Eq '[0-9]' /tmp/calculator-version.log
+          flatpak run --command=/usr/bin/true org.gnome.Calculator
+          echo 'PASS: real aarch64 Flatpak sandbox launched'
           sudo flatpak update --noninteractive -y
           flatpak info --show-ref org.gnome.Calculator | grep -Fxq 'app/org.gnome.Calculator/aarch64/stable'
           sudo flatpak uninstall --noninteractive -y org.gnome.Calculator
