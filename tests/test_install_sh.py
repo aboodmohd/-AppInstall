@@ -55,6 +55,31 @@ def write_os_release(tmp, content):
     return str(f)
 
 
+class ArchitectureTests(unittest.TestCase):
+    def test_native_architectures_are_accepted(self):
+        for arch in ('x86_64', 'aarch64'):
+            with self.subTest(arch=arch):
+                rc, out, _ = run_sourced(
+                    f"if supported_arch {arch}; then echo yes; else echo no; fi")
+                self.assertEqual(rc, 0)
+                self.assertIn('yes', out)
+
+    def test_other_architectures_are_refused(self):
+        for arch in ('i686', 'armv7l', 'riscv64', 'ppc64le'):
+            with self.subTest(arch=arch):
+                rc, out, _ = run_sourced(
+                    f"if supported_arch {arch}; then echo yes; else echo no; fi")
+                self.assertIn('no', out)
+
+    def test_defaults_to_detected_host_architecture(self):
+        shim = Path(tempfile.mkdtemp())
+        (shim / 'uname').write_text('#!/bin/sh\necho aarch64\n')
+        (shim / 'uname').chmod(0o755)
+        rc, out, _ = run_sourced(
+            "if supported_arch; then echo yes; else echo no; fi", path_prepend=shim)
+        self.assertIn('yes', out)
+
+
 class UpdateErrorMarkerTests(unittest.TestCase):
     def test_api_get_emits_actionable_network_marker(self):
         rc, out, err = run_sourced("""

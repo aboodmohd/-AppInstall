@@ -1,0 +1,208 @@
+name: Native ARM64 (aarch64) runtime acceptance
+
+# Every job runs on a native ARM64 host. No binfmt/QEMU registration and no
+# --platform amd64 overrides are used: a foreign-architecture package must be
+# refused, never emulated implicitly.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  unit:
+    name: ARM64 architecture gates (unit)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - name: Confirm native host and run architecture tests
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          bash -n install.sh
+          python3 -m unittest -v \
+            tests.test_install_sh.ArchitectureTests \
+            tests.test_native.NativeTests \
+            tests.test_containers.ContainerTests.test_arm64_host_accepts_only_arm64_packages
+
+  portable:
+    name: Portable install, QML, update and uninstall (ARM64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+      - name: Native ARM64 Python, PySide6 and QML prerequisites
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            python3 python3-pip python3-venv git curl xdg-utils \
+            desktop-file-utils squashfs-tools libarchive-tools \
+            libegl1 libgl1 libopengl0 libxkbcommon-x11-0 libxcb-cursor0 passwd
+          python3 -m pip install --break-system-packages PySide6
+          python3 -c 'from PySide6 import QtCore, QtWidgets, QtQml; print("PySide6 QML import OK")'
+      - name: Build and install the portable candidate
+        run: |
+          set -euo pipefail
+          bash tools/build_portable.sh dist
+          version="$(sed -n 's/^pkgver=//p' PKGBUILD)"
+          archive="dist/appinstall-${version}-portable.tar.gz"
+          test -s "$archive"
+          mkdir -p /tmp/arm64-portable
+          tar -xzf "$archive" -C /tmp/arm64-portable
+          cp tools/ci_portable_upgrade.py /tmp/arm64-portable/
+          printf '%s\n' "$version" > /tmp/arm64-version
+          sudo useradd -m -s /bin/bash arm64-test
+          sudo chown -R arm64-test:arm64-test /tmp/arm64-portable
+          runuser -u arm64-test -- env HOME=/home/arm64-test \
+            XDG_DATA_HOME=/home/arm64-test/.local/share \
+            XDG_CONFIG_HOME=/home/arm64-test/.config \
+            QT_QPA_PLATFORM=offscreen APPINSTALL_DISABLE_UPDATE_TIMER=1 \
+            bash -c '
+              set -e
+              cd /tmp/arm64-portable/appinstall-'"$version"'
+              bash ./install-user.sh
+              test "$(uname -m)" = aarch64
+              test "$("$HOME/.local/bin/abood-appinstall" --version)" = "appinstall '"$version"'"
+              test -f "$HOME/.local/share/appinstall/manager_ui/main.qml"
+              test -f "$HOME/.local/share/appinstall/repository_catalog.py"
+              python3 "$HOME/.local/share/appinstall/manager_qml.py" --smoke
+              grep -q "application/x-deb" "$HOME/.config/mimeapps.list"
+              python3 ../ci_portable_upgrade.py "$PWD"
+              "$HOME/.local/bin/abood-appinstall-uninstall"
+              test ! -e "$HOME/.local/bin/abood-appinstall"
+            '
+          test ! -e /usr/bin/abood-appinstall
+
+  deb:
+    name: Native arm64 DEB install, upgrade, rollback (Debian 13)
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: debian:13
+    timeout-minutes: 40
+    env:
+      FAMILY: debian
+      APPINSTALL_DISPOSABLE_NATIVE_CI: YES
+    steps:
+      - uses: actions/checkout@v5
+      - name: Native ARM64 prerequisites
+        run: |
+          set -euo pipefail
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            curl ca-certificates bash python3 dpkg-dev coreutils sed xdg-utils \
+            util-linux passwd desktop-file-utils
+          test "$(dpkg --print-architecture)" = arm64
+      - name: Legacy migration, upgrade, rollback and MIME preservation
+        run: bash tools/ci_native_upgrade_rollback.sh
+
+  rpm:
+    name: Native aarch64 RPM install, upgrade, rollback (Fedora 44)
+    runs-on: ubuntu-24.04-arm
+    container:
+      image: fedora:44
+    timeout-minutes: 40
+    env:
+      FAMILY: fedora
+      APPINSTALL_DISPOSABLE_NATIVE_CI: YES
+    steps:
+      - uses: actions/checkout@v5
+      - name: Native ARM64 prerequisites
+        run: |
+          set -euo pipefail
+          dnf -y install \
+            rpm-build rpm tar gzip shadow-utils util-linux sudo \
+            python3 python3-pyside6 qt6-qtdeclarative \
+            curl coreutils findutils xdg-utils desktop-file-utils
+          test "$(rpm --eval '%{_arch}')" = aarch64
+      - name: Legacy migration, upgrade, rollback and MIME preservation
+        run: bash tools/ci_native_upgrade_rollback.sh
+
+  containers:
+    name: Podman and Distrobox on native ARM64
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Podman and Distrobox
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            podman distrobox python3 dpkg-dev libarchive-tools curl
+          podman --version
+          distrobox --version
+      - name: Native ARM64 Podman and Distrobox runtimes
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          test "$(podman run --rm docker.io/library/alpine:3.22 uname -m)" = aarch64
+          distrobox create --name appinstall-ci --image docker.io/library/alpine:3.22 --yes
+          test "$(distrobox enter appinstall-ci -- uname -m)" = aarch64
+          distrobox rm --force appinstall-ci
+      - name: ARM64 container package routing
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os, platform, sys, tempfile
+          from pathlib import Path
+          sys.path.insert(0, '.')
+          import container_backend as backend
+          assert platform.machine() == 'aarch64', platform.machine()
+          root = Path(tempfile.mkdtemp())
+          control = root / 'DEBIAN' / 'control'
+          control.parent.mkdir(parents=True)
+          control.write_text('Package: arm64-fixture\nVersion: 1\n'
+                             'Architecture: arm64\nMaintainer: CI\n'
+                             'Description: Native arm64 container fixture\n')
+          desktop = root / 'usr/share/applications'
+          desktop.mkdir(parents=True)
+          (desktop / 'arm64-fixture.desktop').write_text(
+              '[Desktop Entry]\nName=Fixture\nExec=/bin/true\n')
+          package = root / 'arm64-fixture.deb'
+          subprocess_ok = os.system(f'dpkg-deb --build {root} {package}') == 0
+          assert subprocess_ok, 'dpkg-deb failed'
+          assert backend.inspect_package(package)['name'] == 'arm64-fixture'
+          print('PASS: genuine arm64 package accepted on native ARM64 host')
+          PY
+
+  apps:
+    name: Flatpak and AppImage on native ARM64
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Flatpak and AppImage inspection prerequisites
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            flatpak curl file squashfs-tools libarchive-tools
+      - name: Native aarch64 Flatpak ref
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = aarch64
+          sudo flatpak remote-add --if-not-exists flathub \
+            https://flathub.org/repo/flathub.flatpakrepo
+          sudo flatpak install --noninteractive -y flathub org.gnome.Calculator
+          flatpak info --show-ref org.gnome.Calculator | grep -Fxq 'app/org.gnome.Calculator/aarch64/stable'
+      - name: Native aarch64 AppImage validation
+        run: |
+          set -euo pipefail
+          curl -fsSL --retry 3 --output /tmp/appimagetool-aarch64.AppImage \
+            https://github.com/AppImage/AppImageKit/releases/download/13/obsolete-appimagetool-aarch64.AppImage
+          file /tmp/appimagetool-aarch64.AppImage | grep -qi 'ARM aarch64'
+          # appinstall ends with main "$@", so source only the validator itself.
+          bash -c "$(awk '/^validate_appimage\(\)/,/^}/' appinstall); \
+            validate_appimage /tmp/appimagetool-aarch64.AppImage"
+          echo 'PASS: genuine aarch64 AppImage accepted by the production validator'

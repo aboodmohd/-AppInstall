@@ -195,6 +195,10 @@ detect_distro_version() {
 
 detect_arch() { uname -m; }
 
+# Native x86_64 and aarch64 hosts only. Emulation is never enabled implicitly:
+# an unrecognised machine is refused rather than routed to a foreign package.
+supported_arch() { case "${1:-$(detect_arch)}" in x86_64|aarch64) return 0;; *) return 1;; esac; }
+
 detect_de() {
   local de="${XDG_CURRENT_DESKTOP:-}"
   case "$de" in
@@ -1001,8 +1005,8 @@ main() {
       exit 2
     fi
   fi
-  if [[ "$arch" != "x86_64" ]]; then
-    bad "Architecture '${arch}' is not supported by the tested stable release (x86_64)."
+  if ! supported_arch "$arch"; then
+    bad "Architecture '${arch}' is not supported by the tested stable release (x86_64, aarch64)."
     bad "No untested builds will be installed."
     exit 2
   fi
